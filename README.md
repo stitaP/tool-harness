@@ -483,4 +483,6 @@ extension/ desktop/ engines/   Chrome extension, Tauri desktop app, Rust capture
 
 ## License
 
-MIT
+**PolyForm Noncommercial License 1.0.0** — see [LICENSE](LICENSE).
+
+You may use, modify and share this tool harness freely for **noncommercial purposes**: personal projects, research, education, and use by charities, public institutions and other noncommercial organizations. **Commercial use is not permitted** under this license. If you'd like to use stitaP commercially, contact the maintainers via the [stitaP organization](https://github.com/stitaP) to discuss a separate license.

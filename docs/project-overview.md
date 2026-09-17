@@ -587,7 +587,7 @@ See `docs/native-apps.md` for detailed deployment guides.
 
 ## Contributing
 
-stitap is open source (MIT license). To add a new tool:
+stitaP is source-available under the PolyForm Noncommercial License 1.0.0 (noncommercial use only). To add a new tool:
 
 1. Write business logic in `src/lib/integrations/`
 2. Create tool manifest in `src/lib/store/tools/`
@@ -602,4 +602,4 @@ See [Tool Implementation Guide](#tool-implementation-guide) above for detailed e
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+PolyForm Noncommercial 1.0.0 — noncommercial use only. See [LICENSE](../LICENSE) for details.
