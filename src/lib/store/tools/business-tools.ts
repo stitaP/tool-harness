@@ -306,7 +306,7 @@ export const CHITFUND_TOOLS: ToolManifest[] = [
     color: "#8b5cf6",
     parameters: [
       { name: "groupId", type: "string", description: "Chit group ID", required: true },
-      { name: "bids", type: "string", description: "JSON array of {memberId, bidAmount}", required: true },
+      { name: "bids", type: "string", description: "JSON array of {memberId, bidAmount} (optional: defaults to bids recorded with chit.round.bid)", required: false },
     ],
     capabilities: [{ name: "chit-close", description: "Close round and determine winner", requiresBrowser: false, requiresNetwork: false, offline: true }],
     slmFriendly: true,

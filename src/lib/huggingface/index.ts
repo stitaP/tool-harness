@@ -276,9 +276,13 @@ export function hasHFToken(): boolean {
 }
 
 /** Build auth headers for HuggingFace API calls */
+let hfTokenProvider: (() => string | undefined) | null = null;
+/** Let non-browser hosts (agent runtime) supply the token, e.g. from the HF_TOKEN secret. */
+export function setHFTokenProvider(fn: (() => string | undefined) | null): void { hfTokenProvider = fn; }
+
 function authHeaders(): Record<string, string> {
-  const t = getHFToken();
-  return t ? { Authorization: `Bearer ${t.token}` } : {};
+  const token = getHFToken()?.token ?? hfTokenProvider?.();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 // ─── Model Search ───────────────────────────────────────────────────────────

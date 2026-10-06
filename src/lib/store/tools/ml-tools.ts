@@ -886,6 +886,12 @@ export const ML_TOOLS: ToolManifest[] = [
         description: 'For numerical_gradient: JSON array of x values at which to evaluate gradient',
         required: false,
       },
+      {
+        name: "expression",
+        type: "string",
+        description: 'Alternative to coefficients: a math expression in x, e.g. "x^3 + sin(x)" (symbolic derivative)',
+        required: false,
+      },
     ],
     capabilities: [
       {
@@ -920,7 +926,7 @@ export const ML_TOOLS: ToolManifest[] = [
         name: "coefficients",
         type: "string",
         description: 'JSON array of polynomial coefficients [a0, a1, a2, ...]',
-        required: true,
+        required: false,
       },
       {
         name: "a",
@@ -946,6 +952,12 @@ export const ML_TOOLS: ToolManifest[] = [
         name: "steps",
         type: "number",
         description: "Number of integration steps (default 1000)",
+        required: false,
+      },
+      {
+        name: "expression",
+        type: "string",
+        description: 'Alternative to coefficients: integrand as an expression in x, e.g. "exp(-x^2)"',
         required: false,
       },
     ],
@@ -1018,6 +1030,12 @@ export const ML_TOOLS: ToolManifest[] = [
         default: "rk4",
         enum: ["euler", "rk4"],
       },
+      {
+        name: "expression",
+        type: "string",
+        description: 'dy/dt as an expression in t and y, e.g. "-2*y + t". For systems: ";"-separated expressions in t, y0, y1, … e.g. "y1; -y0"',
+        required: true,
+      },
     ],
     capabilities: [
       {
@@ -1065,13 +1083,13 @@ export const ML_TOOLS: ToolManifest[] = [
         name: "L",
         type: "number",
         description: "Domain length [0, L]",
-        required: true,
+        required: false,
       },
       {
         name: "T",
         type: "number",
         description: "Final simulation time",
-        required: true,
+        required: false,
       },
       {
         name: "nx",
@@ -1086,6 +1104,12 @@ export const ML_TOOLS: ToolManifest[] = [
         description: "Number of time steps",
         required: false,
         default: 100,
+      },
+      {
+        name: "initial",
+        type: "string",
+        description: 'Initial condition u(x,0) as an expression in x and L (default "sin(pi*x/L)")',
+        required: false,
       },
     ],
     capabilities: [
@@ -1135,12 +1159,24 @@ export const ML_TOOLS: ToolManifest[] = [
         name: "b",
         type: "number",
         description: "Upper bound (bisection) or second guess (secant)",
-        required: true,
+        required: false,
       },
       {
         name: "tolerance",
         type: "number",
         description: "Convergence tolerance (default 1e-8)",
+        required: false,
+      },
+      {
+        name: "expression",
+        type: "string",
+        description: 'f(x) as an expression, e.g. "x^3 - 2*x - 5" (or give coefficients)',
+        required: false,
+      },
+      {
+        name: "coefficients",
+        type: "string",
+        description: "Alternative to expression: polynomial coefficients [a0, a1, a2, …]",
         required: false,
       },
     ],

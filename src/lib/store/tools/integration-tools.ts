@@ -144,7 +144,7 @@ export const COMMUNICATION_TOOLS: ToolManifest[] = [
     icon: "Mail",
     color: "#f59e0b",
     parameters: [
-      { name: "provider", type: "string", description: "Email provider", required: true, enum: ["smtp", "sendgrid", "resend", "postmark"] },
+      { name: "provider", type: "string", description: "Email provider", required: true, enum: ["smtp", "sendgrid", "resend", "postmark", "mailgun", "ses"] },
       { name: "to", type: "array", description: "Recipient email addresses", required: true },
       { name: "from", type: "string", description: "Sender email address", required: true },
       { name: "subject", type: "string", description: "Email subject", required: true },
@@ -201,7 +201,7 @@ export const COMMUNICATION_TOOLS: ToolManifest[] = [
     icon: "MessageSquare",
     color: "#f59e0b",
     parameters: [
-      { name: "provider", type: "string", description: "SMS provider", required: true, enum: ["twilio", "vonage", "sns"] },
+      { name: "provider", type: "string", description: "SMS provider", required: true, enum: ["twilio", "vonage", "sns", "msg91"] },
       { name: "to", type: "string", description: "Phone number", required: true },
       { name: "from", type: "string", description: "Sender number or short code", required: false },
       { name: "body", type: "string", description: "Message text", required: true },
@@ -229,7 +229,7 @@ export const COMMUNICATION_TOOLS: ToolManifest[] = [
     icon: "Phone",
     color: "#f59e0b",
     parameters: [
-      { name: "provider", type: "string", description: "Voice provider", required: true, enum: ["twilio", "elevenlabs", "azure-tts"] },
+      { name: "provider", type: "string", description: "Voice provider", required: true, enum: ["twilio", "elevenlabs", "azure-tts", "local"] },
       { name: "to", type: "string", description: "Phone number (for calls)", required: false },
       { name: "text", type: "string", description: "Text to speak", required: true },
       { name: "voice", type: "string", description: "Voice ID or name", required: false },
@@ -265,7 +265,7 @@ export const COMMERCE_TOOLS: ToolManifest[] = [
     icon: "CreditCard",
     color: "#8b5cf6",
     parameters: [
-      { name: "provider", type: "string", description: "Payment provider", required: true, enum: ["stripe", "paddle", "lemon-squeezy"] },
+      { name: "provider", type: "string", description: "Payment provider", required: true, enum: ["stripe", "razorpay", "paddle", "lemon-squeezy"] },
       { name: "amount", type: "number", description: "Amount in smallest currency unit (cents)", required: true },
       { name: "currency", type: "string", description: "ISO currency code", required: true },
       { name: "productName", type: "string", description: "Product name", required: true },
@@ -294,7 +294,7 @@ export const COMMERCE_TOOLS: ToolManifest[] = [
     icon: "CheckCircle",
     color: "#8b5cf6",
     parameters: [
-      { name: "provider", type: "string", description: "Payment provider", required: true, enum: ["stripe", "paddle", "lemon-squeezy"] },
+      { name: "provider", type: "string", description: "Payment provider", required: true, enum: ["stripe", "razorpay", "paddle", "lemon-squeezy"] },
       { name: "sessionId", type: "string", description: "Checkout session ID", required: true },
     ],
     capabilities: [
@@ -349,9 +349,10 @@ export const COMMERCE_TOOLS: ToolManifest[] = [
     color: "#8b5cf6",
     parameters: [
       { name: "provider", type: "string", description: "Payment provider", required: true, enum: ["stripe", "paddle"] },
-      { name: "action", type: "string", description: "Action to perform", required: true, enum: ["create", "update", "cancel", "list"] },
+      { name: "action", type: "string", description: "Action to perform", required: true, enum: ["create", "update", "cancel", "list", "get"] },
       { name: "customerId", type: "string", description: "Customer ID", required: false },
       { name: "priceId", type: "string", description: "Price/plan ID", required: false },
+      { name: "subscriptionId", type: "string", description: "Subscription ID (update, cancel, get)", required: false },
     ],
     capabilities: [
       { name: "subscribe", description: "Manage recurring subscriptions", requiresBrowser: false, requiresNetwork: true, offline: false },
@@ -383,7 +384,7 @@ export const STORAGE_TOOLS: ToolManifest[] = [
     icon: "Upload",
     color: "#10b981",
     parameters: [
-      { name: "provider", type: "string", description: "Storage provider", required: true, enum: ["s3", "gcs", "azure", "local"] },
+      { name: "provider", type: "string", description: "Storage provider", required: true, enum: ["s3", "gcs", "r2", "azure", "local"] },
       { name: "bucket", type: "string", description: "Bucket name", required: true },
       { name: "key", type: "string", description: "Object key/path", required: true },
       { name: "content", type: "string", description: "File content (string or base64)", required: true },
@@ -412,7 +413,7 @@ export const STORAGE_TOOLS: ToolManifest[] = [
     icon: "Download",
     color: "#10b981",
     parameters: [
-      { name: "provider", type: "string", description: "Storage provider", required: true, enum: ["s3", "gcs", "azure", "local"] },
+      { name: "provider", type: "string", description: "Storage provider", required: true, enum: ["s3", "gcs", "r2", "azure", "local"] },
       { name: "bucket", type: "string", description: "Bucket name", required: true },
       { name: "key", type: "string", description: "Object key/path", required: true },
     ],
@@ -439,7 +440,7 @@ export const STORAGE_TOOLS: ToolManifest[] = [
     icon: "FolderOpen",
     color: "#10b981",
     parameters: [
-      { name: "provider", type: "string", description: "Storage provider", required: true, enum: ["s3", "gcs", "azure", "local"] },
+      { name: "provider", type: "string", description: "Storage provider", required: true, enum: ["s3", "gcs", "r2", "azure", "local"] },
       { name: "bucket", type: "string", description: "Bucket name", required: true },
       { name: "prefix", type: "string", description: "Key prefix filter", required: false },
       { name: "maxKeys", type: "number", description: "Max results", required: false, default: 100, min: 1, max: 1000 },
@@ -467,7 +468,7 @@ export const STORAGE_TOOLS: ToolManifest[] = [
     icon: "Share2",
     color: "#10b981",
     parameters: [
-      { name: "provider", type: "string", description: "Storage provider", required: true, enum: ["s3", "gcs", "azure"] },
+      { name: "provider", type: "string", description: "Storage provider", required: true, enum: ["s3", "gcs", "r2", "azure", "local"] },
       { name: "bucket", type: "string", description: "Bucket name", required: true },
       { name: "key", type: "string", description: "Object key", required: true },
       { name: "expiresInMinutes", type: "number", description: "Link expiry in minutes", required: false, default: 60, min: 5, max: 10080 },
@@ -1131,7 +1132,7 @@ export const OS_TOOLS: ToolManifest[] = [
     icon: "Battery",
     color: "#64748b",
     parameters: [
-      { name: "action", type: "string", description: "Power action", required: true, enum: ["getSource", "preventSleep", "allowSleep"] },
+      { name: "action", type: "string", description: "Power action", required: true, enum: ["getSource", "preventSleep", "allowSleep", "sleep", "lock"] },
     ],
     capabilities: [
       { name: "power", description: "Manage power and sleep settings", requiresBrowser: true, requiresNetwork: false, offline: true },

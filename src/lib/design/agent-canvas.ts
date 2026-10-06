@@ -868,7 +868,8 @@ export function createLandingPage(state: CanvasState, opts?: {
 
   // Navbar
   for (const preset of COMPONENT_PRESETS["navbar"].elements) {
-    const { state: ns } = addElement(s, abId, preset);
+    const el = opts?.brand && preset.kind === "text" && /acme/i.test(preset.text ?? "") ? { ...preset, text: opts.brand } : preset;
+    const { state: ns } = addElement(s, abId, el);
     s = ns;
   }
 
@@ -893,11 +894,14 @@ export function createLandingPage(state: CanvasState, opts?: {
 
   // Footer
   for (const preset of COMPONENT_PRESETS["footer"].elements) {
-    const el = { ...preset, bounds: { ...preset.bounds, y: preset.bounds.y + 1064 } };
+    const el = { ...preset, bounds: { ...preset.bounds, y: preset.bounds.y + 1064 }, ...(opts?.brand && preset.text && /acme/i.test(preset.text) ? { text: preset.text.replace(/acme( inc\.?)?/i, opts.brand) } : {}) };
     const { state: ns } = addElement(s, abId, el);
     s = ns;
   }
 
+  // Grow the artboard to fit the page
+  const bottom = Math.max(...[...s.elements.values()].map((e) => e.bounds.y + e.bounds.height));
+  s = { ...s, artboards: s.artboards.map((a) => (a.id === abId ? { ...a, height: Math.max(a.height, bottom) } : a)) };
   return { state: s, artboardId: abId };
 }
 

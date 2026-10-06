@@ -20,6 +20,7 @@ import type {
   AgentDefinition,
 } from "./tool-types";
 
+import { registerAllExecutors } from "./executors";
 import { BROWSER_TOOLS } from "./tools/browser-tools";
 import { VISUAL_TOOLS } from "./tools/browser-visual-tools";
 import { VIDEO_TOOLS } from "./tools/video-tools";
@@ -537,6 +538,7 @@ const BUILTIN_EXECUTORS: Record<string, ToolExecutor> = {
 };
 
 function registerBuiltins(store: ToolStore): void {
+  registerAllExecutors(store);
   for (const [id, executor] of Object.entries(BUILTIN_EXECUTORS)) {
     store.registerExecutor(id, executor);
   }

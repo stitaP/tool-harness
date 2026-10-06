@@ -1,0 +1,33 @@
+{
+  "name": "@stitap/harness",
+  "version": "0.1.0",
+  "description": "stitaP agent runtime: a long-lived, tool-using agent with chat UI, goals, memory, skills, cron, MCP and messaging gateways. Zero runtime dependencies.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "type": "module",
+  "bin": {
+    "harness": "bin/harness.mjs",
+    "stitap": "bin/harness.mjs"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "bin",
+    "dist",
+    "skills",
+    "templates",
+    "ui",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "build:store": "node scripts/build-store.mjs",
+    "build:bundle": "node scripts/build-bundle.mjs",
+    "build:sea": "node scripts/build-sea.mjs",
+    "test:store": "node test/store/run-all.mjs --quiet"
+  },
+  "dependencies": {}
+}

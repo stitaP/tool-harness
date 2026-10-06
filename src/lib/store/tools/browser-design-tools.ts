@@ -648,7 +648,7 @@ export function generateDesignAuditCDP(scope: string, source: string): CDPComman
     });
 
     // Check text-wrap: balance on headings
-    headings.forEach(h => {
+    Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6")).forEach(h => {
       const style = getComputedStyle(h);
       if (style.textWrap !== "balance" && style.textWrap !== "pretty") {
         const text = (h.textContent || "").trim();

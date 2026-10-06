@@ -4,3 +4,14 @@ dist/
 .env.*
 *.log
 .DS_Store
+
+# agent runtime: compiled dist/ and store/ are committed on purpose so it runs without a build step
+!agent/dist/
+agent/dist-bundle/
+agent/dist-sea/
+python/dist/
+python/build/
+python/*.egg-info/
+python/stitap/_bundle/
+python/stitap/_bin/
+__pycache__/

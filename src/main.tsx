@@ -41,6 +41,7 @@ const Teamwork = lazy(() => import("./pages/Teamwork.tsx"));
 const HarnessPlayground = lazy(() => import("./pages/HarnessPlayground.tsx"));
 const PipeFlowDemo = lazy(() => import("./pages/PipeFlowDemo.tsx"));
 const Tutorials = lazy(() => import("./pages/Tutorials.tsx"));
+const Chat = lazy(() => import("./pages/Chat.tsx"));
 
 // Simple loading fallback for route transitions
 function RouteLoading() {
@@ -179,6 +180,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/agent-config" element={<AgentConfig />} />
               <Route path="/playground" element={<HarnessPlayground />} />
               <Route path="/pipeflow" element={<PipeFlowDemo />} />
+              <Route path="/chat" element={<Chat />} />
               <Route path="/agents" element={<Agents />} />
               <Route path="/teamwork" element={<Teamwork />} />
               <Route path="/notebook" element={<Notebook />} />

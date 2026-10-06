@@ -1253,7 +1253,7 @@ function classificationMetrics(pred: Vector, actual: Vector, classes: number[]):
 
 function serializeTree(node: TreeNode): string {
   if (node.isLeaf) {
-    return JSON.stringify({ v: node.value, c: node.classCounts ? Object.fromEntries(node.classCounts) : undefined });
+    return JSON.stringify({ leaf: 1, v: node.value ?? null, c: node.classCounts ? Object.fromEntries(node.classCounts) : undefined });
   }
   return JSON.stringify({
     f: node.feature,
@@ -1265,8 +1265,8 @@ function serializeTree(node: TreeNode): string {
 
 function deserializeTree(json: string): TreeNode {
   const d = JSON.parse(json);
-  if ("v" in d) {
-    return { isLeaf: true, value: d.v, classCounts: d.c ? new Map(Object.entries(d.c).map(([k, v]) => [Number(k), v as number])) : undefined };
+  if ("leaf" in d || "v" in d || "c" in d) {
+    return { isLeaf: true, value: d.v ?? undefined, classCounts: d.c ? new Map(Object.entries(d.c).map(([k, v]) => [Number(k), v as number])) : undefined };
   }
   return {
     isLeaf: false,

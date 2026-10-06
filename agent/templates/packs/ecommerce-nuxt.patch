@@ -1,0 +1,882 @@
+diff --git a/.env.example b/.env.example
+index 6bb8fd7..35db729 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1 +1,5 @@
+-GQL_HOST="https://example.com/graphql"
+\ No newline at end of file
++# Payload CMS backend (the ecommerce pack's Next.js app)
++PAYLOAD_URL="http://localhost:3000"
++# an admin user, used only by the server to create orders
++PAYLOAD_EMAIL=""
++PAYLOAD_PASSWORD=""
+diff --git a/app/app.vue b/app/app.vue
+index 4948c07..7c0e575 100644
+--- a/app/app.vue
++++ b/app/app.vue
+@@ -18,7 +18,7 @@ useSeoMeta({
+   twitterSite: '@zhatlen',
+   twitterCreator: '@zhatlen',
+   twitterImage: 'https://commerce.nuxt.dev/social-card.jpg',
+-  keywords: `${name}, ecommerce, nuxt, woocommerce`,
++  keywords: `${name}, ecommerce, nuxt, payload cms`,
+   viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover',
+ });
+ </script>
+diff --git a/app/components/ButtonSelectCategory.vue b/app/components/ButtonSelectCategory.vue
+index efd9bc5..8f7445c 100644
+--- a/app/components/ButtonSelectCategory.vue
++++ b/app/components/ButtonSelectCategory.vue
+@@ -4,7 +4,7 @@ const categoriesData = ref([]);
+ 
+ onMounted(async () => {
+   const response = await $fetch('/api/categories');
+-  categoriesData.value = response.productCategories.nodes.filter(category => category.products.nodes.length && category.children.nodes.length);
++  categoriesData.value = response.productCategories.nodes.filter(category => category.products.nodes.length);
+ });
+ 
+ const categories = computed(() => categoriesData.value);
+diff --git a/app/composables/useCheckout.ts b/app/composables/useCheckout.ts
+index ef9986e..8677857 100644
+--- a/app/composables/useCheckout.ts
++++ b/app/composables/useCheckout.ts
+@@ -29,6 +29,7 @@ export const useCheckout = () => {
+         body: {
+           billing: { ...userDetails.value },
+           paymentMethod: 'cod',
++          items: cart.value,
+         },
+       });
+ 
+diff --git a/app/gql/mutations/addToCart.ts b/app/gql/mutations/addToCart.ts
+deleted file mode 100644
+index a60b57c..0000000
+--- a/app/gql/mutations/addToCart.ts
++++ /dev/null
+@@ -1,36 +0,0 @@
+-// app/gql/mutations/addToCart.ts
+-import { gql } from 'graphql-request';
+-
+-export const addToCartMutation = gql`
+-  mutation addToCart($input: AddToCartInput!) {
+-    addToCart(input: $input) {
+-      cartItem {
+-        key
+-        quantity
+-        product {
+-          node {
+-            sku
+-            slug
+-            name
+-          }
+-        }
+-        variation {
+-          node {
+-            name
+-            databaseId
+-            salePrice(format: RAW)
+-            regularPrice(format: RAW)
+-            stockQuantity
+-            stockStatus
+-            image {
+-              sourceUrl(size: WOOCOMMERCE_THUMBNAIL)
+-            }
+-          }
+-          attributes {
+-            value
+-          }
+-        }
+-      }
+-    }
+-  }
+-`;
+diff --git a/app/gql/mutations/checkout.ts b/app/gql/mutations/checkout.ts
+deleted file mode 100644
+index 9af5515..0000000
+--- a/app/gql/mutations/checkout.ts
++++ /dev/null
+@@ -1,15 +0,0 @@
+-// app/gql/mutations/checkout.ts
+-import { gql } from 'graphql-request';
+-
+-export const checkoutMutation = gql`
+-  mutation Checkout($input: CheckoutInput!) {
+-    checkout(input: $input) {
+-      order {
+-        total
+-        orderNumber
+-        date
+-        paymentMethodTitle
+-      }
+-    }
+-  }
+-`;
+diff --git a/app/gql/mutations/updateItemQuantities.ts b/app/gql/mutations/updateItemQuantities.ts
+deleted file mode 100644
+index 57d7f32..0000000
+--- a/app/gql/mutations/updateItemQuantities.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-// app/gql/mutations/updateItemQuantities.ts
+-import { gql } from 'graphql-request';
+-
+-export const updateItemQuantitiesMutation = gql`
+-  mutation updateItemQuantities($input: UpdateItemQuantitiesInput!) {
+-    updateItemQuantities(input: $input) {
+-      items {
+-        key
+-      }
+-    }
+-  }
+-`;
+diff --git a/app/gql/queries/getCategories.ts b/app/gql/queries/getCategories.ts
+deleted file mode 100644
+index b92e7ab..0000000
+--- a/app/gql/queries/getCategories.ts
++++ /dev/null
+@@ -1,47 +0,0 @@
+-// app/gql/queries/getCategories.ts
+-import { gql } from 'graphql-request';
+-
+-export const getCategoriesQuery = gql`
+-  query getCategories {
+-    productCategories(first: 100, where: { orderby: COUNT, order: DESC }) {
+-      nodes {
+-        id
+-        name
+-        image {
+-          sourceUrl
+-        }
+-        products(where: { stockStatus: IN_STOCK }, first: 1) {
+-          nodes {
+-            id
+-          }
+-        }
+-        children(first: 100, where: { orderby: COUNT, order: DESC }) {
+-          nodes {
+-            name
+-            image {
+-              sourceUrl
+-            }
+-            products(where: { stockStatus: IN_STOCK }, first: 1) {
+-              nodes {
+-                id
+-              }
+-            }
+-            children(first: 100, where: { orderby: COUNT, order: DESC }) {
+-              nodes {
+-                name
+-                image {
+-                  sourceUrl
+-                }
+-                products(where: { stockStatus: IN_STOCK }, first: 1) {
+-                  nodes {
+-                    id
+-                  }
+-                }
+-              }
+-            }
+-          }
+-        }
+-      }
+-    }
+-  }
+-`;
+diff --git a/app/gql/queries/getProduct.ts b/app/gql/queries/getProduct.ts
+deleted file mode 100644
+index eb74d3a..0000000
+--- a/app/gql/queries/getProduct.ts
++++ /dev/null
+@@ -1,89 +0,0 @@
+-// app/gql/queries/getProduct.ts
+-import { gql } from 'graphql-request';
+-
+-export const getProductQuery = gql`
+-  query getProduct($slug: ID!, $sku: String!) {
+-    product(id: $slug, idType: SLUG) {
+-      ... on VariableProduct {
+-        databaseId
+-        sku
+-        slug
+-        name
+-        regularPrice
+-        salePrice
+-        description
+-        image {
+-          sourceUrl(size: LARGE)
+-        }
+-        galleryImages {
+-          nodes {
+-            sourceUrl(size: LARGE)
+-          }
+-        }
+-        allPaColor {
+-          nodes {
+-            name
+-          }
+-        }
+-        allPaStyle {
+-          nodes {
+-            name
+-          }
+-        }
+-        productTypes {
+-          nodes {
+-            products(where: { stockStatus: IN_STOCK, search: $sku }) {
+-              nodes {
+-                slug
+-                image {
+-                  sourceUrl(size: WOOCOMMERCE_THUMBNAIL)
+-                }
+-                allPaColor {
+-                  nodes {
+-                    name
+-                  }
+-                }
+-              }
+-            }
+-          }
+-        }
+-        variations(where: { orderby: { field: NAME, order: DESC } }) {
+-          nodes {
+-            databaseId
+-            stockStatus
+-            stockQuantity
+-            attributes {
+-              nodes {
+-                value
+-              }
+-            }
+-          }
+-        }
+-        related(first: 50) {
+-          nodes {
+-            ... on VariableProduct {
+-              sku
+-              slug
+-              name
+-              regularPrice
+-              salePrice
+-              allPaStyle {
+-                nodes {
+-                  name
+-                }
+-              }
+-              image {
+-                sourceUrl(size: WOOCOMMERCE_THUMBNAIL)
+-              }
+-              galleryImages {
+-                nodes {
+-                  sourceUrl(size: WOOCOMMERCE_THUMBNAIL)
+-                }
+-              }
+-            }
+-          }
+-        }
+-      }
+-    }
+-  }
+-`;
+diff --git a/app/gql/queries/getProducts.ts b/app/gql/queries/getProducts.ts
+deleted file mode 100644
+index bd6c2c2..0000000
+--- a/app/gql/queries/getProducts.ts
++++ /dev/null
+@@ -1,35 +0,0 @@
+-// app/gql/queries/getProducts.ts
+-import { gql } from 'graphql-request';
+-
+-export const getProductsQuery = gql`
+-  query getProducts($after: String, $search: String, $category: String, $order: OrderEnum!, $field: ProductsOrderByEnum!) {
+-    products(first: 21, after: $after, where: { stockStatus: IN_STOCK, search: $search, category: $category, orderby: { field: $field, order: $order } }) {
+-      nodes {
+-        ... on VariableProduct {
+-          sku
+-          slug
+-          name
+-          regularPrice
+-          salePrice
+-          allPaStyle {
+-            nodes {
+-              name
+-            }
+-          }
+-          image {
+-            sourceUrl(size: WOOCOMMERCE_THUMBNAIL)
+-          }
+-          galleryImages {
+-            nodes {
+-              sourceUrl(size: WOOCOMMERCE_THUMBNAIL)
+-            }
+-          }
+-        }
+-      }
+-      pageInfo {
+-        hasNextPage
+-        endCursor
+-      }
+-    }
+-  }
+-`;
+diff --git a/app/gql/queries/getSearchProducts.ts b/app/gql/queries/getSearchProducts.ts
+deleted file mode 100644
+index 71e7a25..0000000
+--- a/app/gql/queries/getSearchProducts.ts
++++ /dev/null
+@@ -1,31 +0,0 @@
+-// app/gql/queries/getSearchProducts.ts
+-import { gql } from 'graphql-request';
+-
+-export const getSearchProductsQuery = gql`
+-  query getSearchProducts($search: String) {
+-    products(first: 6, where: { stockStatus: IN_STOCK, search: $search }) {
+-      nodes {
+-        ... on VariableProduct {
+-          sku
+-          slug
+-          name
+-          regularPrice
+-          salePrice
+-          allPaStyle {
+-            nodes {
+-              name
+-            }
+-          }
+-          image {
+-            sourceUrl(size: WOOCOMMERCE_THUMBNAIL)
+-          }
+-          galleryImages {
+-            nodes {
+-              sourceUrl(size: WOOCOMMERCE_THUMBNAIL)
+-            }
+-          }
+-        }
+-      }
+-    }
+-  }
+-`;
+diff --git a/app/pages/categories.vue b/app/pages/categories.vue
+index 2abb5e0..2fbea97 100644
+--- a/app/pages/categories.vue
++++ b/app/pages/categories.vue
+@@ -23,7 +23,7 @@ useSeoMeta({
+ 
+ onMounted(() => {
+   $fetch('/api/categories').then(
+-    response => (categoriesData.value = response.productCategories.nodes.filter(category => category.products.nodes.length && category.children.nodes.length))
++    response => (categoriesData.value = response.productCategories.nodes.filter(category => category.products.nodes.length))
+   );
+ });
+ 
+diff --git a/nuxt.config.ts b/nuxt.config.ts
+index 2882adf..f7ee384 100644
+--- a/nuxt.config.ts
++++ b/nuxt.config.ts
+@@ -4,7 +4,7 @@ import pkg from "./package.json";
+ export default defineNuxtConfig({
+   devtools: { enabled: false },
+ 
+-  modules: ["@vueuse/nuxt", "@nuxt/ui", "@nuxt/image", "notivue/nuxt", "@nuxtjs/i18n", "@nuxthub/core"],
++  modules: ["@vueuse/nuxt", "@nuxt/ui", "@nuxt/image", "notivue/nuxt", "@nuxtjs/i18n"],
+ 
+   i18n: {
+     defaultLocale: "en",
+@@ -33,28 +33,29 @@ export default defineNuxtConfig({
+   css: ["notivue/notification.css", "notivue/animations.css"],
+ 
+   runtimeConfig: {
+-    gqlHost: process.env.GQL_HOST || "",
++    // Payload CMS backend (headless): products, categories, variants, orders
++    payloadUrl: process.env.PAYLOAD_URL || "http://localhost:3000",
++    payloadEmail: process.env.PAYLOAD_EMAIL || "",
++    payloadPassword: process.env.PAYLOAD_PASSWORD || "",
+     public: {
+       version: pkg.version,
+     },
+   },
+ 
+   routeRules: {
+-    "/": { prerender: true },
++    "/": { ssr: true },
+     "/categories": { swr: 3600 },
+     "/favorites": { swr: 600 },
+   },
+ 
+-  nitro: {
+-    preset: "cloudflare_pages",
+-    prerender: { routes: ["/sitemap.xml", "/robots.txt"] },
++  image: {
++    domains: [new URL(process.env.PAYLOAD_URL || "http://localhost:3000").host],
+   },
+ 
+-  hub: {
+-    cache: {
+-      driver: "cloudflare-kv-binding",
+-      binding: "CACHE",
+-    },
++  nitro: {
++    // node server by default; NITRO_PRESET=cloudflare_pages (etc.) to deploy elsewhere
++    preset: process.env.NITRO_PRESET || "node-server",
++    prerender: { routes: ["/sitemap.xml", "/robots.txt"] },
+   },
+ 
+   compatibilityDate: "2025-01-01",
+diff --git a/package.json b/package.json
+index 144a8a6..f66cedb 100644
+--- a/package.json
++++ b/package.json
+@@ -3,7 +3,7 @@
+   "version": "3.1.24",
+   "private": true,
+   "author": "zackha",
+-  "description": "Headless storefront for Woocommerce (Nuxt/Vue)",
++  "description": "Headless storefront for Payload CMS (Nuxt/Vue), based on zackha/nuxtcommerce",
+   "type": "module",
+   "scripts": {
+     "dev": "nuxt dev",
+@@ -18,9 +18,7 @@
+   "dependencies": {
+     "@nuxt/image": "^1.11.0",
+     "@nuxt/ui": "^2.22.3",
+-    "@nuxthub/core": "0.10.6",
+     "@nuxtjs/i18n": "10.1.0",
+-    "graphql-request": "^7.4.0",
+     "notivue": "^2.4.5",
+     "nuxt": "^4.4.2",
+     "swiper": "^12.1.2",
+diff --git a/server/api/cart/add.post.ts b/server/api/cart/add.post.ts
+index 88c838d..9229662 100644
+--- a/server/api/cart/add.post.ts
++++ b/server/api/cart/add.post.ts
+@@ -1,8 +1,30 @@
+ // server/api/cart/add.post.ts
+-import { addToCartMutation } from '~/gql/mutations/addToCart';
+-import { requestMutation } from '~~/server/utils/wpgraphql';
++// The cart lives in the browser (localStorage); this checks stock and returns the cart line.
++import { payload, toProductNode } from '~~/server/utils/payload';
+ 
+ export default defineEventHandler(async event => {
+-  const body = await readBody(event);
+-  return await requestMutation(event, addToCartMutation, { input: body });
++  const { productId } = await readBody<{ productId: string }>(event);
++  const id = String(productId ?? '');
++  const isVariant = id.startsWith('v');
++  const raw = id.replace(/^[pv]/, '');
++  const variant = isVariant ? await payload<any>(`/variants/${raw}`, { query: { depth: 2 } }) : null;
++  const product = await payload<any>(`/products/${variant ? (typeof variant.product === 'object' ? variant.product.id : variant.product) : raw}`, { query: { depth: 2 } });
++  const stock = (variant ?? product).inventory ?? 0;
++  if (stock <= 0) throw createError({ statusCode: 409, statusMessage: 'Insufficient stock' });
++  const node = toProductNode(product);
++  const price = node.regularPrice;
++  const variantPrice = typeof variant?.priceInUSD === 'number' ? `$${(variant.priceInUSD / 100).toFixed(2)}` : price;
++  return {
++    addToCart: {
++      cartItem: {
++        key: `${product.id}:${variant?.id ?? ''}`,
++        quantity: 1,
++        product: { node: { sku: node.sku, slug: node.slug, name: node.name } },
++        variation: {
++          node: { name: variant?.title ?? node.name, databaseId: id, salePrice: '', regularPrice: variantPrice.replace('$', ''), stockQuantity: stock, stockStatus: 'IN_STOCK', image: node.image },
++          attributes: (variant?.options ?? []).filter((o: any) => typeof o === 'object').map((o: any) => ({ value: o.label ?? o.value })),
++        },
++      },
++    },
++  };
+ });
+diff --git a/server/api/cart/update.post.ts b/server/api/cart/update.post.ts
+index aedc3bf..2beee36 100644
+--- a/server/api/cart/update.post.ts
++++ b/server/api/cart/update.post.ts
+@@ -1,8 +1,6 @@
+ // server/api/cart/update.post.ts
+-import { updateItemQuantitiesMutation } from '~/gql/mutations/updateItemQuantities';
+-import { requestMutation } from '~~/server/utils/wpgraphql';
+-
++// Quantities are kept in the browser cart; stock is checked again at checkout.
+ export default defineEventHandler(async event => {
+-  const body = await readBody(event);
+-  return await requestMutation(event, updateItemQuantitiesMutation, { input: body });
++  const { items = [] } = await readBody<{ items?: { key: string }[] }>(event);
++  return { updateItemQuantities: { items: items.map(i => ({ key: i.key })) } };
+ });
+diff --git a/server/api/categories.get.ts b/server/api/categories.get.ts
+index 6efd7b5..bf5f71f 100644
+--- a/server/api/categories.get.ts
++++ b/server/api/categories.get.ts
+@@ -1,13 +1,32 @@
+ // server/api/categories.get.ts
+-import { getCategoriesQuery } from '~/gql/queries/getCategories';
+-import { requestQuery } from '~~/server/utils/wpgraphql';
++import { payload, toProductNode } from '~~/server/utils/payload';
+ 
+ export default cachedEventHandler(
+   async () => {
+-    return await requestQuery(getCategoriesQuery);
++    const [cats, prods] = await Promise.all([
++      payload<{ docs: any[] }>('/categories', { query: { limit: 100, sort: 'title' } }),
++      payload<{ docs: any[] }>('/products', { query: { limit: 500, depth: 1, 'where[_status][equals]': 'published' } }),
++    ]);
++    // categories have no picture of their own in Payload: show their first product's
++    const firstImage = new Map<string, string>();
++    for (const p of prods.docs) {
++      const img = toProductNode(p).image?.sourceUrl;
++      for (const c of p.categories ?? []) {
++        const id = String(typeof c === 'object' ? c.id : c);
++        if (img && !firstImage.has(id)) firstImage.set(id, img);
++      }
++    }
++    return {
++      productCategories: {
++        nodes: cats.docs.map((c: any) => ({
++          id: c.id,
++          name: c.title,
++          image: firstImage.has(String(c.id)) ? { sourceUrl: firstImage.get(String(c.id)) } : null,
++          products: { nodes: firstImage.has(String(c.id)) ? [{ id: c.id }] : [] },
++          children: { nodes: [] },
++        })),
++      },
++    };
+   },
+-  {
+-    maxAge: 60 * 60,
+-    swr: true,
+-  }
++  { maxAge: 60 * 60, swr: true }
+ );
+diff --git a/server/api/checkout.post.ts b/server/api/checkout.post.ts
+index a7cf15a..b8183ea 100644
+--- a/server/api/checkout.post.ts
++++ b/server/api/checkout.post.ts
+@@ -1,8 +1,31 @@
+ // server/api/checkout.post.ts
+-import { checkoutMutation } from '~/gql/mutations/checkout';
+-import { requestMutation } from '~~/server/utils/wpgraphql';
++// Cash-on-delivery order in Payload (orders need an admin token: PAYLOAD_EMAIL / PAYLOAD_PASSWORD).
++import { payload } from '~~/server/utils/payload';
++
++interface Line { key: string; quantity: number; variation?: { node?: { databaseId?: string; regularPrice?: string } } }
+ 
+ export default defineEventHandler(async event => {
+-  const body = await readBody(event);
+-  return await requestMutation(event, checkoutMutation, { input: body });
++  const { billing, items = [] } = await readBody<{ billing: Record<string, string>; items?: Line[] }>(event);
++  if (!items.length) throw createError({ statusCode: 400, statusMessage: 'Cart is empty' });
++  // ids are numbers with SQLite/Postgres and strings with MongoDB
++  const id = (v: string) => (/^\d+$/.test(v) ? Number(v) : v);
++  const orderItems = items.map(l => {
++    const [product, variant] = l.key.split(':');
++    return { product: id(product), ...(variant ? { variant: id(variant) } : {}), quantity: l.quantity };
++  });
++  const amount = Math.round(items.reduce((s, l) => s + parseFloat(String(l.variation?.node?.regularPrice ?? '0')) * l.quantity, 0) * 100);
++  const res = await payload<{ doc: any }>('/orders', {
++    method: 'POST',
++    admin: true,
++    body: {
++      items: orderItems,
++      customerEmail: billing.email,
++      shippingAddress: { firstName: billing.firstName, lastName: billing.lastName, addressLine1: billing.address1, city: billing.city, phone: billing.phone },
++      amount,
++      currency: 'USD',
++      status: 'processing',
++    },
++  });
++  const order = res.doc;
++  return { checkout: { order: { total: `$${(amount / 100).toFixed(2)}`, orderNumber: String(order.id), date: order.createdAt, paymentMethodTitle: 'Cash on delivery' } } };
+ });
+diff --git a/server/api/product.get.ts b/server/api/product.get.ts
+index 082093d..068a20d 100644
+--- a/server/api/product.get.ts
++++ b/server/api/product.get.ts
+@@ -1,15 +1,15 @@
+ // server/api/product.get.ts
+-import { getProductQuery } from '~/gql/queries/getProduct';
+-import { requestQuery } from '~~/server/utils/wpgraphql';
++import { payload, loadVariantTypes, toProductNode } from '~~/server/utils/payload';
+ 
+ export default cachedEventHandler(
+   async event => {
+-    const { slug, sku } = getQuery(event) as { slug?: string; sku?: string };
+-    return await requestQuery(getProductQuery, { slug, sku });
++    const { slug = '' } = getQuery(event) as { slug?: string; sku?: string };
++    const [base, color] = slug.split('~');   // colour pages: "tshirt~white"
++    await loadVariantTypes();
++    const res = await payload<{ docs: any[] }>('/products', { query: { 'where[slug][equals]': base, depth: 3, limit: 1 } });
++    const p = res.docs[0];
++    if (!p) throw createError({ statusCode: 404, statusMessage: 'Product not found' });
++    return { product: toProductNode(p, true, color) };
+   },
+-  {
+-    maxAge: 60 * 5,
+-    swr: true,
+-    getKey: event => event.req.url!,
+-  }
++  { maxAge: 60 * 5, swr: true, getKey: event => event.req.url! }
+ );
+diff --git a/server/api/products.get.ts b/server/api/products.get.ts
+index 7361a30..d61c77f 100644
+--- a/server/api/products.get.ts
++++ b/server/api/products.get.ts
+@@ -1,15 +1,18 @@
+ // server/api/products.get.ts
+-import { getProductsQuery } from '~/gql/queries/getProducts';
+-import { requestQuery } from '~~/server/utils/wpgraphql';
++import { payload, loadVariantTypes, toProductNode, sortOf, categoryIdByName } from '~~/server/utils/payload';
+ 
+ export default cachedEventHandler(
+   async event => {
+     const { after, search, category, order = 'DESC', field = 'DATE' } = getQuery(event) as Record<string, string | undefined>;
+-    return await requestQuery(getProductsQuery, { after, search, category, order, field });
++    const page = Number(after) || 1;
++    const query: Record<string, any> = { limit: 21, page, depth: 2, sort: sortOf(field, order), 'where[_status][equals]': 'published' };
++    if (search) query['where[title][like]'] = search;
++    const cat = await categoryIdByName(category);
++    if (category && !cat) return { products: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } };
++    if (cat) query['where[categories][in]'] = cat;
++    await loadVariantTypes();
++    const res = await payload<{ docs: any[]; hasNextPage: boolean; nextPage: number | null }>('/products', { query });
++    return { products: { nodes: res.docs.map(p => toProductNode(p)), pageInfo: { hasNextPage: res.hasNextPage, endCursor: res.nextPage ? String(res.nextPage) : null } } };
+   },
+-  {
+-    maxAge: 60,
+-    swr: true,
+-    getKey: event => event.req.url!,
+-  }
++  { maxAge: 60, swr: true, getKey: event => event.req.url! }
+ );
+diff --git a/server/api/search.get.ts b/server/api/search.get.ts
+index 821a8ac..938a4ae 100644
+--- a/server/api/search.get.ts
++++ b/server/api/search.get.ts
+@@ -1,15 +1,14 @@
+ // server/api/search.get.ts
+-import { getSearchProductsQuery } from '~/gql/queries/getSearchProducts';
+-import { requestQuery } from '~~/server/utils/wpgraphql';
++import { payload, loadVariantTypes, toProductNode } from '~~/server/utils/payload';
+ 
+ export default cachedEventHandler(
+   async event => {
+     const { search = '' } = getQuery(event) as { search?: string };
+-    return await requestQuery(getSearchProductsQuery, { search });
++    const query: Record<string, any> = { limit: 6, depth: 2, sort: '-createdAt', 'where[_status][equals]': 'published' };
++    if (search) query['where[title][like]'] = search;
++    await loadVariantTypes();
++    const res = await payload<{ docs: any[] }>('/products', { query });
++    return { products: { nodes: res.docs.map(p => toProductNode(p)) } };
+   },
+-  {
+-    maxAge: 60,
+-    swr: true,
+-    getKey: event => event.req.url!,
+-  }
++  { maxAge: 60, swr: true, getKey: event => event.req.url! }
+ );
+diff --git a/server/utils/payload.ts b/server/utils/payload.ts
+new file mode 100644
+index 0000000..93426a4
+--- /dev/null
++++ b/server/utils/payload.ts
+@@ -0,0 +1,158 @@
++// server/utils/payload.ts
++// Payload CMS (headless) backend for the storefront, in place of WooCommerce + WPGraphQL.
++// Payload's REST API is mapped to the shapes the pages already use (WooGraphQL-style nodes),
++// so the components stay as they were.
++import { createError } from 'h3';
++
++type Doc = Record<string, any>;
++
++function cfg() {
++  const { payloadUrl, payloadEmail, payloadPassword } = useRuntimeConfig();
++  return { base: String(payloadUrl || 'http://localhost:3000').replace(/\/+$/, ''), email: payloadEmail as string, password: payloadPassword as string };
++}
++
++let token: { value: string; exp: number } | null = null;
++
++/** Admin token for writes (orders); read endpoints are public for published content. */
++async function adminToken(): Promise<string | undefined> {
++  const { base, email, password } = cfg();
++  if (!email || !password) return undefined;
++  if (token && token.exp > Date.now() + 60_000) return token.value;
++  const res = await $fetch<{ token: string; exp: number }>(`${base}/api/users/login`, { method: 'POST', body: { email, password } });
++  token = { value: res.token, exp: res.exp * 1000 };
++  return token.value;
++}
++
++export async function payload<T = Doc>(path: string, opts: { method?: 'GET' | 'POST' | 'PATCH'; query?: Record<string, any>; body?: any; admin?: boolean } = {}): Promise<T> {
++  const { base } = cfg();
++  const headers: Record<string, string> = {};
++  if (opts.admin) {
++    const t = await adminToken();
++    if (t) headers.Authorization = `JWT ${t}`;
++  }
++  try {
++    return await $fetch<T>(`${base}/api${path}`, { method: opts.method ?? 'GET', query: opts.query, body: opts.body, headers });
++  } catch (error: any) {
++    throw createError({ statusCode: error?.statusCode || 502, statusMessage: error?.data?.errors?.[0]?.message || error?.message || 'Payload request failed' });
++  }
++}
++
++const money = (cents?: number | null) => (typeof cents === 'number' ? `$${(cents / 100).toFixed(2)}` : '');
++
++function mediaUrl(m: any): string {
++  const url = typeof m === 'object' && m ? m.url : '';
++  if (!url) return '';
++  return /^https?:/.test(url) ? url : cfg().base + url;
++}
++
++/** Lexical rich text (Payload's editor) → HTML for the description block. */
++export function lexicalToHtml(node: any): string {
++  if (!node) return '';
++  if (node.root) return lexicalToHtml(node.root);
++  const kids = (node.children ?? []).map(lexicalToHtml).join('');
++  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
++  switch (node.type) {
++    case 'root': return kids;
++    case 'text': {
++      let t = esc(node.text ?? '');
++      if (node.format & 1) t = `<strong>${t}</strong>`;
++      if (node.format & 2) t = `<em>${t}</em>`;
++      return t;
++    }
++    case 'linebreak': return '<br>';
++    case 'heading': return `<${node.tag || 'h3'}>${kids}</${node.tag || 'h3'}>`;
++    case 'list': return node.listType === 'number' ? `<ol>${kids}</ol>` : `<ul>${kids}</ul>`;
++    case 'listitem': return `<li>${kids}</li>`;
++    case 'quote': return `<blockquote>${kids}</blockquote>`;
++    case 'link': return `<a href="${esc(node.fields?.url ?? '#')}">${kids}</a>`;
++    default: return node.type === 'paragraph' ? `<p>${kids}</p>` : kids;
++  }
++}
++
++const optionsOf = (variant: Doc) => (variant.options ?? []).filter((o: any) => typeof o === 'object');
++
++/** Variant type names by id ("color", "size"): through a product, option.variantType is only an id. */
++let typeNames: { at: number; map: Map<string, string> } | null = null;
++export async function loadVariantTypes(): Promise<void> {
++  if (typeNames && Date.now() - typeNames.at < 5 * 60_000) return;
++  const res = await payload<{ docs: Doc[] }>('/variantTypes', { query: { limit: 100, depth: 0 } });
++  typeNames = { at: Date.now(), map: new Map(res.docs.map((t) => [String(t.id), `${t.name} ${t.label}`])) };
++}
++const typeName = (vt: any) => (typeof vt === 'object' && vt ? `${vt.name} ${vt.label}` : typeNames?.map.get(String(vt)) ?? '');
++const isType = (o: Doc, name: RegExp) => name.test(typeName(o.variantType));
++
++/** Colour options across a product's variants (each becomes its own page, as the storefront expects). */
++function colorsOf(p: Doc): Doc[] {
++  const seen = new Map<string, Doc>();
++  for (const v of p.variants?.docs ?? []) if (typeof v === 'object') for (const o of optionsOf(v)) if (isType(o, /colou?r/i)) seen.set(String(o.id), o);
++  return [...seen.values()];
++}
++
++const hasOption = (v: Doc, opt?: Doc) => !opt || optionsOf(v).some((o: Doc) => String(o.id) === String(opt.id));
++
++/** Variants of the chosen colour with a stock count, or the product itself as its only "variation". */
++function variationsOf(p: Doc, color?: Doc) {
++  const variants: Doc[] = (p.variants?.docs ?? []).filter((v: any) => typeof v === 'object' && hasOption(v, color));
++  if (!p.enableVariants || !variants.length) {
++    return [{ databaseId: `p${p.id}`, stockQuantity: p.inventory ?? 0, stockStatus: (p.inventory ?? 0) > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK', attributes: { nodes: [{ value: 'one size' }] } }];
++  }
++  return variants.map((v) => ({
++    databaseId: `v${v.id}`,
++    stockQuantity: v.inventory ?? 0,
++    stockStatus: (v.inventory ?? 0) > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK',
++    attributes: { nodes: optionsOf(v).filter((o: Doc) => !isType(o, /colou?r/i)).map((o: Doc) => ({ value: o.label ?? o.value })) },
++  }));
++}
++
++/** Gallery images, those tagged with the colour first (Payload gallery items may name a variant option). */
++function imagesOf(p: Doc, color?: Doc): string[] {
++  const gallery: Doc[] = p.gallery ?? [];
++  const optId = (g: Doc) => String(typeof g.variantOption === 'object' && g.variantOption ? g.variantOption.id : g.variantOption ?? '');
++  const tagged = color ? gallery.filter((g) => optId(g) === String(color.id)) : [];
++  const rest = gallery.filter((g) => !tagged.includes(g) && (!color || !optId(g) || optId(g) === 'undefined' || optId(g) === ''));
++  return [...tagged, ...(tagged.length ? [] : rest.length ? rest : gallery)].map((g) => mediaUrl(g?.image)).filter(Boolean);
++}
++
++/** A Payload product as a storefront product node. `colorKey` picks the colour page ("tshirt~white"). */
++export function toProductNode(p: Doc, detail = false, colorKey?: string): Doc {
++  const colors = colorsOf(p);
++  const want = colorKey?.toLowerCase();
++  const color = colors.find((c) => [c.value, c.label].some((x) => String(x).toLowerCase() === want)) ?? colors[0];
++  const images = imagesOf(p, color);
++  const first = images[0] || mediaUrl(p.meta?.image);
++  const price = p.priceInUSD ?? Math.min(...(p.variants?.docs ?? []).map((v: any) => v?.priceInUSD).filter((n: any) => typeof n === 'number'));
++  const category = (p.categories ?? []).find((c: any) => typeof c === 'object');
++  const node: Doc = {
++    databaseId: p.id,
++    sku: String(p.id),
++    slug: color && colorKey ? `${p.slug}~${color.value}` : p.slug,
++    name: p.title,
++    regularPrice: money(Number.isFinite(price) ? price : null),
++    salePrice: '',
++    image: { sourceUrl: first },
++    galleryImages: { nodes: (images.length ? images : [first]).map((sourceUrl: string) => ({ sourceUrl })) },
++    allPaStyle: { nodes: [{ name: category?.title ?? 'Product' }] },
++    allPaColor: { nodes: color ? [{ name: color.label }] : [] },
++  };
++  if (detail) {
++    node.description = lexicalToHtml(p.description);
++    node.variations = { nodes: variationsOf(p, color) };
++    // colour swatches: one "product" per colour, linked as /product/<slug>~<colour>-<id>
++    node.productTypes = {
++      nodes: colors.length > 1
++        ? [{ products: { nodes: colors.map((c) => ({ slug: `${p.slug}~${c.value}`, image: { sourceUrl: imagesOf(p, c)[0] || first }, allPaColor: { nodes: [{ name: c.label }] } })) } }]
++        : [],
++    };
++    node.related = { nodes: (p.relatedProducts ?? []).filter((r: any) => typeof r === 'object').map((r: Doc) => toProductNode(r)) };
++  }
++  return node;
++}
++
++const ORDER_FIELDS: Record<string, string> = { DATE: 'createdAt', PRICE: 'priceInUSD', TITLE: 'title', NAME: 'title' };
++export const sortOf = (field = 'DATE', order = 'DESC') => `${order === 'ASC' ? '' : '-'}${ORDER_FIELDS[field] ?? 'createdAt'}`;
++
++export async function categoryIdByName(name?: string): Promise<string | number | undefined> {
++  if (!name) return undefined;
++  const res = await payload<{ docs: Doc[] }>('/categories', { query: { 'where[or][0][title][equals]': name, 'where[or][1][slug][equals]': name, limit: 1 } });
++  return res.docs[0]?.id;
++}
+diff --git a/server/utils/wpgraphql.ts b/server/utils/wpgraphql.ts
+deleted file mode 100644
+index cb1f1b3..0000000
+--- a/server/utils/wpgraphql.ts
++++ /dev/null
+@@ -1,40 +0,0 @@
+-// server/utils/wpgraphql.ts
+-import { GraphQLClient, type Variables } from 'graphql-request';
+-import { getCookie, setCookie, createError, type H3Event } from 'h3';
+-
+-function getClient(): GraphQLClient {
+-  const { gqlHost } = useRuntimeConfig();
+-  return new GraphQLClient(gqlHost, { headers: { 'content-type': 'application/json' } });
+-}
+-
+-async function handleError<T>(promise: Promise<T>, message: string): Promise<T> {
+-  try {
+-    return await promise;
+-  } catch (error: any) {
+-    throw createError({ statusCode: 502, statusMessage: error?.message || message });
+-  }
+-}
+-
+-export async function requestQuery<T = unknown>(query: string, variables?: Variables): Promise<T> {
+-  return handleError(getClient().request<T>(query, variables), 'GraphQL query failed');
+-}
+-
+-export async function requestMutation<T = unknown>(event: H3Event, query: string, variables?: Variables): Promise<T> {
+-  const session = getCookie(event, 'woocommerce-session');
+-  const client = getClient();
+-
+-  if (!session) {
+-    const res = await handleError(client.rawRequest<T>(query, variables), 'GraphQL mutation failed');
+-    const newSession = res.headers.get('woocommerce-session');
+-    if (newSession) {
+-      setCookie(event, 'woocommerce-session', `Session ${newSession}`, {
+-        path: '/',
+-        httpOnly: true,
+-        sameSite: 'lax',
+-      });
+-    }
+-    return res.data;
+-  }
+-
+-  return handleError(client.request<T>(query, variables, { ['woocommerce-session']: session }), 'GraphQL mutation failed');
+-}

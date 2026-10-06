@@ -120,7 +120,7 @@ export const SANDBOX_EXEC_TOOL: ToolManifest = {
       type: "enum",
       description: "Programming language (auto-detected if omitted)",
       required: false,
-      enum: ["javascript", "typescript"],
+      enum: ["javascript", "typescript", "python", "shell", "rust"],
     },
     {
       name: "timeoutMs",
@@ -276,6 +276,7 @@ export const SANDBOX_SNAPSHOT_TOOL: ToolManifest = {
   color: "#06b6d4",
   tags: ["sandbox", "snapshot", "backup", "restore", "state"],
   parameters: [
+    { name: "restore", type: "string", description: "Snapshot id to restore into the sandbox (omit to take a new snapshot)", required: false },
     {
       name: "sandboxId",
       type: "string",
@@ -361,6 +362,9 @@ export const SANDBOX_NETWORK_TOOL: ToolManifest = {
   color: "#f43f5e",
   tags: ["sandbox", "network", "monitor", "traffic", "policy"],
   parameters: [
+    { name: "allowAll", type: "boolean", description: "policy: allow all outbound traffic", required: false },
+    { name: "allowPatterns", type: "string", description: "policy: comma-separated URL globs to allow, e.g. https://api.github.com/*", required: false },
+    { name: "blockPatterns", type: "string", description: "policy: comma-separated URL globs to block", required: false },
     {
       name: "sandboxId",
       type: "string",

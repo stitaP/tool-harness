@@ -254,7 +254,7 @@ export const DESIGN_EXPORT_MANIFEST: ToolManifest = {
   color: "#8b5cf6",
   parameters: [
     { name: "canvasId", type: "string", description: "Canvas ID to export", required: true },
-    { name: "format", type: "enum", description: "Export format", required: false, default: "react", enum: ["react", "html", "svg", "figma-json"] },
+    { name: "format", type: "enum", description: "Export format", required: false, default: "react", enum: ["react", "html", "svg", "png", "figma-json"] },
     { name: "artboardId", type: "string", description: "Export specific artboard (omit for all)", required: false },
   ],
   capabilities: [

@@ -1,0 +1,77 @@
+import type { Msg, ToolCall } from "../state/db.js";
+export interface ToolSchema {
+    name: string;
+    description: string;
+    parameters: any;
+}
+export interface ChatRequest {
+    messages: Msg[];
+    tools?: ToolSchema[];
+    temperature?: number;
+    maxTokens?: number;
+    signal?: AbortSignal;
+    onToken?: (t: string) => void;
+    onReasoning?: (t: string) => void;
+    stop?: string[];
+    /** ask for a JSON object reply (judge/curator); providers do best effort */
+    json?: boolean;
+    stream?: boolean;
+}
+export interface ChatResponse {
+    content: string;
+    toolCalls: ToolCall[];
+    usage: {
+        input: number;
+        output: number;
+    };
+    finishReason: string;
+    model: string;
+    reasoning?: string;
+    /** generation speed: llama.cpp `timings` when the server sends them, otherwise measured from the stream */
+    /** cacheTokens: prompt tokens reused from the server's cache; promptTokens: prompt tokens actually computed (llama.cpp) */
+    timings?: {
+        genTps: number;
+        promptTps?: number;
+        genTokens: number;
+        genMs: number;
+        cacheTokens?: number;
+        promptTokens?: number;
+    };
+}
+export interface Provider {
+    readonly id: string;
+    readonly model: string;
+    readonly contextWindow: number;
+    chat(req: ChatRequest): Promise<ChatResponse>;
+}
+export type ErrorKind = "rate_limit" | "context_length" | "auth" | "server" | "network" | "bad_request" | "tools_unsupported" | "aborted" | "bad_tool_call";
+export declare class ProviderError extends Error {
+    readonly kind: ErrorKind;
+    readonly status?: number | undefined;
+    readonly retryAfterMs?: number | undefined;
+    constructor(message: string, kind: ErrorKind, status?: number | undefined, retryAfterMs?: number | undefined);
+    get retryable(): boolean;
+}
+export declare function classifyHttpError(status: number, body: string, retryAfter?: string | null): ProviderError;
+/** Async iterator over SSE `data:` payloads from a fetch Response. */
+export declare function sseEvents(res: Response, signal?: AbortSignal): AsyncGenerator<{
+    event?: string;
+    data: string;
+}>;
+/** Strip <think>…</think> blocks some local reasoning models emit inline. */
+export declare function splitThinking(text: string): {
+    content: string;
+    reasoning: string;
+};
+/**
+ * Many local models (Qwen, Hermes, Llama) emit tool calls as text when the
+ * server doesn't parse them. Recover `<tool_call>{json}</tool_call>` and
+ * bare `{"name":…, "arguments":…}` objects.
+ */
+export declare function extractInlineToolCalls(text: string, toolNames: string[]): {
+    calls: {
+        name: string;
+        arguments: string;
+    }[];
+    rest: string;
+};

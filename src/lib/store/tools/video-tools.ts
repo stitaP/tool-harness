@@ -27,9 +27,15 @@ export const RECORD_MANIFEST: ToolManifest = {
     {
       name: "action",
       type: "enum",
-      description: "Start or stop recording",
+      description: "start/stop a screen recording, or open an existing video file as the project source",
       required: true,
-      enum: ["start", "stop"],
+      enum: ["start", "stop", "open"],
+    },
+    {
+      name: "source",
+      type: "string",
+      description: "Video file to open (action=open)",
+      required: false,
     },
     {
       name: "includeAudio",
@@ -203,6 +209,12 @@ export const CAPTURE_FRAME_MANIFEST: ToolManifest = {
   color: "#06b6d4",
   parameters: [
     {
+      name: "source",
+      type: "string",
+      description: "Video file to use instead of the current project source",
+      required: false,
+    },
+    {
       name: "timestamp",
       type: "number",
       description: "Time in seconds to capture the frame",
@@ -366,6 +378,12 @@ export const EXPORT_VIDEO_MANIFEST: ToolManifest = {
   icon: "Download",
   color: "#10b981",
   parameters: [
+    {
+      name: "source",
+      type: "string",
+      description: "Video file to use instead of the current project source",
+      required: false,
+    },
     {
       name: "format",
       type: "enum",

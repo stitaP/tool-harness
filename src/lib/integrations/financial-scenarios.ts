@@ -463,13 +463,14 @@ export function calculateTax(input: TaxInput): TaxResult {
     { limit: Infinity, rate: 0.30 },
   ];
 
-  // New regime slabs (FY 2025-26)
+  // New regime slabs (FY 2025-26, Union Budget 2025)
   const newRegimeSlabs = [
-    { limit: 300000, rate: 0 },
-    { limit: 700000, rate: 0.05 },
-    { limit: 1000000, rate: 0.10 },
-    { limit: 1200000, rate: 0.15 },
-    { limit: 1500000, rate: 0.20 },
+    { limit: 400000, rate: 0 },
+    { limit: 800000, rate: 0.05 },
+    { limit: 1200000, rate: 0.10 },
+    { limit: 1600000, rate: 0.15 },
+    { limit: 2000000, rate: 0.20 },
+    { limit: 2400000, rate: 0.25 },
     { limit: Infinity, rate: 0.30 },
   ];
 
@@ -494,8 +495,9 @@ export function calculateTax(input: TaxInput): TaxResult {
     (deductions.section80G || 0) + (deductions.section80TTA || 0) + (deductions.hra || 0) +
     (deductions.other || 0);
   const totalOldDeductions = totalDeductions80C + totalDeductions24 + otherDeductions;
-  const oldTaxableIncome = Math.max(0, grossIncome - totalOldDeductions);
-  const oldTax = computeTax(oldTaxableIncome, oldRegimeSlabs);
+  // Old regime: ₹50,000 standard deduction (salaried); rebate u/s 87A makes tax nil up to ₹5L taxable
+  const oldTaxableIncome = Math.max(0, grossIncome - 50000 - totalOldDeductions);
+  const oldTax = oldTaxableIncome <= 500000 ? 0 : computeTax(oldTaxableIncome, oldRegimeSlabs);
   const oldCess = oldTax * 0.04;
   const oldTotalTax = oldTax + oldCess;
 
@@ -505,8 +507,8 @@ export function calculateTax(input: TaxInput): TaxResult {
   const newCess = newTax * 0.04;
   const newTotalTax = newTax + newCess;
 
-  // New regime rebate: up to ₹7L → zero tax
-  const newTotalTaxAfterRebate = newTaxableIncome <= 700000 ? 0 : newTotalTax;
+  // New regime rebate u/s 87A (FY 2025-26): taxable income up to ₹12L → zero tax
+  const newTotalTaxAfterRebate = newTaxableIncome <= 1200000 ? 0 : newTotalTax;
 
   const recommendedRegime = oldTotalTax < newTotalTaxAfterRebate ? "old" : "new";
   const savingsWithRecommendation = Math.abs(oldTotalTax - newTotalTaxAfterRebate);

@@ -406,15 +406,16 @@ export function parseWhatsAppPayment(message: string): {
   const lower = raw.toLowerCase();
 
   // Extract amount
-  const amountMatch = raw.match(
-    /(?:rs\.?|₹|inr|rupees?)\s*(\d[\d,]*\.?\d*)/i,
-  );
+  // "₹3,003", "Rs. 3003", "3003 rs", "3003 rupees", "paid 3003", "sent 3003"
+  const amountMatch = raw.match(/(?:rs\.?|₹|inr|rupees?)\s*(\d[\d,]*\.?\d*)/i)
+    ?? raw.match(/(\d[\d,]*\.?\d*)\s*(?:rs\.?|₹|inr|rupees?|\/-)/i)
+    ?? raw.match(/(?:paid|sent|received|transferred|credited|deposited)\s+(?:amount\s+)?(\d[\d,]*\.?\d*)(?!\d)/i);
   const amount = amountMatch
     ? parseFloat(amountMatch[1].replace(/,/g, ""))
     : undefined;
 
   // Extract phone number
-  const phoneMatch = raw.match(/(\d{10})/);
+  const phoneMatch = raw.match(/(?<!\d)(?:\+?91[\s-]?)?([6-9]\d{9})(?!\d)/);
   const phone = phoneMatch ? phoneMatch[1] : undefined;
 
   // Extract order ID
@@ -427,6 +428,7 @@ export function parseWhatsAppPayment(message: string): {
 
   // Extract customer name (word after common patterns)
   const namePatterns = [
+    /(?:from|name|customer|paid\s+by|for)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/,
     /(?:from|name|customer|paid\s+by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i,
     /(?:received|payment)\s+(?:from\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i,
   ];

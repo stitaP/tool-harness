@@ -288,7 +288,7 @@ export const TERMINAL_TOOL: ToolManifest = {
       type: "enum",
       description: "For process management",
       required: false,
-      enum: ["list", "poll", "wait", "kill", "log", "write"],
+      enum: ["run", "list", "poll", "wait", "kill", "log", "write"],
     },
     {
       name: "processId",

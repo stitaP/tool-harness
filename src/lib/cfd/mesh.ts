@@ -371,8 +371,9 @@ export function createLidDrivenCavity(
   mesh.boundaryConditions[0].u = 0;
   mesh.boundaryConditions[0].v = 0;
 
-  mesh.boundaryConditions[1].type = "outlet";   // right
-  mesh.boundaryConditions[1].pValue = 0;
+  mesh.boundaryConditions[1].type = "wall";     // right
+  mesh.boundaryConditions[1].u = 0;
+  mesh.boundaryConditions[1].v = 0;
 
   mesh.boundaryConditions[2].type = "wall";     // bottom
   mesh.boundaryConditions[2].u = 0;
@@ -451,9 +452,12 @@ export function createBackwardFacingStep(
   const rho = 1.0;
   const mu = (rho * U * (Ly / 2)) / Re; // channel height is Ly/2
 
+  // Inlet only above the step (upper half of the left boundary); the lower
+  // half of the left boundary is the step face (no-slip wall).
   mesh.boundaryConditions[0].type = "inlet";
   mesh.boundaryConditions[0].u = U;
   mesh.boundaryConditions[0].v = 0;
+  mesh.boundaryConditions[0].faceIndices = mesh.boundaryConditions[0].faceIndices.filter((fi) => mesh.faces[fi].centroid[1] > Ly / 2);
 
   mesh.boundaryConditions[1].type = "outlet";
   mesh.boundaryConditions[1].pValue = 0;

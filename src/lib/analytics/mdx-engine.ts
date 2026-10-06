@@ -65,7 +65,8 @@ function tokenizeMDX(input: string): MDXTokenItem[] {
   const tokens: MDXTokenItem[] = [];
   let i = 0;
   while (i < input.length) {
-    if (/\s/.test(input[i])) { i++; continue; }
+    // whitespace; set braces {…} are treated as grouping only
+    if (/\s/.test(input[i]) || input[i] === "{" || input[i] === "}") { i++; continue; }
     if (input[i] === "-" && input[i + 1] === "-") {
       while (i < input.length && input[i] !== "\n") i++;
       continue;
@@ -84,7 +85,7 @@ function tokenizeMDX(input: string): MDXTokenItem[] {
     }
 
     // Number
-    if (/[\d.]/.test(input[i])) {
+    if (/\d/.test(input[i]) || (input[i] === "." && /\d/.test(input[i + 1] ?? ""))) {
       let val = "";
       while (i < input.length && /[\d.]/.test(input[i])) val += input[i++];
       tokens.push({ type: "NUM", value: val, pos });
@@ -201,14 +202,31 @@ class MDXParser {
 
     this.expect("SELECT");
 
-    // Parse column axis
-    const columnsAxis = this.match("COLUMNS");
-    const columns = this.parseSetExpr();
-
-    // ON ROWS (optional)
+    // Axes. Standard MDX:  <set> ON COLUMNS [, <set> ON ROWS]
+    // Legacy form also accepted:  SELECT COLUMNS <set> [ROWS <set>]
+    let columns: MDXExpr = { kind: "set", items: [] };
     let rows: MDXExpr = { kind: "set", items: [] };
-    if (this.match("ROWS")) {
-      rows = this.parseSetExpr();
+    const skipNonEmpty = () => { while (this.peek().type === "NON" || this.peek().type === "EMPTY") this.advance(); };
+    const parseAxisSet = (): MDXExpr => {
+      skipNonEmpty();
+      const items: MDXExpr[] = [this.parseSetExpr()];
+      while (this.peek().type === "COMMA" && this.tokens[this.pos + 1]?.type !== "ON") {
+        this.advance();
+        items.push(this.parseSetExpr());
+      }
+      return items.length === 1 ? items[0] : { kind: "set", items };
+    };
+    if (this.match("COLUMNS")) {
+      columns = parseAxisSet();
+      if (this.match("ROWS")) rows = parseAxisSet();
+    } else {
+      for (let axis = 0; axis < 2 && this.peek().type !== "FROM"; axis++) {
+        const set = parseAxisSet();
+        this.expect("ON");
+        const which = this.advance();
+        if (which.type === "ROWS" || which.value === "1") rows = set; else columns = set;
+        if (!this.match("COMMA")) break;
+      }
     }
 
     this.expect("FROM");
@@ -695,59 +713,68 @@ export function executeMDXQuery(
   // Build row indices (all rows initially)
   const allRows = Array.from({ length: sourceTable.rowCount }, (_, i) => i);
 
-  // Apply slicer / WHERE
+  // ── slicer / WHERE: [dim].[member] tuples filter rows; other expressions are evaluated per row
   let rowIndices = allRows;
-  if (query.where) {
-    rowIndices = rowIndices.filter(i => {
-      const v = evalMDXExpr(query.where!, ctx, sourceTable, [i]);
-      return Boolean(v);
-    });
-  }
-
-  // Resolve columns axis
-  const columnExprs = query.columns.kind === "set" ? query.columns.items : [query.columns];
-  // Resolve rows axis
-  const rowExprs = query.rows.kind === "set" ? query.rows.items : [query.rows];
-
-  // Build result: flatten cross-join of columns × rows
-  const resultRows: Scalar[][] = [];
-  const columnNames: string[] = [];
-
-  // Build row-level results
-  for (const ri of rowIndices) {
-    const rowVals: Scalar[] = [];
-
-    // For each column expression, compute the measure for this row
-    for (const colExpr of columnExprs) {
-      if (colExpr.kind === "member") {
-        // It's a dimension member — get the value
-        const colName = colExpr.parts[colExpr.parts.length - 1];
-        const col = sourceTable.column(colName);
-        if (col) {
-          rowVals.push(col.get(ri));
-          if (columnNames.length < columnExprs.length) {
-            columnNames.push(colName);
-          }
-        }
-      } else if (colExpr.kind === "function") {
-        // Aggregate function — compute over matching rows
-        const val = evalMDXExpr(colExpr, ctx, sourceTable, [ri]);
-        rowVals.push(val);
-        if (columnNames.length < columnExprs.length) {
-          columnNames.push(`${colExpr.name}(${colExpr.args.map(a => {
-            if (a.kind === "member") return a.parts[a.parts.length - 1];
-            return "?";
-          }).join(", ")})`);
-        }
+  const slicer = query.slicer ?? query.where;
+  if (slicer) {
+    const members = slicer.kind === "set" ? slicer.items : [slicer];
+    for (const m of members) {
+      if (m.kind === "member" && m.parts.length >= 2 && sourceTable.column(m.parts[m.parts.length - 2])) {
+        const col = sourceTable.column(m.parts[m.parts.length - 2])!;
+        const want = m.parts[m.parts.length - 1];
+        rowIndices = rowIndices.filter((i) => String(col.get(i)) === want);
       } else {
-        rowVals.push(evalMDXExpr(colExpr, ctx, sourceTable, [ri]));
-        if (columnNames.length < columnExprs.length) {
-          columnNames.push(`expr_${columnNames.length}`);
-        }
+        rowIndices = rowIndices.filter((i) => Boolean(evalMDXExpr(m, ctx, sourceTable, [i])));
       }
     }
+  }
 
-    resultRows.push(rowVals);
+  const flatten = (e: MDXExpr): MDXExpr[] => (e.kind === "set" ? e.items.flatMap(flatten) : e.kind === "crossjoin" ? [...flatten(e.left), ...flatten(e.right)] : [e]);
+  const columnExprs = flatten(query.columns);
+  const rowExprs = flatten(query.rows);
+
+  // Dimension = a member that names a column (ignoring cube/table prefixes and .Members/.Children)
+  const dimOf = (e: MDXExpr): string | null => {
+    if (e.kind !== "member") return null;
+    const parts = e.parts.filter((p) => !/^(members|children|allmembers)$/i.test(p) && p !== sourceTable.name);
+    if (!parts.length || /^measures$/i.test(parts[0])) return null;
+    for (let k = parts.length - 1; k >= 0; k--) if (sourceTable.column(parts[k])) return parts[k];
+    return null;
+  };
+  const isMeasure = (e: MDXExpr) => e.kind === "function" || (e.kind === "member" && /^measures$/i.test(e.parts[0]));
+  const dims = [...rowExprs, ...columnExprs.filter((e) => !isMeasure(e))].map(dimOf).filter((d): d is string => !!d);
+  const measures = columnExprs.filter(isMeasure).concat(rowExprs.filter(isMeasure));
+  const measureName = (e: MDXExpr) => (e.kind === "member" ? e.parts[e.parts.length - 1] : e.kind === "function" ? `${e.name}(${e.args.map((a) => (a.kind === "member" ? a.parts[a.parts.length - 1] : "?")).join(", ")})` : "value");
+  const measureValue = (e: MDXExpr, idx: number[]): Scalar => {
+    if (e.kind === "member") {
+      const col = sourceTable.column(e.parts[e.parts.length - 1]);
+      if (!col) return null;
+      let sum = 0, seen = false;
+      for (const i of idx) { const v = col.get(i); if (typeof v === "number") { sum += v; seen = true; } }
+      return seen ? sum : idx.length;
+    }
+    return evalMDXExpr(e, ctx, sourceTable, idx);
+  };
+
+  const columnNames: string[] = [...dims, ...measures.map(measureName)];
+  const resultRows: Scalar[][] = [];
+  if (!measures.length && !dims.length) {
+    // nothing recognisable: return the raw rows
+    for (const ri of rowIndices) resultRows.push(sourceTable.columnNames().map((c) => sourceTable.column(c)!.get(ri)));
+    columnNames.push(...sourceTable.columnNames());
+  } else if (!measures.length) {
+    const seen = new Set<string>();
+    for (const ri of rowIndices) { const key = dims.map((d) => String(sourceTable.column(d)!.get(ri))); const k = key.join("\x00"); if (!seen.has(k)) { seen.add(k); resultRows.push(dims.map((d) => sourceTable.column(d)!.get(ri))); } }
+  } else {
+    const groups = new Map<string, { key: Scalar[]; idx: number[] }>();
+    for (const ri of rowIndices) {
+      const key = dims.map((d) => sourceTable.column(d)!.get(ri));
+      const k = key.map(String).join("\x00");
+      if (!groups.has(k)) groups.set(k, { key, idx: [] });
+      groups.get(k)!.idx.push(ri);
+    }
+    if (!groups.size && !dims.length) groups.set("", { key: [], idx: [] });
+    for (const g of groups.values()) resultRows.push([...g.key, ...measures.map((m) => measureValue(m, g.idx))]);
   }
 
   return {

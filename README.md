@@ -8,6 +8,29 @@ The SLM only has to *decide which tool to call*. The 350+ deterministic tools in
 
 ---
 
+## New: the autonomous agent runtime (`agent/`)
+
+The harness now ships a long-lived **agent runtime** that chats with you, runs real commands,
+edits files and keeps working until the task is done (`/goal`), with memory, skills, cron,
+MCP, Telegram/Discord/Slack, a web chat and an OpenAI-compatible API — zero runtime dependencies.
+
+```bash
+node agent/bin/harness.mjs setup    # choose your model server (Ollama, llama.cpp, LM Studio, OpenAI-compatible gateway…)
+node agent/bin/harness.mjs          # terminal chat
+node agent/bin/harness.mjs ui       # web chat → http://127.0.0.1:7420 (the React app also has /chat)
+pip install stitap-harness          # Python-only machines (bundled executable or pure-Python lite core)
+```
+
+Guide: [docs/agent-runtime.md](docs/agent-runtime.md) · Plan & status: [docs/hermes-parity-plan.md](docs/hermes-parity-plan.md)
+
+**Ready-made sites:** the agent builds websites from pinned open-source templates (MIT/Apache) instead of writing
+them: e-commerce (Next.js + Payload CMS, or a Nuxt storefront on it), Strapi headless CMS, a lending / NBFC portal on
+Apache Fineract with WhatsApp updates, docs portals, dashboards and more — plus exact loan maths (`finance_calc`).
+See [docs/site-templates.md](docs/site-templates.md).
+
+**Long builds:** `/pipeline` works through many spec documents unattended; a document is done only when its own test
+passes *and* earlier documents' tests and pages still work.
+
 ## Contents
 
 1. [Why a harness for SLMs?](#1-why-a-harness-for-slms)

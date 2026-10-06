@@ -1,0 +1,9 @@
+{"kind": "gguf-bench", "time": "2026-10-03T16:49:09", "url": "http://127.0.0.1:8081", "decode_mean": 1.2, "decode_each": [1.15, 1.24]}
+{"kind": "gguf-bench", "time": "2026-10-03T16:54:52", "url": "http://127.0.0.1:8081", "decode_mean": 1.4, "decode_each": [1.37, 1.42, 1.42]}
+{"kind": "gguf-bench", "time": "2026-10-03T18:28:17", "url": "http://127.0.0.1:8081", "decode_mean": 1.45, "decode_each": [1.59, 1.31]}
+{"kind": "gguf-bench", "time": "2026-10-03T18:33:57", "url": "http://127.0.0.1:8081", "decode_mean": 1.44, "decode_each": [1.62, 1.43, 1.26]}
+{"kind": "gguf-bench", "time": "2026-10-03T18:48:09", "url": "http://127.0.0.1:8081", "decode_mean": 0.72, "decode_each": [0.71, 0.68, 0.78]}
+{"kind": "gguf-bench", "time": "2026-10-03T18:52:43", "url": "http://127.0.0.1:8081", "decode_mean": 1.41, "decode_each": [1.53, 1.28]}
+{"kind": "gguf-bench", "time": "2026-10-04T19:09:59", "url": "http://127.0.0.1:8081", "decode_mean": 1.69, "decode_each": [2.02, 1.36]}
+{"kind": "gguf-bench", "time": "2026-10-04T19:14:03", "url": "http://127.0.0.1:8081", "decode_mean": 2.21, "decode_each": [2.27, 2.15]}
+{"kind": "gguf-bench", "time": "2026-10-04T19:17:12", "url": "http://127.0.0.1:8081", "decode_mean": 2.89, "decode_each": [3.09, 2.69]}

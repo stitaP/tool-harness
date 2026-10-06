@@ -13,7 +13,13 @@
     "format": "prettier --write .",
     "preview": "vite preview",
     "gen:extension-icons": "bun scripts/gen-extension-icons.ts",
-    "package:extension": "bun scripts/package-extension.ts"
+    "package:extension": "bun scripts/package-extension.ts",
+    "agent:build": "tsc -p agent/tsconfig.json",
+    "agent:test": "npm run agent:build && cd agent && node --test --test-concurrency=1 test/*.test.mjs",
+    "agent:store": "node agent/scripts/build-store.mjs",
+    "agent:serve": "node agent/bin/harness.mjs serve",
+    "agent": "node agent/bin/harness.mjs",
+    "agent:test:store": "npm --prefix agent run test:store"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",

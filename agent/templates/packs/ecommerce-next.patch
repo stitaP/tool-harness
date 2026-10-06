@@ -1,0 +1,11 @@
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -16,6 +16,8 @@
+     loadPaths: ['./node_modules/@payloadcms/ui/dist/scss/'],
+   },
+   images: {
++    // Next 16 refuses to optimize images from local addresses; the store serves its media from localhost in development
++    dangerouslyAllowLocalIP: process.env.NODE_ENV !== 'production',
+     localPatterns: [
+       {
+         pathname: '/api/media/file/**',

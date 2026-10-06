@@ -10,6 +10,7 @@ const PRODUCT_LINKS = [
 ];
 
 const PLATFORM_LINKS = [
+  { label: "Agent Chat", href: "/chat", desc: "Autonomous agent: runs code, works until done" },
   { label: "Notebook", href: "/notebook", desc: "Chat + agents, configured to your hardware" },
   { label: "Agent Studio", href: "/studio", desc: "Define roles, scope docs + tools, run teams" },
   { label: "Tool Store", href: "/store", desc: "106 agent-ready tools" },

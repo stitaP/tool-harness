@@ -1,0 +1,24 @@
+export const needs = ['ffmpeg'];
+export default async ({ run, m, clip, ocrImage, dataDir }) => {
+  await run("video.record", { action: "start" }, true);
+  await run("video.record", { action: "open", source: clip });
+  await run("video.annotate", { type: "rect", x: 50, y: 50, width: 200, height: 100, color: "#ff0000", startTime: 0, endTime: 3 });
+  await run("video.annotate", { type: "text", x: 60, y: 200, content: "Click here: now", startTime: 1 });
+  await run("video.annotate", { type: "blur", x: 300, y: 50, width: 120, height: 80 });
+  await run("video.addOverlay", { type: "watermark", content: "stitaP demo", opacity: 0.6 });
+  await run("video.addCaption", { text: "Welcome to the demo, it's 100% real", startTime: 0.5, endTime: 4, position: "bottom", style: "box" });
+  await run("video.addTransition", { type: "wipeLeft", atTime: 3, duration: 0.8 });
+  await run("video.captureFrame", { timestamp: 2, format: "jpeg" });
+  await run("video.export", { format: "mp4", quality: 0.8 });
+  await run("video.export", { format: "gif", width: 320 });
+  await run("video.export", { format: "webm", source: clip, fps: 15 });
+  await run("media.renderVideo", { scenes: [{ title: "Invoices", text: "Create your first invoice in three steps", background: "#0f172a", duration: 2 }, { text: "Step 1: open Billing", background: "#334155", duration: 2 }] });
+  await run("media.renderVideo", { scenes: [{ title: "GIF", background: "#111", duration: 1 }], format: "gif", width: 320, height: 180 });
+  await run("media.synthesizeSpeech", { text: "Hello from the store tools.", voice: "female", speed: 1.1, volume: 0.9 });
+  await run("media.composeAudio", { layers: [{ type: "corporate", startTime: 0, duration: 4, fadeIn: 0.5, fadeOut: 1 }, { type: "whoosh", startTime: 1 }, { type: "success", startTime: 2.5 }, { type: "narration", text: "Welcome", startTime: 0.5 }], fadeOut: 0.5 });
+  await run("media.generateSticker", { type: "arrow", color: "#22c55e", size: 128 });
+  await run("media.generateThumbnail", { title: "Build a RAG server", gradientColors: ["#0ea5e9", "#6366f1"] });
+  await run("media.generateThumbnail", { title: "From video", background: "blur", backgroundImage: clip });
+  await run("media.generateWaveform", { samples: [0.1, 0.5, 0.9, 0.3, 0.7, 0.2] });
+  await run("media.generateWaveform", { source: clip, format: "png", style: "mirror" });
+};

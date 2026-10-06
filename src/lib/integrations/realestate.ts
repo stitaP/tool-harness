@@ -712,7 +712,8 @@ export function forecastRevenue(
   const monthsSinceLaunch = project.launchDate
     ? Math.max(1, (Date.now() - new Date(project.launchDate).getTime()) / (30 * 86400000))
     : 1;
-  const velocity = soldUnits.length / monthsSinceLaunch;
+  // With no sales history yet, assume a typical launch absorption of ~3% of inventory per month
+  const velocity = soldUnits.length > 0 ? soldUnits.length / monthsSinceLaunch : Math.max(1, project.totalUnits * 0.03);
 
   const avgPrice = soldUnits.length > 0
     ? soldUnits.reduce((sum, u) => sum + (u.negotiatedPrice || u.totalPrice), 0) / soldUnits.length
@@ -741,8 +742,8 @@ export function forecastRevenue(
 
   // Confidence based on data availability
   let confidenceLevel: "high" | "medium" | "low" = "low";
-  if (monthsSinceLaunch >= 6) confidenceLevel = "high";
-  else if (monthsSinceLaunch >= 3) confidenceLevel = "medium";
+  if (soldUnits.length > 0 && monthsSinceLaunch >= 6) confidenceLevel = "high";
+  else if (soldUnits.length > 0 && monthsSinceLaunch >= 3) confidenceLevel = "medium";
 
   // Target date when all units will be sold
   const remainingUnits = availableUnits.length;

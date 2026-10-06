@@ -1,0 +1,14 @@
+import http from "node:http";
+import crypto from "node:crypto";
+const html = `<!doctype html><html><head><title>Test Shop – Fresh deals</title><meta name="description" content="A tiny test shop page used for automated browser testing of the stitaP store tools.">
+<meta property="og:title" content="Test Shop"><style>body{font-family:Arial;margin:0;padding:16px;color:#333} .btn{background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;border:none} .low{color:#bbb} @media (min-width: 768px){main{max-width:900px;margin:auto}}</style></head>
+<body><header><nav><a href="/">Home</a> <a href="/about">About</a></nav></header><main><h1>Fresh deals</h1><h3>Skipped level</h3><p class="low">Low contrast paragraph text here for testing.</p>
+<img src="/logo.png" width="40" height="40"><button class="btn" id="buy" onclick="document.getElementById('out').textContent='added';fetch('/api/cart',{method:'POST',body:'{}'})">Add to cart</button><button><svg width="16" height="16"><rect width="16" height="16"/></svg></button><div id="out"></div>
+<form id="signup" action="/signup" method="post"><label for="email">Email</label><input id="email" name="email" type="email" required><input name="age" type="number" min="18" max="99"><button type="submit">Sign up</button></form>
+<table><tr><th>Item</th><th>Price</th></tr><tr><td>Fan</td><td>3000</td></tr></table></main><footer>© shop</footer>
+<script>fetch('/api/products').then(r=>r.json()).then(d=>console.log('products', d.length)); console.error('demo error'); localStorage.setItem('cart','[1,2]'); document.cookie='sid=abc123';
+const ws = new WebSocket('ws://'+location.host+'/ws'); ws.onopen=()=>ws.send('hello');</script></body></html>`;
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+export function start() { return new Promise((res) => { const srv = http.createServer((q, r) => { if (q.url === "/api/products") { r.setHeader("content-type", "application/json"); return r.end('[{"id":1,"name":"Fan"}]'); } if (q.url === "/api/cart") { r.setHeader("content-type", "application/json"); return r.end('{"ok":true}'); } if (q.url === "/logo.png") { r.setHeader("content-type", "image/png"); return r.end(png); } r.setHeader("content-type", "text/html; charset=utf-8"); r.setHeader("x-content-type-options", "nosniff"); r.setHeader("x-powered-by", "Express 4.1"); r.end(html); });
+  srv.on("upgrade", (req, sock) => { const key = req.headers["sec-websocket-key"]; const acc = crypto.createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64"); sock.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + acc + "\r\n\r\n"); sock.on("error", () => {}); sock.on("data", () => { sock.write(Buffer.from([0x81, 4, 0x70, 0x6f, 0x6e, 0x67])); }); });
+  srv.listen(0, "127.0.0.1", () => res(srv)); }); }

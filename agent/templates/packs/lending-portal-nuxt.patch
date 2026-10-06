@@ -1,0 +1,1386 @@
+diff --git a/README-LENDING.md b/README-LENDING.md
+new file mode 100644
+index 0000000..d384c25
+--- /dev/null
++++ b/README-LENDING.md
+@@ -0,0 +1,55 @@
++# Lending portal (Apache Fineract + WhatsApp)
++
++A back-office portal for a lender / NBFC on top of [Apache Fineract](https://fineract.apache.org) (Apache-2.0),
++built from the Nuxt UI dashboard template (MIT).
++
++| Page | What it shows |
++|---|---|
++| Portfolio | active loans, outstanding, overdue, portfolio at risk — per currency |
++| Loans | every loan; open one for its repayment schedule and transactions |
++| Collections | overdue loans, largest first, with the collector (loan officer); one click sends WhatsApp reminders |
++| Investors | loans sold to investors (Fineract asset externalization), per investor |
++| Calculators | EMI, flat vs reducing interest, part prepayment, eligibility (FOIR), amortization schedule |
++
++## Configure (`.env`)
++
++```
++FINERACT_URL=https://your-fineract/fineract-provider/api/v1   # default: the public Mifos demo
++FINERACT_TENANT=default
++FINERACT_USER=...
++FINERACT_PASSWORD=...
++WHATSAPP_TOKEN=...              # Meta WhatsApp Business Cloud API token; without it updates are only recorded (dry run)
++WHATSAPP_PHONE_NUMBER_ID=...
++WHATSAPP_DEFAULT_CC=91          # added to 10-digit local numbers
++PORTAL_USER=admin               # portal login (HTTP Basic) — set PORTAL_PASSWORD on any shared machine or server
++PORTAL_PASSWORD=...
++WEBHOOK_SECRET=...              # lets Fineract's hook and the reminder job call /api/webhooks/* and /api/notify/* without the login
++```
++
++Investors' and collectors' WhatsApp numbers: `data/contacts.json`. Borrowers' numbers come from Fineract (client mobile).
++
++## WhatsApp updates
++
++WhatsApp only delivers **approved templates** outside a 24-hour chat window. Create these in WhatsApp Manager
++(category: Utility), with the body parameters in this order:
++
++| Template | To | Parameters |
++|---|---|---|
++| `loan_disbursed` | borrower | name, amount, loan account, first instalment |
++| `payment_received` | borrower | name, amount paid, loan account, outstanding |
++| `payment_overdue` | borrower | name, overdue amount, loan account |
++| `collection_update` | collector | collector name, borrower, amount paid, outstanding |
++| `collector_overdue` | collector | collector name, borrower, borrower phone, overdue amount, loan account |
++| `investor_update` | investor | investor name, loan account, event, amount |
++| `loan_status` | borrower | name, loan account, status |
++
++**Events from Fineract:** System → Manage Hooks → add a *Web* hook with payload URL
++`https://<portal>/api/webhooks/fineract?secret=<WEBHOOK_SECRET>`, content type JSON, events *LOAN: DISBURSE, REPAYMENT*.
++
++**Daily overdue reminders:** `POST https://<portal>/api/notify/overdue?secret=<WEBHOOK_SECRET>` once a day
++(stitaP: `/cron add "every day at 10:00" curl -X POST …`).
++
++## Running Fineract yourself
++
++Fineract needs Java 21 and PostgreSQL or MariaDB; the easiest way is the official Docker images
++(see `docker-compose` files in the Fineract repository).
+diff --git a/app/app.config.ts b/app/app.config.ts
+index aec8967..5633dc9 100644
+--- a/app/app.config.ts
++++ b/app/app.config.ts
+@@ -1,4 +1,7 @@
+ export default defineAppConfig({
++  site: {
++    name: 'Lending Portal'
++  },
+   ui: {
+     colors: {
+       primary: 'green',
+diff --git a/app/components/PageTable.vue b/app/components/PageTable.vue
+new file mode 100644
+index 0000000..5edd6cf
+--- /dev/null
++++ b/app/components/PageTable.vue
+@@ -0,0 +1,27 @@
++<script setup lang="ts">
++// A searchable table of plain rows; columns: [{ key, label }]. Rows link to `to(row)` when given.
++const props = defineProps<{ rows: Record<string, any>[] | null | undefined, columns: { key: string, label: string }[], to?: (row: any) => string, placeholder?: string }>()
++const q = ref('')
++const shown = computed(() => (props.rows ?? []).filter(r => !q.value || Object.values(r).join(' ').toLowerCase().includes(q.value.toLowerCase())))
++</script>
++
++<template>
++  <div class="flex flex-col gap-3">
++    <UInput v-model="q" class="max-w-sm" icon="i-lucide-search" :placeholder="placeholder ?? 'Search…'" />
++    <div class="overflow-x-auto rounded-lg border border-default">
++      <table class="w-full text-sm">
++        <thead class="bg-elevated/50 text-muted">
++          <tr><th v-for="c in columns" :key="c.key" class="px-3 py-2 text-left font-medium whitespace-nowrap">{{ c.label }}</th></tr>
++        </thead>
++        <tbody>
++          <tr v-for="(r, i) in shown" :key="i" class="border-t border-default hover:bg-elevated/30" :class="to ? 'cursor-pointer' : ''" @click="to && navigateTo(to(r))">
++            <td v-for="c in columns" :key="c.key" class="px-3 py-2 whitespace-nowrap">
++              <slot :name="c.key" :row="r">{{ r[c.key] }}</slot>
++            </td>
++          </tr>
++          <tr v-if="!shown.length"><td :colspan="columns.length" class="px-3 py-6 text-center text-muted">Nothing to show.</td></tr>
++        </tbody>
++      </table>
++    </div>
++  </div>
++</template>
+diff --git a/app/components/PanelShell.vue b/app/components/PanelShell.vue
+new file mode 100644
+index 0000000..9a08b1d
+--- /dev/null
++++ b/app/components/PanelShell.vue
+@@ -0,0 +1,15 @@
++<script setup lang="ts">
++defineProps<{ id: string, title: string }>()
++</script>
++
++<template>
++  <UDashboardPanel :id="id">
++    <template #header>
++      <UDashboardNavbar :title="title">
++        <template #leading><UDashboardSidebarCollapse /></template>
++        <template #right><slot name="right" /></template>
++      </UDashboardNavbar>
++    </template>
++    <template #body><slot /></template>
++  </UDashboardPanel>
++</template>
+diff --git a/app/components/TeamsMenu.vue b/app/components/TeamsMenu.vue
+index 072ac66..b1e3a9e 100644
+--- a/app/components/TeamsMenu.vue
++++ b/app/components/TeamsMenu.vue
+@@ -5,25 +5,9 @@ defineProps<{
+   collapsed?: boolean
+ }>()
+ 
+-const teams = ref([{
+-  label: 'Nuxt',
+-  avatar: {
+-    src: 'https://github.com/nuxt.png',
+-    alt: 'Nuxt'
+-  }
+-}, {
+-  label: 'NuxtHub',
+-  avatar: {
+-    src: 'https://github.com/nuxt-hub.png',
+-    alt: 'NuxtHub'
+-  }
+-}, {
+-  label: 'NuxtLabs',
+-  avatar: {
+-    src: 'https://github.com/nuxtlabs.png',
+-    alt: 'NuxtLabs'
+-  }
+-}])
++// one organisation: the name set in app.config.ts (site.name)
++const site = useAppConfig().site as { name?: string } | undefined
++const teams = ref([{ label: site?.name ?? 'Lending', avatar: { text: (site?.name ?? 'L').slice(0, 1), alt: site?.name ?? 'Lending' } }])
+ const selectedTeam = ref(teams.value[0])
+ 
+ const items = computed<DropdownMenuItem[][]>(() => {
+diff --git a/app/components/UserMenu.vue b/app/components/UserMenu.vue
+index 84c433a..e52755a 100644
+--- a/app/components/UserMenu.vue
++++ b/app/components/UserMenu.vue
+@@ -12,10 +12,10 @@ const colors = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald',
+ const neutrals = ['slate', 'gray', 'zinc', 'neutral', 'stone', 'taupe', 'mauve', 'mist', 'olive']
+ 
+ const user = ref({
+-  name: 'Benjamin Canac',
++  name: 'Admin',
+   avatar: {
+-    src: 'https://github.com/benjamincanac.png',
+-    alt: 'Benjamin Canac'
++    text: 'A',
++    alt: 'Admin'
+   }
+ })
+ 
+diff --git a/app/layouts/default.vue b/app/layouts/default.vue
+index a31c3fe..508f114 100644
+--- a/app/layouts/default.vue
++++ b/app/layouts/default.vue
+@@ -6,71 +6,21 @@ const toast = useToast()
+ 
+ const open = ref(false)
+ 
+-const links = [[{
+-  label: 'Home',
+-  icon: 'i-lucide-house',
+-  to: '/',
+-  onSelect: () => {
+-    open.value = false
+-  }
+-}, {
+-  label: 'Inbox',
+-  icon: 'i-lucide-inbox',
+-  to: '/inbox',
+-  badge: '4',
+-  onSelect: () => {
+-    open.value = false
+-  }
+-}, {
+-  label: 'Customers',
+-  icon: 'i-lucide-users',
+-  to: '/customers',
+-  onSelect: () => {
+-    open.value = false
+-  }
+-}, {
+-  label: 'Settings',
+-  to: '/settings',
+-  icon: 'i-lucide-settings',
+-  defaultOpen: true,
+-  type: 'trigger',
+-  children: [{
+-    label: 'General',
+-    to: '/settings',
+-    exact: true,
+-    onSelect: () => {
+-      open.value = false
+-    }
+-  }, {
+-    label: 'Members',
+-    to: '/settings/members',
+-    onSelect: () => {
+-      open.value = false
+-    }
+-  }, {
+-    label: 'Notifications',
+-    to: '/settings/notifications',
+-    onSelect: () => {
+-      open.value = false
+-    }
+-  }, {
+-    label: 'Security',
+-    to: '/settings/security',
+-    onSelect: () => {
+-      open.value = false
+-    }
+-  }]
+-}], [{
+-  label: 'Feedback',
+-  icon: 'i-lucide-message-circle',
+-  to: 'https://github.com/nuxt-ui-templates/dashboard',
+-  target: '_blank'
+-}, {
+-  label: 'Help & Support',
+-  icon: 'i-lucide-info',
+-  to: 'https://github.com/nuxt-ui-templates/dashboard',
+-  target: '_blank'
+-}]] satisfies NavigationMenuItem[][]
++const close = () => { open.value = false }
++const links = [[
++  { label: 'Portfolio', icon: 'i-lucide-layout-dashboard', to: '/', onSelect: close },
++  { label: 'Loans', icon: 'i-lucide-landmark', to: '/loans', onSelect: close },
++  { label: 'Collections', icon: 'i-lucide-phone-call', to: '/collections', onSelect: close },
++  { label: 'Investors', icon: 'i-lucide-hand-coins', to: '/investors', onSelect: close },
++  { label: 'Calculators', icon: 'i-lucide-calculator', to: '/calculators', onSelect: close },
++  { label: 'Settings', to: '/settings', icon: 'i-lucide-settings', defaultOpen: false, type: 'trigger', children: [
++    { label: 'General', to: '/settings', exact: true, onSelect: close },
++    { label: 'Notifications', to: '/settings/notifications', onSelect: close },
++    { label: 'Security', to: '/settings/security', onSelect: close }
++  ] }
++], [
++  { label: 'Fineract docs', icon: 'i-lucide-book-open', to: 'https://fineract.apache.org/docs/current/', target: '_blank' }
++]] satisfies NavigationMenuItem[][]
+ 
+ const groups = computed(() => [{
+   id: 'links',
+@@ -83,35 +33,11 @@ const groups = computed(() => [{
+     id: 'source',
+     label: 'View page source',
+     icon: 'i-simple-icons-github',
+-    to: `https://github.com/nuxt-ui-templates/dashboard/blob/main/app/pages${route.path === '/' ? '/index' : route.path}.vue`,
++    to: 'https://github.com/nuxt-ui-templates/dashboard',
+     target: '_blank'
+   }]
+ }])
+ 
+-onMounted(async () => {
+-  const cookie = useCookie('cookie-consent')
+-  if (cookie.value === 'accepted') {
+-    return
+-  }
+-
+-  toast.add({
+-    title: 'We use first-party cookies to enhance your experience on our website.',
+-    duration: 0,
+-    close: false,
+-    actions: [{
+-      label: 'Accept',
+-      color: 'neutral',
+-      variant: 'outline',
+-      onClick: () => {
+-        cookie.value = 'accepted'
+-      }
+-    }, {
+-      label: 'Opt out',
+-      color: 'neutral',
+-      variant: 'ghost'
+-    }]
+-  })
+-})
+ </script>
+ 
+ <template>
+diff --git a/app/pages/calculators.vue b/app/pages/calculators.vue
+new file mode 100644
+index 0000000..3c7004a
+--- /dev/null
++++ b/app/pages/calculators.vue
+@@ -0,0 +1,58 @@
++<script setup lang="ts">
++const f = reactive({ principal: 500000, rate: 12, months: 36, afterMonth: 12, amount: 100000, income: 60000, existingEmis: 5000, foir: 50 })
++const out = reactive<Record<string, any>>({})
++async function run(kind: string) {
++  out[kind] = await $fetch('/api/calc', { method: 'POST', body: { kind, ...f } })
++}
++const inr = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n ?? 0)
++onMounted(() => ['emi', 'flat', 'prepay', 'eligibility'].forEach(run))
++watch(f, () => ['emi', 'flat', 'prepay', 'eligibility'].forEach(run))
++</script>
++
++<template>
++  <PanelShell id="calculators" title="Calculators">
++    <div class="grid gap-3 sm:grid-cols-3">
++      <UFormField label="Loan amount (₹)"><UInputNumber v-model="f.principal" :step="10000" /></UFormField>
++      <UFormField label="Interest rate (% a year)"><UInputNumber v-model="f.rate" :step="0.25" /></UFormField>
++      <UFormField label="Tenure (months)"><UInputNumber v-model="f.months" /></UFormField>
++    </div>
++    <div class="grid gap-4 md:grid-cols-2">
++      <UCard>
++        <template #header><b>EMI (reducing balance)</b></template>
++        <div v-if="out.emi" class="text-sm space-y-1">
++          <div class="text-2xl font-semibold">{{ inr(out.emi.emi) }} <span class="text-sm text-muted">/ month</span></div>
++          <div>Total interest {{ inr(out.emi.totalInterest) }} · Total paid {{ inr(out.emi.total) }}</div>
++        </div>
++      </UCard>
++      <UCard>
++        <template #header><b>Flat vs reducing interest</b></template>
++        <div v-if="out.flat" class="text-sm space-y-1">
++          <div>Flat-rate EMI {{ inr(out.flat.emi) }} (interest {{ inr(out.flat.totalInterest) }})</div>
++          <div>Reducing-balance EMI {{ inr(out.flat.reducingEmi) }}</div>
++        </div>
++      </UCard>
++      <UCard>
++        <template #header><b>Part prepayment</b></template>
++        <div class="grid grid-cols-2 gap-2 mb-2">
++          <UFormField label="After EMI no."><UInputNumber v-model="f.afterMonth" /></UFormField>
++          <UFormField label="Prepay (₹)"><UInputNumber v-model="f.amount" :step="10000" /></UFormField>
++        </div>
++        <div v-if="out.prepay" class="text-sm space-y-1">
++          <div>Keep EMI: {{ out.prepay.keepEmi.monthsSaved }} months sooner, interest saved {{ inr(out.prepay.keepEmi.interestSaved) }}</div>
++          <div>Keep tenure: new EMI {{ inr(out.prepay.keepTerm.newEmi) }}, interest saved {{ inr(out.prepay.keepTerm.interestSaved) }}</div>
++        </div>
++      </UCard>
++      <UCard>
++        <template #header><b>Eligibility (FOIR)</b></template>
++        <div class="grid grid-cols-3 gap-2 mb-2">
++          <UFormField label="Monthly income"><UInputNumber v-model="f.income" :step="5000" /></UFormField>
++          <UFormField label="Existing EMIs"><UInputNumber v-model="f.existingEmis" :step="1000" /></UFormField>
++          <UFormField label="FOIR %"><UInputNumber v-model="f.foir" /></UFormField>
++        </div>
++        <div v-if="out.eligibility" class="text-sm">Up to <b>{{ inr(out.eligibility.maxLoan) }}</b> (EMI up to {{ inr(out.eligibility.maxEmi) }})</div>
++      </UCard>
++    </div>
++    <h3 class="font-semibold">Amortization schedule</h3>
++    <PageTable :rows="out.emi?.schedule?.map((r: any) => ({ ...r, emi: inr(r.emi), interest: inr(r.interest), principal: inr(r.principal), balance: inr(r.balance) }))" :columns="[{ key: 'month', label: 'Month' }, { key: 'emi', label: 'EMI' }, { key: 'principal', label: 'Principal' }, { key: 'interest', label: 'Interest' }, { key: 'balance', label: 'Balance' }]" />
++  </PanelShell>
++</template>
+diff --git a/app/pages/collections.vue b/app/pages/collections.vue
+new file mode 100644
+index 0000000..c463913
+--- /dev/null
++++ b/app/pages/collections.vue
+@@ -0,0 +1,24 @@
++<script setup lang="ts">
++const { data, refresh } = await useFetch('/api/collections')
++const toast = useToast()
++const sending = ref(false)
++const columns = [{ key: 'account', label: 'Account' }, { key: 'client', label: 'Borrower' }, { key: 'overdue', label: 'Overdue' }, { key: 'daysOverdue', label: 'Days' }, { key: 'outstanding', label: 'Outstanding' }, { key: 'officer', label: 'Collector' }]
++async function remind() {
++  sending.value = true
++  try {
++    const r = await $fetch<any>('/api/notify/overdue', { method: 'POST' })
++    toast.add({ title: `${r.messages} WhatsApp update${r.messages === 1 ? '' : 's'} for ${r.loans} overdue loans`, description: r.dryRun ? 'Dry run: add WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID to send for real.' : undefined })
++  } catch (e: any) {
++    toast.add({ title: 'Reminders failed', description: e?.data?.statusMessage ?? e.message, color: 'error' })
++  } finally { sending.value = false; refresh() }
++}
++</script>
++
++<template>
++  <PanelShell id="collections" title="Collections">
++    <template #right><UButton icon="i-simple-icons-whatsapp" label="Send overdue reminders" :loading="sending" @click="remind" /></template>
++    <PageTable :rows="data" :columns="columns" :to="(r: any) => `/loans/${r.id}`" placeholder="Search borrower or collector…">
++      <template #overdue="{ row }"><span class="text-error font-medium">{{ row.overdue }}</span></template>
++    </PageTable>
++  </PanelShell>
++</template>
+diff --git a/app/pages/index.vue b/app/pages/index.vue
+index c22b538..2c611e5 100644
+--- a/app/pages/index.vue
++++ b/app/pages/index.vue
+@@ -1,69 +1,38 @@
+ <script setup lang="ts">
+-import { sub } from 'date-fns'
+-import type { DropdownMenuItem } from '@nuxt/ui'
+-import type { Period, Range } from '~/types'
+-
+ const { isNotificationsSlideoverOpen } = useDashboard()
+-
+-const items = [[{
+-  label: 'New mail',
+-  icon: 'i-lucide-send',
+-  to: '/inbox'
+-}, {
+-  label: 'New customer',
+-  icon: 'i-lucide-user-plus',
+-  to: '/customers'
+-}]] satisfies DropdownMenuItem[][]
+-
+-const range = shallowRef<Range>({
+-  start: sub(new Date(), { days: 14 }),
+-  end: new Date()
+-})
+-const period = ref<Period>('daily')
++const { data, error } = await useFetch('/api/portfolio')
+ </script>
+ 
+ <template>
+-  <UDashboardPanel id="home">
+-    <template #header>
+-      <UDashboardNavbar title="Home" :ui="{ right: 'gap-3' }">
+-        <template #leading>
+-          <UDashboardSidebarCollapse />
+-        </template>
+-
+-        <template #right>
+-          <UTooltip text="Notifications" :shortcuts="['N']">
+-            <UButton
+-              color="neutral"
+-              variant="ghost"
+-              square
+-              @click="isNotificationsSlideoverOpen = true"
+-            >
+-              <UChip color="error" inset>
+-                <UIcon name="i-lucide-bell" class="size-5 shrink-0" />
+-              </UChip>
+-            </UButton>
+-          </UTooltip>
+-
+-          <UDropdownMenu :items="items">
+-            <UButton icon="i-lucide-plus" size="md" class="rounded-full" />
+-          </UDropdownMenu>
+-        </template>
+-      </UDashboardNavbar>
+-
+-      <UDashboardToolbar>
+-        <template #left>
+-          <!-- NOTE: The `-ms-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
+-          <HomeDateRangePicker v-model="range" class="-ms-1" />
+-
+-          <HomePeriodSelect v-model="period" :range="range" />
+-        </template>
+-      </UDashboardToolbar>
+-    </template>
+-
+-    <template #body>
+-      <HomeStats :period="period" :range="range" />
+-      <HomeChart :period="period" :range="range" />
+-      <HomeSales :period="period" :range="range" />
++  <PanelShell id="home" title="Portfolio">
++    <template #right>
++      <UButton color="neutral" variant="ghost" square icon="i-lucide-bell" @click="isNotificationsSlideoverOpen = true" />
+     </template>
+-  </UDashboardPanel>
++    <UAlert v-if="error" color="error" variant="subtle" title="Cannot reach the lending backend (Fineract)" :description="error.message" />
++    <UPageGrid v-else class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px">
++      <UPageCard
++        v-for="s in data?.stats ?? []" :key="s.title" :icon="s.icon" :title="s.title" :to="s.to" variant="subtle"
++        :ui="{ container: 'gap-y-1.5', wrapper: 'items-start', leading: 'p-2.5 rounded-full bg-primary/10 ring ring-inset ring-primary/25 flex-col', title: 'font-normal text-muted text-xs uppercase' }"
++        class="lg:rounded-none first:rounded-l-lg last:rounded-r-lg hover:z-1"
++      >
++        <span class="text-2xl font-semibold text-highlighted">{{ s.value }}</span>
++      </UPageCard>
++    </UPageGrid>
++    <div v-if="data" class="grid gap-4 md:grid-cols-2">
++      <UCard>
++        <template #header><b>Loans by status</b></template>
++        <div v-for="b in data.byStatus" :key="b.status" class="flex justify-between py-1 text-sm"><span>{{ b.status }}</span><UBadge variant="subtle">{{ b.count }}</UBadge></div>
++      </UCard>
++      <UCard>
++        <template #header><b>By currency</b></template>
++        <div v-for="t in data.totals" :key="t.currency" class="py-1 text-sm">
++          <b>{{ t.currency }}</b>: {{ t.active }} active of {{ t.loans }} · outstanding {{ t.outstanding }} · overdue {{ t.overdue }} ({{ t.overdueLoans }} loans) · PAR {{ t.par }} · disbursed {{ t.disbursed }}
++        </div>
++        <div class="mt-3 flex gap-2">
++          <UButton to="/collections" icon="i-lucide-phone-call" label="Collections worklist" variant="subtle" />
++          <UButton to="/calculators" icon="i-lucide-calculator" label="Calculators" variant="subtle" color="neutral" />
++        </div>
++      </UCard>
++    </div>
++  </PanelShell>
+ </template>
+diff --git a/app/pages/investors.vue b/app/pages/investors.vue
+new file mode 100644
+index 0000000..9e32193
+--- /dev/null
++++ b/app/pages/investors.vue
+@@ -0,0 +1,11 @@
++<script setup lang="ts">
++const { data } = await useFetch('/api/investors')
++const columns = [{ key: 'name', label: 'Investor' }, { key: 'owner', label: 'Owner id' }, { key: 'loans', label: 'Loans' }, { key: 'outstanding', label: 'Outstanding' }, { key: 'whatsapp', label: 'WhatsApp' }]
++</script>
++
++<template>
++  <PanelShell id="investors" title="Investors">
++    <p class="text-sm text-muted">Loans sold to investors with Fineract's asset externalization. Map owner ids to names and WhatsApp numbers in <code>data/contacts.json</code>.</p>
++    <PageTable :rows="data" :columns="columns" />
++  </PanelShell>
++</template>
+diff --git a/app/pages/loans/[id].vue b/app/pages/loans/[id].vue
+new file mode 100644
+index 0000000..4aa363f
+--- /dev/null
++++ b/app/pages/loans/[id].vue
+@@ -0,0 +1,24 @@
++<script setup lang="ts">
++const route = useRoute()
++const { data } = await useFetch(`/api/loans/${route.params.id}`)
++const cols = [{ key: 'period', label: '#' }, { key: 'due', label: 'Due' }, { key: 'principal', label: 'Principal' }, { key: 'interest', label: 'Interest' }, { key: 'total', label: 'Total' }, { key: 'paid', label: 'Paid' }, { key: 'status', label: 'Status' }]
++const tcols = [{ key: 'date', label: 'Date' }, { key: 'type', label: 'Type' }, { key: 'amount', label: 'Amount' }]
++</script>
++
++<template>
++  <PanelShell id="loan" :title="data ? `Loan ${data.account} · ${data.client}` : 'Loan'">
++    <template #right><UButton to="/loans" icon="i-lucide-arrow-left" label="All loans" color="neutral" variant="ghost" /></template>
++    <div v-if="data" class="grid gap-3 sm:grid-cols-3 lg:grid-cols-6 text-sm">
++      <UCard v-for="[k, v] in [['Product', data.product], ['Status', data.status], ['Rate', data.rate], ['Principal', data.principal], ['Outstanding', data.outstanding], ['Overdue', data.overdue]]" :key="k">
++        <div class="text-muted text-xs uppercase">{{ k }}</div><div class="font-semibold">{{ v }}</div>
++      </UCard>
++    </div>
++    <div v-if="data" class="text-sm text-muted">Loan officer: {{ data.officer || '—' }} · Investor: {{ data.investor?.owner || 'platform (not sold)' }}</div>
++    <h3 class="font-semibold">Repayment schedule</h3>
++    <PageTable :rows="data?.schedule" :columns="cols">
++      <template #status="{ row }"><UBadge :color="row.status === 'paid' ? 'success' : row.status === 'overdue' ? 'error' : 'neutral'" variant="subtle">{{ row.status }}</UBadge></template>
++    </PageTable>
++    <h3 class="font-semibold">Recent transactions</h3>
++    <PageTable :rows="data?.transactions" :columns="tcols" />
++  </PanelShell>
++</template>
+diff --git a/app/pages/loans/index.vue b/app/pages/loans/index.vue
+new file mode 100644
+index 0000000..1e9783f
+--- /dev/null
++++ b/app/pages/loans/index.vue
+@@ -0,0 +1,16 @@
++<script setup lang="ts">
++const { data } = await useFetch('/api/loans')
++const columns = [
++  { key: 'account', label: 'Account' }, { key: 'client', label: 'Borrower' }, { key: 'product', label: 'Product' }, { key: 'status', label: 'Status' },
++  { key: 'principal', label: 'Principal' }, { key: 'outstanding', label: 'Outstanding' }, { key: 'overdue', label: 'Overdue' }, { key: 'officer', label: 'Loan officer' }
++]
++</script>
++
++<template>
++  <PanelShell id="loans" title="Loans">
++    <PageTable :rows="data" :columns="columns" :to="(r: any) => `/loans/${r.id}`" placeholder="Search borrower, account, product…">
++      <template #status="{ row }"><UBadge :color="row.active ? 'success' : 'neutral'" variant="subtle">{{ row.status }}</UBadge></template>
++      <template #overdue="{ row }"><span :class="row.overdue ? 'text-error font-medium' : ''">{{ row.overdue || '—' }}</span></template>
++    </PageTable>
++  </PanelShell>
++</template>
+diff --git a/data/contacts.json b/data/contacts.json
+new file mode 100644
+index 0000000..e528e91
+--- /dev/null
++++ b/data/contacts.json
+@@ -0,0 +1,5 @@
++{
++  "_help": "WhatsApp numbers for updates. investors: key = Fineract external asset owner id. collectors: key = Fineract staff id (loan officer); without an entry the officer's mobile number in Fineract is used.",
++  "investors": {},
++  "collectors": {}
++}
+diff --git a/nuxt.config.ts b/nuxt.config.ts
+index 76d0135..390db35 100644
+--- a/nuxt.config.ts
++++ b/nuxt.config.ts
+@@ -12,12 +12,26 @@ export default defineNuxtConfig({
+ 
+   css: ['~/assets/css/main.css'],
+ 
+-  routeRules: {
+-    '/api/**': {
+-      cors: true
+-    }
++  runtimeConfig: {
++    // Apache Fineract (lending / core banking); defaults point at the public Mifos demo
++    fineractUrl: process.env.FINERACT_URL || 'https://demo.mifos.community/fineract-provider/api/v1',
++    fineractTenant: process.env.FINERACT_TENANT || 'default',
++    fineractUser: process.env.FINERACT_USER || 'mifos',
++    fineractPassword: process.env.FINERACT_PASSWORD || 'password',
++    // WhatsApp Business Cloud API (official); without a token, updates are recorded but not sent
++    whatsappToken: process.env.WHATSAPP_TOKEN || '',
++    whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
++    whatsappApiVersion: process.env.WHATSAPP_API_VERSION || 'v21.0',
++    whatsappLanguage: process.env.WHATSAPP_LANGUAGE || 'en',
++    whatsappDefaultCc: process.env.WHATSAPP_DEFAULT_CC || '91',
++    // shared secret for /api/webhooks/fineract and /api/notify/overdue (machine calls)
++    webhookSecret: process.env.WEBHOOK_SECRET || '',
++    // portal login (HTTP Basic); leave empty only on localhost
++    portalUser: process.env.PORTAL_USER || 'admin',
++    portalPassword: process.env.PORTAL_PASSWORD || ''
+   },
+ 
++
+   compatibilityDate: '2026-06-30',
+ 
+   eslint: {
+diff --git a/server/api/calc.post.ts b/server/api/calc.post.ts
+new file mode 100644
+index 0000000..00801cb
+--- /dev/null
++++ b/server/api/calc.post.ts
+@@ -0,0 +1,13 @@
++import { emi, schedule, flat, prepay, eligibility } from '~~/server/utils/finance'
++
++export default defineEventHandler(async (event) => {
++  const b = await readBody<Record<string, any>>(event)
++  const P = Number(b.principal), R = Number(b.rate), N = Number(b.months)
++  switch (b.kind) {
++    case 'emi': { const rows = schedule(P, R, N); const total = rows.reduce((s, r) => s + r.emi, 0); return { emi: Math.round(emi(P, R, N) * 100) / 100, totalInterest: Math.round((total - P) * 100) / 100, total: Math.round(total * 100) / 100, schedule: rows } }
++    case 'flat': return { ...flat(P, R, N), reducingEmi: Math.round(emi(P, R, N) * 100) / 100 }
++    case 'prepay': return prepay(P, R, N, Number(b.afterMonth), Number(b.amount))
++    case 'eligibility': return eligibility(Number(b.income), Number(b.existingEmis ?? 0), R, N, Number(b.foir ?? 50))
++    default: throw createError({ statusCode: 400, statusMessage: 'kind must be emi, flat, prepay or eligibility' })
++  }
++})
+diff --git a/server/api/collections.get.ts b/server/api/collections.get.ts
+new file mode 100644
+index 0000000..6acf304
+--- /dev/null
++++ b/server/api/collections.get.ts
+@@ -0,0 +1,12 @@
++import { allLoans, isActive, outstandingOf, overdueOf, money } from '~~/server/utils/fineract'
++
++/** Overdue loans, largest first: the collectors' worklist. */
++export default defineCachedEventHandler(async () => {
++  return (await allLoans()).filter(l => isActive(l) && overdueOf(l) > 0)
++    .sort((a, b) => overdueOf(b) - overdueOf(a))
++    .map(l => ({
++      id: l.id, account: l.accountNo, client: l.clientName ?? '', officer: l.loanOfficerName ?? 'unassigned',
++      overdue: money(overdueOf(l), l.currency?.code), outstanding: money(outstandingOf(l), l.currency?.code),
++      daysOverdue: l.summary?.overdueSinceDate ? Math.max(0, Math.round((Date.now() - new Date(...(l.summary.overdueSinceDate as [number, number, number]).map((v: number, i: number) => (i === 1 ? v - 1 : v)) as [number, number, number]).getTime()) / 86400000)) : null
++    }))
++}, { maxAge: 60 })
+diff --git a/server/api/investors.get.ts b/server/api/investors.get.ts
+new file mode 100644
+index 0000000..8528942
+--- /dev/null
++++ b/server/api/investors.get.ts
+@@ -0,0 +1,17 @@
++import { allLoans, isActive, outstandingOf, money, ownerOf } from '~~/server/utils/fineract'
++import { contacts } from '~~/server/utils/contacts'
++
++/** Loans owned by external investors (Fineract asset externalization), grouped by investor. */
++export default defineCachedEventHandler(async () => {
++  const active = (await allLoans(200)).filter(isActive)
++  const owners = await Promise.all(active.map(async l => ({ l, o: await ownerOf(l.id) })))
++  const book = contacts().investors
++  const byOwner = new Map<string, { loans: number; outstanding: number; currency: string }>()
++  for (const { l, o } of owners) {
++    const key = `${o?.owner || '(platform)'}|${l.currency?.code ?? 'INR'}`
++    const cur = byOwner.get(key) ?? { loans: 0, outstanding: 0, currency: l.currency?.code ?? 'INR' }
++    cur.loans++; cur.outstanding += outstandingOf(l)
++    byOwner.set(key, cur)
++  }
++  return [...byOwner.entries()].map(([k, v]) => { const owner = k.split('|')[0]; return { owner, currency: v.currency, name: book[owner]?.name ?? (owner === '(platform)' ? 'Platform (not sold)' : owner), whatsapp: book[owner]?.phone ?? '', loans: v.loans, outstanding: money(v.outstanding, v.currency) } })
++}, { maxAge: 300 })
+diff --git a/server/api/loans.get.ts b/server/api/loans.get.ts
+new file mode 100644
+index 0000000..54c4360
+--- /dev/null
++++ b/server/api/loans.get.ts
+@@ -0,0 +1,17 @@
++import { allLoans, outstandingOf, overdueOf, money, fdate } from '~~/server/utils/fineract'
++
++export default defineCachedEventHandler(async () => {
++  return (await allLoans()).map(l => ({
++    id: l.id,
++    account: l.accountNo,
++    client: l.clientName ?? '',
++    product: l.loanProductName ?? '',
++    status: l.status?.value ?? '',
++    active: !!l.status?.active,
++    principal: money(Number(l.principal), l.currency?.code),
++    outstanding: money(outstandingOf(l), l.currency?.code),
++    overdue: overdueOf(l) > 0 ? money(overdueOf(l), l.currency?.code) : '',
++    officer: l.loanOfficerName ?? '',
++    disbursed: fdate(l.timeline?.actualDisbursementDate)
++  }))
++}, { maxAge: 60 })
+diff --git a/server/api/loans/[id].get.ts b/server/api/loans/[id].get.ts
+new file mode 100644
+index 0000000..ed0923b
+--- /dev/null
++++ b/server/api/loans/[id].get.ts
+@@ -0,0 +1,18 @@
++import { fineract, money, fdate, ownerOf } from '~~/server/utils/fineract'
++
++export default defineEventHandler(async (event) => {
++  const id = getRouterParam(event, 'id')
++  const l = await fineract<any>(`/loans/${id}`, { query: { associations: 'repaymentSchedule,transactions' } })
++  const cur = l.currency?.code
++  return {
++    id: l.id, account: l.accountNo, client: l.clientName, product: l.loanProductName, status: l.status?.value,
++    officer: l.loanOfficerName ?? '', rate: `${l.interestRatePerPeriod}% ${l.interestRateFrequencyType?.value ?? ''}`.trim(),
++    principal: money(Number(l.principal), cur), outstanding: money(Number(l.summary?.totalOutstanding ?? 0), cur), overdue: money(Number(l.summary?.totalOverdue ?? 0), cur),
++    investor: await ownerOf(l.id),
++    schedule: (l.repaymentSchedule?.periods ?? []).filter((p: any) => p.period).map((p: any) => ({
++      period: p.period, due: fdate(p.dueDate), principal: money(Number(p.principalDue ?? 0), cur), interest: money(Number(p.interestDue ?? 0), cur),
++      total: money(Number(p.totalDueForPeriod ?? 0), cur), paid: money(Number(p.totalPaidForPeriod ?? 0), cur), status: p.complete ? 'paid' : (p.totalOverdue ?? 0) > 0 ? 'overdue' : 'due'
++    })),
++    transactions: (l.transactions ?? []).slice(-20).reverse().map((t: any) => ({ date: fdate(t.date), type: t.type?.value, amount: money(Number(t.amount ?? 0), cur) }))
++  }
++})
+diff --git a/server/api/notifications.ts b/server/api/notifications.ts
+index 7e27941..51ce7b5 100644
+--- a/server/api/notifications.ts
++++ b/server/api/notifications.ts
+@@ -1,256 +1,10 @@
+-import { sub } from 'date-fns'
++// The dashboard's notifications: WhatsApp updates sent (or recorded in dry-run mode).
++import { sentLog } from '~~/server/utils/whatsapp'
+ 
+-const notifications = [{
+-  id: 1,
++export default eventHandler(() => sentLog().slice(0, 50).map(s => ({
++  id: s.id,
+   unread: true,
+-  sender: {
+-    name: 'Jordan Brown',
+-    email: 'jordan.brown@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=2'
+-    }
+-  },
+-  body: 'sent you a message',
+-  date: sub(new Date(), { minutes: 7 }).toISOString()
+-}, {
+-  id: 2,
+-  sender: {
+-    name: 'Lindsay Walton'
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { hours: 1 }).toISOString()
+-}, {
+-  id: 3,
+-  unread: true,
+-  sender: {
+-    name: 'Taylor Green',
+-    email: 'taylor.green@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=3'
+-    }
+-  },
+-  body: 'sent you a message',
+-  date: sub(new Date(), { hours: 3 }).toISOString()
+-}, {
+-  id: 4,
+-  sender: {
+-    name: 'Courtney Henry',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=4'
+-    }
+-  },
+-  body: 'added you to a project',
+-  date: sub(new Date(), { hours: 3 }).toISOString()
+-}, {
+-  id: 5,
+-  sender: {
+-    name: 'Tom Cook',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=5'
+-    }
+-  },
+-  body: 'abandonned cart',
+-  date: sub(new Date(), { hours: 7 }).toISOString()
+-}, {
+-  id: 6,
+-  sender: {
+-    name: 'Casey Thomas',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=6'
+-    }
+-  },
+-  body: 'purchased your product',
+-  date: sub(new Date(), { days: 1, hours: 3 }).toISOString()
+-}, {
+-  id: 7,
+-  unread: true,
+-  sender: {
+-    name: 'Kelly Wilson',
+-    email: 'kelly.wilson@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=8'
+-    }
+-  },
+-  body: 'sent you a message',
+-  date: sub(new Date(), { days: 2 }).toISOString()
+-}, {
+-  id: 8,
+-  sender: {
+-    name: 'Jamie Johnson',
+-    email: 'jamie.johnson@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=9'
+-    }
+-  },
+-  body: 'requested a refund',
+-  date: sub(new Date(), { days: 5, hours: 4 }).toISOString()
+-}, {
+-  id: 9,
+-  unread: true,
+-  sender: {
+-    name: 'Morgan Anderson',
+-    email: 'morgan.anderson@example.com'
+-  },
+-  body: 'sent you a message',
+-  date: sub(new Date(), { days: 6 }).toISOString()
+-}, {
+-  id: 10,
+-  sender: {
+-    name: 'Drew Moore'
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 6 }).toISOString()
+-}, {
+-  id: 11,
+-  sender: {
+-    name: 'Riley Davis'
+-  },
+-  body: 'abandonned cart',
+-  date: sub(new Date(), { days: 7 }).toISOString()
+-}, {
+-  id: 12,
+-  sender: {
+-    name: 'Jordan Taylor'
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 9 }).toISOString()
+-}, {
+-  id: 13,
+-  sender: {
+-    name: 'Kelly Wilson',
+-    email: 'kelly.wilson@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=8'
+-    }
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 10 }).toISOString()
+-}, {
+-  id: 14,
+-  sender: {
+-    name: 'Jamie Johnson',
+-    email: 'jamie.johnson@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=9'
+-    }
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 11 }).toISOString()
+-}, {
+-  id: 15,
+-  sender: {
+-    name: 'Morgan Anderson'
+-  },
+-  body: 'purchased your product',
+-  date: sub(new Date(), { days: 12 }).toISOString()
+-}, {
+-  id: 16,
+-  sender: {
+-    name: 'Drew Moore',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=16'
+-    }
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 13 }).toISOString()
+-}, {
+-  id: 17,
+-  sender: {
+-    name: 'Riley Davis'
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 14 }).toISOString()
+-}, {
+-  id: 18,
+-  sender: {
+-    name: 'Jordan Taylor'
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 15 }).toISOString()
+-}, {
+-  id: 19,
+-  sender: {
+-    name: 'Kelly Wilson',
+-    email: 'kelly.wilson@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=8'
+-    }
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 16 }).toISOString()
+-}, {
+-  id: 20,
+-  sender: {
+-    name: 'Jamie Johnson',
+-    email: 'jamie.johnson@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=9'
+-    }
+-  },
+-  body: 'purchased your product',
+-  date: sub(new Date(), { days: 17 }).toISOString()
+-}, {
+-  id: 21,
+-  sender: {
+-    name: 'Morgan Anderson'
+-  },
+-  body: 'abandonned cart',
+-  date: sub(new Date(), { days: 17 }).toISOString()
+-}, {
+-  id: 22,
+-  sender: {
+-    name: 'Drew Moore'
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 18 }).toISOString()
+-}, {
+-  id: 23,
+-  sender: {
+-    name: 'Riley Davis'
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 19 }).toISOString()
+-}, {
+-  id: 24,
+-  sender: {
+-    name: 'Jordan Taylor',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=24'
+-    }
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 20 }).toISOString()
+-}, {
+-  id: 25,
+-  sender: {
+-    name: 'Kelly Wilson',
+-    email: 'kelly.wilson@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=8'
+-    }
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 20 }).toISOString()
+-}, {
+-  id: 26,
+-  sender: {
+-    name: 'Jamie Johnson',
+-    email: 'jamie.johnson@example.com',
+-    avatar: {
+-      src: 'https://i.pravatar.cc/128?u=9'
+-    }
+-  },
+-  body: 'abandonned cart',
+-  date: sub(new Date(), { days: 21 }).toISOString()
+-}, {
+-  id: 27,
+-  sender: {
+-    name: 'Morgan Anderson'
+-  },
+-  body: 'subscribed to your email list',
+-  date: sub(new Date(), { days: 22 }).toISOString()
+-}]
+-
+-export default eventHandler(async () => {
+-  return notifications
+-})
++  sender: { name: `WhatsApp → ${s.role} ${s.to}` },
++  body: `${s.status === 'dry-run' ? '[dry run] ' : s.status === 'failed' ? `[failed: ${s.error}] ` : ''}${s.text}`,
++  date: s.at
++})))
+diff --git a/server/api/notify/overdue.post.ts b/server/api/notify/overdue.post.ts
+new file mode 100644
+index 0000000..89973af
+--- /dev/null
++++ b/server/api/notify/overdue.post.ts
+@@ -0,0 +1,12 @@
++// Overdue reminders to borrowers, collectors and investors. Run daily (e.g. stitaP /cron, or any scheduler):
++//   curl -X POST https://<portal>/api/notify/overdue?secret=<WEBHOOK_SECRET>
++import { allLoans, isActive, overdueOf } from '~~/server/utils/fineract'
++import { notifyOverdue } from '~~/server/utils/notify'
++
++export default defineEventHandler(async (event) => {
++  // access is checked in server/middleware/auth.ts (portal login, or ?secret= for machine calls)
++  const { limit = 50 } = getQuery(event) as { limit?: number }
++  const due = (await allLoans()).filter(l => isActive(l) && overdueOf(l) > 0).slice(0, Number(limit))
++  const sent = (await Promise.all(due.map(l => notifyOverdue(l)))).flat()
++  return { loans: due.length, messages: sent.length, dryRun: sent.every(s => s.status === 'dry-run') }
++})
+diff --git a/server/api/portfolio.get.ts b/server/api/portfolio.get.ts
+new file mode 100644
+index 0000000..c7d7c80
+--- /dev/null
++++ b/server/api/portfolio.get.ts
+@@ -0,0 +1,32 @@
++import { allLoans, isActive, outstandingOf, overdueOf, money } from '~~/server/utils/fineract'
++
++/** Portfolio figures per currency (amounts in different currencies are never added together). */
++export default defineCachedEventHandler(async () => {
++  const loans = await allLoans()
++  const byCur = new Map<string, any[]>()
++  for (const l of loans) { const c = l.currency?.code ?? '?'; byCur.set(c, [...(byCur.get(c) ?? []), l]) }
++  const totals = [...byCur.entries()].map(([currency, ls]) => {
++    const active = ls.filter(isActive)
++    const outstanding = active.reduce((s, l) => s + outstandingOf(l), 0)
++    const overdueLoans = active.filter(l => overdueOf(l) > 0)
++    const atRisk = overdueLoans.reduce((s, l) => s + outstandingOf(l), 0)
++    return {
++      currency, loans: ls.length, active: active.length, overdueLoans: overdueLoans.length,
++      outstanding: money(outstanding, currency), overdue: money(overdueLoans.reduce((s, l) => s + overdueOf(l), 0), currency),
++      par: outstanding ? `${((atRisk / outstanding) * 100).toFixed(1)}%` : '0%',
++      disbursed: money(ls.reduce((s, l) => s + Number(l.summary?.principalDisbursed ?? 0), 0), currency)
++    }
++  }).sort((a, b) => b.active - a.active)
++  const main = totals[0]
++  return {
++    currency: main?.currency ?? 'INR',
++    stats: main ? [
++      { title: `Active loans (${main.currency})`, icon: 'i-lucide-landmark', value: String(main.active), to: '/loans' },
++      { title: 'Outstanding', icon: 'i-lucide-wallet', value: main.outstanding, to: '/loans' },
++      { title: 'Overdue', icon: 'i-lucide-alarm-clock', value: main.overdue, to: '/collections' },
++      { title: 'Portfolio at risk', icon: 'i-lucide-triangle-alert', value: main.par, to: '/collections' }
++    ] : [],
++    totals,
++    byStatus: Object.entries(loans.reduce((m: Record<string, number>, l) => ((m[l.status?.value ?? '?'] = (m[l.status?.value ?? '?'] ?? 0) + 1), m), {})).map(([status, count]) => ({ status, count }))
++  }
++}, { maxAge: 60 })
+diff --git a/server/api/webhooks/fineract.post.ts b/server/api/webhooks/fineract.post.ts
+new file mode 100644
+index 0000000..ab37806
+--- /dev/null
++++ b/server/api/webhooks/fineract.post.ts
+@@ -0,0 +1,16 @@
++// Fineract "Web" hook → WhatsApp updates. Register in Fineract: System > Manage Hooks > Web template,
++// Payload URL = https://<this-portal>/api/webhooks/fineract?secret=<WEBHOOK_SECRET>, events: LOAN DISBURSE, LOAN REPAYMENT (…).
++import { notifyLoanEvent } from '~~/server/utils/notify'
++
++export default defineEventHandler(async (event) => {
++  // access is checked in server/middleware/auth.ts (portal login, or ?secret= for machine calls)
++  const entity = String(getHeader(event, 'x-fineract-entity') ?? '').toUpperCase()
++  const action = String(getHeader(event, 'x-fineract-action') ?? '').toUpperCase()
++  const body = await readBody<Record<string, any>>(event).catch(() => ({} as Record<string, any>))
++  if (entity && entity !== 'LOAN') return { ignored: `${entity} ${action}` }
++  const loanId = body.loanId ?? body.resourceId ?? body.subResourceId
++  if (!loanId) return { ignored: 'no loanId in payload' }
++  const amount = Number(body.changes?.transactionAmount ?? body.transactionAmount ?? 0) || undefined
++  const sent = await notifyLoanEvent(action || 'STATUS', loanId, amount)
++  return { ok: true, sent: sent.map(s => ({ to: s.to, role: s.role, template: s.template, status: s.status })) }
++})
+diff --git a/server/middleware/auth.ts b/server/middleware/auth.ts
+new file mode 100644
+index 0000000..3bf8752
+--- /dev/null
++++ b/server/middleware/auth.ts
+@@ -0,0 +1,22 @@
++// The portal shows borrowers' loans and can message them: everything needs a login (HTTP Basic, PORTAL_USER /
++// PORTAL_PASSWORD). Machine calls — Fineract's hook and the daily reminder job — use ?secret=WEBHOOK_SECRET instead.
++import { timingSafeEqual } from 'node:crypto'
++
++const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b))
++let warned = false
++
++export default defineEventHandler((event) => {
++  const c = useRuntimeConfig()
++  const path = event.path || ''
++  const machine = /^\/api\/(webhooks|notify)\//.test(path)
++  const secret = String(getQuery(event).secret ?? '')
++  if (machine && c.webhookSecret && secret && same(secret, String(c.webhookSecret))) return
++  if (!c.portalPassword) {
++    if (!warned) { console.warn('[lending] PORTAL_PASSWORD is not set: the portal is open to anyone who can reach it (fine on localhost only)'); warned = true }
++    return
++  }
++  const [user, pass] = Buffer.from(String(getHeader(event, 'authorization') ?? '').replace(/^Basic\s+/i, ''), 'base64').toString().split(':')
++  if (user && pass !== undefined && same(user, String(c.portalUser || 'admin')) && same(pass, String(c.portalPassword))) return
++  setResponseHeader(event, 'WWW-Authenticate', 'Basic realm="Lending portal"')
++  throw createError({ statusCode: 401, statusMessage: 'Login required' })
++})
+diff --git a/server/utils/contacts.ts b/server/utils/contacts.ts
+new file mode 100644
+index 0000000..8849ba6
+--- /dev/null
++++ b/server/utils/contacts.ts
+@@ -0,0 +1,15 @@
++// Who gets which update. Borrowers' numbers come from Fineract (client mobileNo); collectors are the loan officer
++// (Fineract staff mobileNo) unless overridden here; investors are external asset owners mapped to a number here.
++import { readFileSync, existsSync } from 'node:fs'
++import { join } from 'node:path'
++
++export interface Contacts { investors: Record<string, { name: string; phone: string }>; collectors: Record<string, { name: string; phone: string }> }
++
++export function contacts(): Contacts {
++  const f = join(process.cwd(), 'data', 'contacts.json')
++  try {
++    return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : { investors: {}, collectors: {} }
++  } catch {
++    return { investors: {}, collectors: {} }
++  }
++}
+diff --git a/server/utils/finance.ts b/server/utils/finance.ts
+new file mode 100644
+index 0000000..ccc8cc8
+--- /dev/null
++++ b/server/utils/finance.ts
+@@ -0,0 +1,61 @@
++// Loan arithmetic used by the calculators and reminders (same formulas as stitaP's finance_calc tool).
++
++/** EMI for a reducing-balance loan: P·r·(1+r)^n / ((1+r)^n − 1), r = monthly rate. */
++export function emi(principal: number, annualRatePct: number, months: number): number {
++  const r = annualRatePct / 12 / 100
++  if (!months) return 0
++  if (r === 0) return principal / months
++  const f = Math.pow(1 + r, months)
++  return (principal * r * f) / (f - 1)
++}
++
++export interface Row { month: number; emi: number; interest: number; principal: number; balance: number }
++
++export function schedule(principal: number, annualRatePct: number, months: number): Row[] {
++  const r = annualRatePct / 12 / 100
++  const e = emi(principal, annualRatePct, months)
++  const rows: Row[] = []
++  let bal = principal
++  for (let m = 1; m <= months; m++) {
++    const interest = bal * r
++    const princ = m === months ? bal : e - interest
++    bal = Math.max(0, bal - princ)
++    rows.push({ month: m, emi: round(princ + interest), interest: round(interest), principal: round(princ), balance: round(bal) })
++  }
++  return rows
++}
++
++/** Flat interest: interest on the full principal for the whole term. */
++export function flat(principal: number, annualRatePct: number, months: number) {
++  const interest = principal * annualRatePct / 100 * months / 12
++  return { emi: round((principal + interest) / months), totalInterest: round(interest), total: round(principal + interest) }
++}
++
++/** Part-prepayment after `afterMonth` EMIs: keep the EMI and shorten the term, or keep the term and lower the EMI. */
++export function prepay(principal: number, annualRatePct: number, months: number, afterMonth: number, amount: number) {
++  const rows = schedule(principal, annualRatePct, months)
++  const paid = rows.slice(0, afterMonth)
++  const bal = Math.max(0, (rows[afterMonth - 1]?.balance ?? principal) - amount)
++  const e = emi(principal, annualRatePct, months)
++  const r = annualRatePct / 12 / 100
++  const left = months - afterMonth
++  const newMonths = r === 0 ? Math.ceil(bal / e) : Math.ceil(-Math.log(1 - (bal * r) / e) / Math.log(1 + r))
++  const before = rows.reduce((s, x) => s + x.interest, 0)
++  const paidInterest = paid.reduce((s, x) => s + x.interest, 0)
++  const shorter = paidInterest + schedule(bal, annualRatePct, newMonths).reduce((s, x) => s + x.interest, 0)
++  const lower = paidInterest + schedule(bal, annualRatePct, left).reduce((s, x) => s + x.interest, 0)
++  return {
++    balanceAfterPrepayment: round(bal),
++    keepEmi: { months: afterMonth + newMonths, monthsSaved: left - newMonths, interestSaved: round(before - shorter) },
++    keepTerm: { newEmi: round(emi(bal, annualRatePct, left)), interestSaved: round(before - lower) }
++  }
++}
++
++/** Largest loan whose EMI keeps total obligations within `foirPct` of income (FOIR, used by Indian lenders/NBFCs). */
++export function eligibility(monthlyIncome: number, existingEmis: number, annualRatePct: number, months: number, foirPct = 50) {
++  const room = Math.max(0, monthlyIncome * foirPct / 100 - existingEmis)
++  const perRupee = emi(1, annualRatePct, months)
++  return { maxEmi: round(room), maxLoan: round(perRupee ? room / perRupee : 0) }
++}
++
++const round = (n: number) => Math.round(n * 100) / 100
+diff --git a/server/utils/fineract.ts b/server/utils/fineract.ts
+new file mode 100644
+index 0000000..8bd6f53
+--- /dev/null
++++ b/server/utils/fineract.ts
+@@ -0,0 +1,56 @@
++// Apache Fineract (core banking / lending) REST client. Credentials stay on the server.
++import { createError } from 'h3'
++
++type Doc = Record<string, any>
++
++function cfg() {
++  const c = useRuntimeConfig()
++  return {
++    base: String(c.fineractUrl || 'https://demo.mifos.community/fineract-provider/api/v1').replace(/\/+$/, ''),
++    tenant: String(c.fineractTenant || 'default'),
++    auth: 'Basic ' + Buffer.from(`${c.fineractUser || 'mifos'}:${c.fineractPassword || 'password'}`).toString('base64')
++  }
++}
++
++export async function fineract<T = Doc>(path: string, opts: { method?: 'GET' | 'POST' | 'PUT'; query?: Record<string, any>; body?: any } = {}): Promise<T> {
++  const { base, tenant, auth } = cfg()
++  try {
++    return await $fetch<T>(`${base}${path}`, { method: opts.method ?? 'GET', query: opts.query, body: opts.body, headers: { 'Authorization': auth, 'Fineract-Platform-TenantId': tenant }, timeout: 30000 })
++  } catch (error: any) {
++    throw createError({ statusCode: error?.statusCode || 502, statusMessage: error?.data?.defaultUserMessage || error?.data?.errors?.[0]?.defaultUserMessage || error?.message || 'Fineract request failed' })
++  }
++}
++
++/** Loans with their summaries (outstanding, overdue). Fineract pages with offset/limit. */
++export async function allLoans(max = 500): Promise<Doc[]> {
++  const out: Doc[] = []
++  for (let offset = 0; out.length < max; offset += 200) {
++    const page = await fineract<{ pageItems?: Doc[] }>('/loans', { query: { offset, limit: 200 } })
++    const items = page.pageItems ?? []
++    out.push(...items)
++    if (items.length < 200) break
++  }
++  return out.slice(0, max)
++}
++
++export const isActive = (l: Doc) => !!l.status?.active
++export const overdueOf = (l: Doc) => Number(l.summary?.totalOverdue ?? 0)
++export const outstandingOf = (l: Doc) => Number(l.summary?.totalOutstanding ?? 0)
++
++export function money(n: number, currency = 'INR') {
++  return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n || 0)
++}
++
++/** Fineract dates come as [yyyy, m, d]. */
++export const fdate = (d: any) => (Array.isArray(d) ? `${d[0]}-${String(d[1]).padStart(2, '0')}-${String(d[2]).padStart(2, '0')}` : d ?? '')
++
++/** Current investor (external asset owner) of a loan, if it was sold. */
++export async function ownerOf(loanId: number | string): Promise<{ owner: string; status: string } | null> {
++  try {
++    const r = await fineract<{ content?: Doc[] }>(`/external-asset-owners/transfers`, { query: { loanId } })
++    const t = (r.content ?? []).find((x) => x.status === 'ACTIVE') ?? null
++    return t ? { owner: String(t.owner?.externalId ?? t.ownerExternalId ?? ''), status: t.status } : null
++  } catch {
++    return null
++  }
++}
+diff --git a/server/utils/notify.ts b/server/utils/notify.ts
+new file mode 100644
+index 0000000..9be779f
+--- /dev/null
++++ b/server/utils/notify.ts
+@@ -0,0 +1,71 @@
++// Turns lending events into WhatsApp updates for the borrower, the investor who owns the loan, and the collector.
++// Template names and their {{n}} parameters must match templates approved in WhatsApp Manager (see README-LENDING.md).
++import { fineract, money, fdate, ownerOf } from './fineract'
++import { contacts } from './contacts'
++import { normalizePhone, sendTemplate, type Sent } from './whatsapp'
++
++type Doc = Record<string, any>
++
++interface People { borrower?: { name: string; phone: string | null }; collector?: { name: string; phone: string | null }; investor?: { name: string; phone: string | null } }
++
++async function peopleOf(loan: Doc): Promise<People> {
++  const book = contacts()
++  const client = loan.clientId ? await fineract<Doc>(`/clients/${loan.clientId}`).catch(() => null) : null
++  let collector: People['collector']
++  if (loan.loanOfficerId) {
++    const o = book.collectors[String(loan.loanOfficerId)]
++    const staff = o ? null : await fineract<Doc>(`/staff/${loan.loanOfficerId}`).catch(() => null)
++    collector = { name: o?.name ?? loan.loanOfficerName ?? staff?.displayName ?? 'Collector', phone: normalizePhone(o?.phone ?? staff?.mobileNo) }
++  }
++  const own = await ownerOf(loan.id)
++  const inv = own ? book.investors[own.owner] : undefined
++  return {
++    borrower: { name: client?.displayName ?? loan.clientName ?? 'Customer', phone: normalizePhone(client?.mobileNo) },
++    collector,
++    investor: inv ? { name: inv.name, phone: normalizePhone(inv.phone) } : undefined
++  }
++}
++
++async function send(p: { name: string; phone: string | null } | undefined, role: string, template: string, params: string[], preview: string, out: Sent[]) {
++  if (!p?.phone) return
++  out.push(await sendTemplate(p.phone, role, template, params, preview))
++}
++
++/** A Fineract event on a loan (from the Web hook): DISBURSE, REPAYMENT, APPROVE, … */
++export async function notifyLoanEvent(action: string, loanId: number | string, amount?: number): Promise<Sent[]> {
++  const loan = await fineract<Doc>(`/loans/${loanId}`, { query: { associations: 'repaymentSchedule' } })
++  const cur = loan.currency?.code ?? 'INR'
++  const ppl = await peopleOf(loan)
++  const out: Sent[] = []
++  const acct = String(loan.accountNo)
++  const outstanding = money(Number(loan.summary?.totalOutstanding ?? 0), cur)
++  const a = action.toUpperCase()
++  if (a === 'DISBURSE') {
++    const next = (loan.repaymentSchedule?.periods ?? []).find((x: Doc) => x.period && !x.complete)
++    const amt = money(Number(loan.principal), cur)
++    const due = next ? `${money(Number(next.totalDueForPeriod), cur)} on ${fdate(next.dueDate)}` : '-'
++    await send(ppl.borrower, 'borrower', 'loan_disbursed', [ppl.borrower?.name ?? '', amt, acct, due], `Hi ${ppl.borrower?.name}, your loan ${acct} of ${amt} is disbursed. First instalment: ${due}.`, out)
++    await send(ppl.investor, 'investor', 'investor_update', [ppl.investor?.name ?? '', acct, 'disbursed', amt], `Loan ${acct} you fund was disbursed: ${amt}.`, out)
++  } else if (a === 'REPAYMENT') {
++    const paid = money(Number(amount ?? 0), cur)
++    await send(ppl.borrower, 'borrower', 'payment_received', [ppl.borrower?.name ?? '', paid, acct, outstanding], `Thank you ${ppl.borrower?.name}: ${paid} received for loan ${acct}. Outstanding: ${outstanding}.`, out)
++    await send(ppl.investor, 'investor', 'investor_update', [ppl.investor?.name ?? '', acct, 'repayment received', paid], `Repayment of ${paid} received on loan ${acct}.`, out)
++    await send(ppl.collector, 'collector', 'collection_update', [ppl.collector?.name ?? '', ppl.borrower?.name ?? '', paid, outstanding], `${ppl.borrower?.name} paid ${paid} on ${acct}; outstanding ${outstanding}.`, out)
++  } else {
++    await send(ppl.borrower, 'borrower', 'loan_status', [ppl.borrower?.name ?? '', acct, loan.status?.value ?? a], `Loan ${acct}: ${loan.status?.value ?? a}.`, out)
++  }
++  return out
++}
++
++/** Overdue reminders: borrower, collector (with the borrower's number) and investor. */
++export async function notifyOverdue(loan: Doc): Promise<Sent[]> {
++  const cur = loan.currency?.code ?? 'INR'
++  const overdue = money(Number(loan.summary?.totalOverdue ?? 0), cur)
++  const ppl = await peopleOf(loan)
++  const out: Sent[] = []
++  const acct = String(loan.accountNo)
++  await send(ppl.borrower, 'borrower', 'payment_overdue', [ppl.borrower?.name ?? '', overdue, acct], `Reminder: ${overdue} is overdue on your loan ${acct}.`, out)
++  await send(ppl.collector, 'collector', 'collector_overdue', [ppl.collector?.name ?? '', ppl.borrower?.name ?? '', ppl.borrower?.phone ?? '-', overdue, acct], `Follow up: ${ppl.borrower?.name} (${ppl.borrower?.phone ?? 'no number'}) owes ${overdue} on ${acct}.`, out)
++  await send(ppl.investor, 'investor', 'investor_update', [ppl.investor?.name ?? '', acct, 'overdue', overdue], `Loan ${acct} you fund is overdue: ${overdue}.`, out)
++  return out
++}
+diff --git a/server/utils/whatsapp.ts b/server/utils/whatsapp.ts
+new file mode 100644
+index 0000000..84707f9
+--- /dev/null
++++ b/server/utils/whatsapp.ts
+@@ -0,0 +1,51 @@
++// WhatsApp updates through Meta's official WhatsApp Business Cloud API.
++// Without WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID nothing is sent: messages are recorded (dry run) so the
++// flow can be tested; the log feeds the dashboard's notifications.
++
++export interface Sent { id: number; to: string; role: string; template: string; params: string[]; text: string; status: 'sent' | 'dry-run' | 'failed'; error?: string; at: string }
++
++const log: Sent[] = []
++let seq = 0
++
++export const sentLog = () => log.slice().reverse()
++
++/**
++ * WhatsApp wants the full international number without '+': 919876543210. "+…" or "00…" numbers are taken as
++ * international; a 10-digit local number (after dropping leading zeros) gets WHATSAPP_DEFAULT_CC (91); anything
++ * else is used as written (store numbers with their country code to avoid guessing).
++ */
++export function normalizePhone(raw: string | null | undefined): string | null {
++  const s = String(raw ?? '').trim()
++  if (/^(\+|00)/.test(s)) { const d = s.replace(/\D/g, '').replace(/^00/, ''); return d.length >= 8 ? d : null }
++  const local = s.replace(/\D/g, '').replace(/^0+/, '')
++  if (local.length < 8) return null
++  return local.length === 10 ? String(useRuntimeConfig().whatsappDefaultCc || '91') + local : local
++}
++
++/**
++ * Send an approved template message. Outside a 24-hour customer-service window WhatsApp only delivers
++ * pre-approved templates, so every update here is a template with numbered parameters ({{1}}, {{2}}…).
++ */
++export async function sendTemplate(to: string, role: string, template: string, params: string[], preview: string): Promise<Sent> {
++  const c = useRuntimeConfig()
++  const entry: Sent = { id: ++seq, to, role, template, params, text: preview, status: 'dry-run', at: new Date().toISOString() }
++  if (c.whatsappToken && c.whatsappPhoneNumberId) {
++    try {
++      await $fetch(`https://graph.facebook.com/${c.whatsappApiVersion || 'v21.0'}/${c.whatsappPhoneNumberId}/messages`, {
++        method: 'POST',
++        headers: { Authorization: `Bearer ${c.whatsappToken}` },
++        body: {
++          messaging_product: 'whatsapp', to, type: 'template',
++          template: { name: template, language: { code: c.whatsappLanguage || 'en' }, components: [{ type: 'body', parameters: params.map(text => ({ type: 'text', text })) }] }
++        }
++      })
++      entry.status = 'sent'
++    } catch (e: any) {
++      entry.status = 'failed'
++      entry.error = e?.data?.error?.message || e?.message
++    }
++  }
++  log.push(entry)
++  if (log.length > 500) log.shift()
++  return entry
++}

@@ -1,0 +1,454 @@
+{
+  "_about": "Ready-made site templates for site_template. Each entry is an upstream open-source project pinned to an exact version, plus our patch (packs/<id>.patch). Only permissive licenses (MIT, Apache-2.0, BSD) or file-level copyleft (MPL-2.0) are listed; keep the upstream LICENSE file in every generated project. status: adapted = patched and tested end to end; listed = pinned and license-checked, used as upstream ships it.",
+  "templates": [
+    {
+      "id": "ecommerce-next",
+      "title": "E-commerce store + headless CMS (Next.js, Payload)",
+      "category": "ecommerce",
+      "framework": "next",
+      "status": "adapted",
+      "license": "MIT",
+      "upstream": "https://github.com/payloadcms/payload/tree/main/templates/ecommerce",
+      "source": {
+        "type": "create",
+        "command": "npx -y create-payload-app@3.90.2 -n {name} -t ecommerce --db sqlite --db-connection-string file:./{name}.db --no-agent --use-npm --no-deps",
+        "creates": "{name}"
+      },
+      "patch": "packs/ecommerce-next.patch",
+      "env": {
+        "SITE_NAME": "{site_name}",
+        "COMPANY_NAME": "{company}"
+      },
+      "install": "npm install",
+      "dev": "npm run dev",
+      "port": 3000,
+      "provides": [
+        "products",
+        "variants",
+        "categories",
+        "carts",
+        "orders",
+        "customer accounts",
+        "admin panel at /admin",
+        "Stripe checkout",
+        "blog pages"
+      ],
+      "after_create": [
+        "Start it (dev) and open /admin to create the first admin user.",
+        "Demo content: log in, then POST /next/seed (or use the admin dashboard's seed button).",
+        "Products need inventory > 0 to be sold."
+      ]
+    },
+    {
+      "id": "ecommerce-nuxt",
+      "title": "E-commerce storefront (Nuxt/Vue) on the Payload CMS backend",
+      "category": "ecommerce",
+      "framework": "nuxt",
+      "status": "adapted",
+      "license": "MIT",
+      "upstream": "https://github.com/zackha/nuxtcommerce",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/zackha/nuxtcommerce",
+        "commit": "db4547113f47e9dd74a320d1fbdfc4db73c81676"
+      },
+      "patch": "packs/ecommerce-nuxt.patch",
+      "remove": [
+        "pnpm-lock.yaml",
+        ".wrangler",
+        "wrangler.toml",
+        ".github"
+      ],
+      "backend": "ecommerce-next",
+      "env": {
+        "PAYLOAD_URL": "{backend_url}",
+        "PAYLOAD_EMAIL": "{admin_email}",
+        "PAYLOAD_PASSWORD": "{admin_password}"
+      },
+      "install": "npm install",
+      "dev": "npx nuxt dev --port {port}",
+      "port": 3001,
+      "provides": [
+        "product grid, search, categories, colour/size variants",
+        "cart in the browser",
+        "cash-on-delivery checkout that creates Payload orders",
+        "wishlist",
+        "4 languages"
+      ],
+      "after_create": [
+        "Needs a running ecommerce-next backend (PAYLOAD_URL).",
+        "PAYLOAD_EMAIL / PAYLOAD_PASSWORD: an admin of that backend; the server uses it only to create orders."
+      ],
+      "replace": [
+        {
+          "file": "app/app.config.ts",
+          "find": "name: 'NuxtCommerce'",
+          "with": "name: '{site_name}'"
+        },
+        {
+          "file": "app/app.config.ts",
+          "find": "description: 'NuxtCommerce is a dynamic e-commerce solution developed with Nuxt 4 and GraphQL, tailored for WooCommerce.'",
+          "with": "description: '{description}'"
+        },
+        {
+          "file": "app/app.config.ts",
+          "find": "primary: 'red'",
+          "with": "primary: '{brand_color}'"
+        },
+        {
+          "file": "app/components/AppFooter.vue",
+          "find": "NuxtCommerce v{{",
+          "with": "{site_name} v{{"
+        }
+      ],
+      "defaults": {
+        "brand_color": "red",
+        "description": "{site_name}: shop online."
+      }
+    },
+    {
+      "id": "cms-strapi",
+      "title": "Headless CMS (Strapi 5, Community Edition) — content types and REST/GraphQL API for any front-end",
+      "category": "cms",
+      "framework": "node",
+      "status": "adapted",
+      "license": "MIT",
+      "upstream": "https://github.com/strapi/strapi",
+      "source": {
+        "type": "create",
+        "command": "npx -y create-strapi@5.56.0 {name} --non-interactive --skip-cloud --no-run --no-install --no-git-init --no-example --ts --dbclient sqlite --dbfile .tmp/data.db --use-npm",
+        "creates": "{name}"
+      },
+      "env": {
+        "PORT": "{port}"
+      },
+      "install": "npm install",
+      "dev": "npm run develop",
+      "port": 1337,
+      "provides": [
+        "admin panel at /admin",
+        "content types (strapi_cms create_type)",
+        "REST API /api/<type>",
+        "media library",
+        "users & permissions",
+        "i18n",
+        "SQLite by default (PostgreSQL/MySQL via config/database.ts)"
+      ],
+      "notes": "Community Edition is MIT as long as you do not use code under an ee/ folder (Enterprise features) or a Strapi Cloud account — the pack skips cloud login.",
+      "after_create": [
+        "npm install && npm run develop, then strapi_cms action=setup (email, password) creates the admin and an API token.",
+        "Add content types with strapi_cms action=create_type; manage entries with list/create/update/delete."
+      ]
+    },
+    {
+      "id": "website-next",
+      "title": "Company website + headless CMS (Next.js, Payload)",
+      "category": "website",
+      "framework": "next",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/payloadcms/payload/tree/main/templates/website",
+      "source": {
+        "type": "create",
+        "command": "npx -y create-payload-app@3.90.2 -n {name} -t website --db sqlite --db-connection-string file:./{name}.db --no-agent --use-npm --no-deps",
+        "creates": "{name}"
+      },
+      "install": "npm install",
+      "dev": "npm run dev",
+      "port": 3000,
+      "provides": [
+        "pages with layout blocks",
+        "posts",
+        "forms",
+        "SEO",
+        "search",
+        "admin panel"
+      ]
+    },
+    {
+      "id": "docs-next",
+      "title": "Documentation portal (Docusaurus, React)",
+      "category": "docs",
+      "framework": "react",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/facebook/docusaurus",
+      "source": {
+        "type": "create",
+        "command": "npx -y create-docusaurus@3.10.2 {name} classic --typescript --skip-install",
+        "creates": "{name}"
+      },
+      "install": "npm install",
+      "dev": "npm start -- --port {port}",
+      "port": 3002,
+      "provides": [
+        "docs with sidebar and versions",
+        "blog",
+        "search-ready",
+        "i18n"
+      ]
+    },
+    {
+      "id": "docs-nuxt",
+      "title": "Documentation portal (Nuxt UI docs template)",
+      "category": "docs",
+      "framework": "nuxt",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/nuxt-ui-templates/docs",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/nuxt-ui-templates/docs",
+        "commit": "4279708374c72f12171e13e6110af514da00fbb1"
+      },
+      "install": "npm install",
+      "dev": "npx nuxt dev --port {port}",
+      "port": 3002
+    },
+    {
+      "id": "landing-nuxt",
+      "title": "Landing page (Nuxt UI)",
+      "category": "website",
+      "framework": "nuxt",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/nuxt-ui-templates/landing",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/nuxt-ui-templates/landing",
+        "commit": "7e34b1ac8e6b88d827adfb71dce8b93201e8f647"
+      },
+      "install": "npm install",
+      "dev": "npx nuxt dev --port {port}",
+      "port": 3003
+    },
+    {
+      "id": "saas-nuxt",
+      "title": "SaaS site: pricing, blog, docs, auth pages (Nuxt UI)",
+      "category": "website",
+      "framework": "nuxt",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/nuxt-ui-templates/saas",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/nuxt-ui-templates/saas",
+        "commit": "4d989ba4cb600443614f306f8dd5e2244672efc1"
+      },
+      "install": "npm install",
+      "dev": "npx nuxt dev --port {port}",
+      "port": 3003
+    },
+    {
+      "id": "dashboard-nuxt",
+      "title": "Admin dashboard: customers, inbox, settings (Nuxt UI) — base for lending, IoT and back-office portals",
+      "category": "dashboard",
+      "framework": "nuxt",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/nuxt-ui-templates/dashboard",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/nuxt-ui-templates/dashboard",
+        "commit": "b7fae622413ccdc458dbd5733ef4435c8e96df91"
+      },
+      "install": "npm install",
+      "dev": "npx nuxt dev --port {port}",
+      "port": 3004
+    },
+    {
+      "id": "chat-nuxt",
+      "title": "Chat app UI with AI assistant (Nuxt UI + AI SDK)",
+      "category": "chat",
+      "framework": "nuxt",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/nuxt-ui-templates/chat",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/nuxt-ui-templates/chat",
+        "commit": "8c688a2acf75abab43ad78161075994e0b6c0565"
+      },
+      "install": "npm install",
+      "dev": "npx nuxt dev --port {port}",
+      "port": 3005
+    },
+    {
+      "id": "portfolio-nuxt",
+      "title": "Portfolio / personal site (Nuxt UI + Nuxt Content)",
+      "category": "website",
+      "framework": "nuxt",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/nuxt-ui-templates/portfolio",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/nuxt-ui-templates/portfolio",
+        "commit": "c2f0c9c501cd4b39e6976761c245187dbb9aafb4"
+      },
+      "install": "npm install",
+      "dev": "npx nuxt dev --port {port}",
+      "port": 3003
+    },
+    {
+      "id": "streaming-homehost",
+      "title": "Self-hosted Netflix-like streaming (movies, TV, music)",
+      "category": "streaming",
+      "framework": "react",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/ridhwaans/homehost",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/ridhwaans/homehost",
+        "commit": "31b4393291038c0f4da3ea03d6761eadc6b8adc7"
+      },
+      "notes": "Read its README for media folders and metadata API keys."
+    },
+    {
+      "id": "iot-mqtt-tiles",
+      "title": "IoT dashboard over MQTT: tiles to watch and control devices",
+      "category": "iot",
+      "framework": "vue",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/flespi-software/MQTT-Tiles",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/flespi-software/MQTT-Tiles",
+        "commit": "30f24402f02100699abbba14e70aeb310198a7d2"
+      },
+      "notes": "Needs an MQTT broker with WebSocket (wss) access, e.g. Mosquitto or EMQX."
+    },
+    {
+      "id": "ev-chargers-ocm",
+      "title": "EV charger finder app (Open Charge Map, Ionic/Angular)",
+      "category": "maps",
+      "framework": "angular",
+      "status": "listed",
+      "license": "MIT",
+      "upstream": "https://github.com/openchargemap/ocm-app",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/openchargemap/ocm-app",
+        "commit": "9ed6f943b0956bb23b6683cba2f32283dabea258"
+      },
+      "notes": "Uses the free Open Charge Map API (get an API key at openchargemap.org)."
+    },
+    {
+      "id": "lending-fineract",
+      "title": "Lending / NBFC / core banking backend (Apache Fineract)",
+      "category": "finance",
+      "framework": "java",
+      "status": "listed",
+      "license": "Apache-2.0",
+      "upstream": "https://github.com/apache/fineract",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/apache/fineract",
+        "commit": "3f9f2a24c94b1adfeb81205453b68a5415fe941d"
+      },
+      "notes": "Loan products, schedules, interest, repayments, savings, accounting, investors (asset externalization), hooks. Runs with Java 21 + PostgreSQL/MariaDB (docker compose in the repo). Front-ends: lending-portal-nuxt (portal + WhatsApp) or lending-mifos-web (full back office)."
+    },
+    {
+      "id": "lending-mifos-web",
+      "title": "Back-office web app for Fineract (Mifos X, Angular)",
+      "category": "finance",
+      "framework": "angular",
+      "status": "listed",
+      "license": "MPL-2.0",
+      "upstream": "https://github.com/openMF/web-app",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/openMF/web-app",
+        "commit": "0bef3c36f1b6be8aa41b1650546d84426a91b52f"
+      },
+      "notes": "MPL-2.0: files you modify stay MPL (publish those files' source if you distribute them); your own new files can use any license."
+    },
+    {
+      "id": "lending-portal-nuxt",
+      "title": "Lending / NBFC portal on Apache Fineract with WhatsApp updates (Nuxt)",
+      "category": "finance",
+      "framework": "nuxt",
+      "status": "adapted",
+      "license": "MIT",
+      "upstream": "https://github.com/nuxt-ui-templates/dashboard",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/nuxt-ui-templates/dashboard",
+        "commit": "b7fae622413ccdc458dbd5733ef4435c8e96df91"
+      },
+      "patch": "packs/lending-portal-nuxt.patch",
+      "remove": [
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "renovate.json",
+        ".github",
+        "app/pages/customers.vue",
+        "app/pages/inbox.vue",
+        "app/pages/settings/members.vue",
+        "app/components/customers",
+        "app/components/inbox",
+        "app/components/home",
+        "app/components/settings/MembersList.vue",
+        "server/api/customers.ts",
+        "server/api/mails.ts",
+        "server/api/members.ts"
+      ],
+      "backend": "lending-fineract",
+      "env": {
+        "FINERACT_URL": "{backend_url}",
+        "PORTAL_USER": "{admin_email}",
+        "PORTAL_PASSWORD": "{admin_password}"
+      },
+      "defaults": {
+        "backend_url": "https://demo.mifos.community/fineract-provider/api/v1",
+        "brand_color": "green"
+      },
+      "replace": [
+        {
+          "file": "app/app.config.ts",
+          "find": "name: 'Lending Portal'",
+          "with": "name: '{site_name}'"
+        },
+        {
+          "file": "app/app.config.ts",
+          "find": "primary: 'green'",
+          "with": "primary: '{brand_color}'"
+        }
+      ],
+      "install": "npm install",
+      "dev": "npx nuxt dev --port {port}",
+      "port": 3004,
+      "provides": [
+        "portfolio KPIs per currency (outstanding, overdue, portfolio at risk)",
+        "loans with repayment schedules",
+        "collections worklist",
+        "investor (asset owner) view",
+        "EMI / flat vs reducing / prepayment / eligibility calculators",
+        "WhatsApp updates to borrowers, collectors and investors (official Cloud API; dry run without a token)",
+        "portal login"
+      ],
+      "after_create": [
+        "Works against the public Mifos demo out of the box; point FINERACT_URL/USER/PASSWORD at your own Fineract for real data.",
+        "Set PORTAL_PASSWORD (login) and WEBHOOK_SECRET; WhatsApp: WHATSAPP_TOKEN + WHATSAPP_PHONE_NUMBER_ID and the templates listed in README-LENDING.md.",
+        "Investors' and collectors' WhatsApp numbers: data/contacts.json."
+      ]
+    },
+    {
+      "id": "remote-desktop-guacamole",
+      "title": "Remote desktop in the browser: RDP, VNC, SSH (Apache Guacamole)",
+      "category": "remote-access",
+      "framework": "java",
+      "status": "listed",
+      "license": "Apache-2.0",
+      "upstream": "https://github.com/apache/guacamole-client",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/apache/guacamole-client",
+        "commit": "38e8cb8ff5cd1fbd4c08a1a5d94340c37741230b"
+      },
+      "notes": "Needs guacd (the server-side proxy); the official Docker images are the easy way to run both."
+    }
+  ]
+}

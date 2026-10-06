@@ -314,15 +314,18 @@ export class VikingContextStore {
       results = results.filter((r) => q.tags!.some((t) => r.tags.includes(t)));
     }
     if (q.search) {
-      const searchLower = q.search.toLowerCase();
-      results = results.filter((r) => {
+      // Term-based relevance: every query term that appears in the path, tags,
+      // summary or entities scores; resources with no matching term are dropped.
+      const terms = q.search.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((t) => t.length > 1);
+      const phrase = q.search.toLowerCase();
+      const scored = results.map((r) => {
         const l0 = this.l0Data.get(r.id);
-        return (
-          r.path.toLowerCase().includes(searchLower) ||
-          r.tags.some((t) => t.includes(searchLower)) ||
-          (l0?.summary.toLowerCase().includes(searchLower) ?? false)
-        );
-      });
+        const hay = [r.path, r.tags.join(" "), l0?.summary ?? "", (l0?.entities ?? []).join(" ")].join(" ").toLowerCase();
+        const score = (hay.includes(phrase) ? terms.length + 1 : 0) + terms.filter((t) => hay.includes(t)).length;
+        return { r, score };
+      }).filter((x) => x.score > 0);
+      scored.sort((a, b) => b.score - a.score);
+      results = scored.map((x) => x.r);
     }
 
     // Budget-aware tier loading

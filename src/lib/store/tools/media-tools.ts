@@ -57,7 +57,7 @@ export const RENDER_VIDEO_MANIFEST: ToolManifest = {
       description: "Output format",
       required: false,
       default: "webm",
-      enum: ["webm", "gif"],
+      enum: ["mp4", "webm", "gif"],
     },
   ],
   capabilities: [
@@ -399,10 +399,16 @@ export const GENERATE_WAVEFORM_MANIFEST: ToolManifest = {
   color: "#a855f7",
   parameters: [
     {
+      name: "source",
+      type: "string",
+      description: "Audio or video file to draw (peaks decoded with ffmpeg)",
+      required: false,
+    },
+    {
       name: "samples",
       type: "array",
-      description: "Audio sample data (array of numbers 0-1)",
-      required: true,
+      description: "Audio sample data (array of numbers 0-1); omit and pass source to compute peaks from a file",
+      required: false,
     },
     {
       name: "width",

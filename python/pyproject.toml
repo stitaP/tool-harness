@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stitap-harness"
+version = "0.1.0"
+description = "stitaP agent runtime for Python-only machines: launcher for the full engine plus a zero-dependency pure-Python lite core and SDK."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "PolyForm-Noncommercial-1.0.0" }
+dependencies = []
+
+[project.scripts]
+stitap = "stitap.launcher:main"
+harness = "stitap.launcher:main"
+
+[tool.setuptools.packages.find]
+include = ["stitap*"]
+
+[tool.setuptools.package-data]
+stitap = ["_bundle/*.cjs", "_bundle/ui/*", "_bundle/skills/**/*", "_bin/*"]

@@ -1,0 +1,124 @@
+{
+  "timestamp": "2026-10-02T23:05:24",
+  "system": {
+    "platform": "macOS-15.6-arm64-arm-64bit-Mach-O",
+    "python": "3.14.3",
+    "model": "Mac16,10",
+    "chip": "Apple M4",
+    "ram_gb": 17.18,
+    "cpu_cores": "10",
+    "gpu_wired_limit_mb": "0",
+    "memory_pressure": "System-wide memory free percentage: 85%",
+    "ssd": "Capacity: 251 GB (2,51,00,01,93,024 bytes)\n          Model: APPLE SSD AP0256Z",
+    "disk_free_gb": 72.14
+  },
+  "assumptions": {
+    "model": "Qwen3-Coder-Next 80B-A3B",
+    "layers": 48,
+    "experts": 512,
+    "top_k": 10,
+    "expert_bits": 3.5,
+    "expert_mb": 1.38,
+    "all_experts_gb": 33.82
+  },
+  "ssd": {
+    "write_GBps": 1.54,
+    "sequential_GBps": 1.57,
+    "block_bytes": 1376256,
+    "by_queue_depth": [
+      {
+        "threads": 1,
+        "GBps": 6.68,
+        "p50_ms": 0.08,
+        "p99_ms": 0.71
+      },
+      {
+        "threads": 2,
+        "GBps": 12.28,
+        "p50_ms": 0.09,
+        "p99_ms": 0.86
+      },
+      {
+        "threads": 4,
+        "GBps": 17.71,
+        "p50_ms": 0.13,
+        "p99_ms": 1.25
+      },
+      {
+        "threads": 8,
+        "GBps": 17.95,
+        "p50_ms": 0.14,
+        "p99_ms": 2.13
+      },
+      {
+        "threads": 16,
+        "GBps": 18.45,
+        "p50_ms": 0.22,
+        "p99_ms": 4.6
+      },
+      {
+        "threads": 32,
+        "GBps": 17.56,
+        "p50_ms": 0.57,
+        "p99_ms": 6.86
+      }
+    ],
+    "best": {
+      "threads": 16,
+      "GBps": 18.45,
+      "p50_ms": 0.22,
+      "p99_ms": 4.6
+    }
+  },
+  "decode_io_sim": [
+    {
+      "hit_rate": 0.0,
+      "misses_per_token": 480,
+      "io_ms_per_token": 53.5,
+      "io_bound_tok_s_layer_serial": 18.7
+    },
+    {
+      "hit_rate": 0.5,
+      "misses_per_token": 240,
+      "io_ms_per_token": 30.1,
+      "io_bound_tok_s_layer_serial": 33.3
+    },
+    {
+      "hit_rate": 0.77,
+      "misses_per_token": 110,
+      "io_ms_per_token": 16.5,
+      "io_bound_tok_s_layer_serial": 60.7
+    },
+    {
+      "hit_rate": 0.85,
+      "misses_per_token": 72,
+      "io_ms_per_token": 12.6,
+      "io_bound_tok_s_layer_serial": 79.3
+    },
+    {
+      "hit_rate": 0.89,
+      "misses_per_token": 53,
+      "io_ms_per_token": 10.4,
+      "io_bound_tok_s_layer_serial": 96.0
+    },
+    {
+      "hit_rate": 0.95,
+      "misses_per_token": 24,
+      "io_ms_per_token": 5.0,
+      "io_bound_tok_s_layer_serial": 201.5
+    }
+  ],
+  "memory_bandwidth": {
+    "mlx": "0.31.1",
+    "GBps": 99.9,
+    "python": "/opt/homebrew/opt/python@3.14/bin/python3.14"
+  },
+  "compute_ceiling_tok_s": 37.5,
+  "hit_rate_needed_with_full_prefetch": {
+    "16_tok_s": 0.0,
+    "20_tok_s": 0.0,
+    "30_tok_s": 0.069,
+    "40_tok_s": 0.302
+  },
+  "baselines": {}
+}

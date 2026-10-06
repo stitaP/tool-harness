@@ -7,7 +7,7 @@
 3. **Diagramming Standard:** All architectural flows must be rendered in standard Mermaid syntax via the `DiagramDesign` skill module.
 4. **Verification Gates:** An audit task is marked COMPLETE only when every route listed in `sitemap.xml` has a corresponding L1 overview and interaction sequence diagram.
 5. **Spend Awareness:** Always check CAR framework spend rails before executing token-intensive operations. Stay within budget limits.
-6. **Sandbox First:** All code execution must happen in sandboxed containers. Never execute untrusted code outside a sandbox.
+6. **Sandbox First for untrusted code:** The agent runtime (`agent/`, `harness`) executes real commands. Untrusted or unattended work (cron, webhooks, kanban workers) runs with `approvals.mode: deny` or the `docker` terminal backend; interactive work is gated by dangerous-command approvals and automatic checkpoints (`/rollback`).
 7. **Memory Persistence:** Store user preferences, project context, and audit findings in AgentMemory for cross-session persistence.
 8. **Progressive Loading:** Never load L2 (full raw) data unless explicitly required for deep editing. Start with L0 summaries, upgrade to L1 overview as needed.
 
@@ -21,6 +21,7 @@
 |--------|--------|
 | `deploy`, `publish`, `delete_resource`, `modify_production` | ⚠️ Requires human approval |
 | `access_credentials`, `modify_env`, `bypass_sandbox` | ❌ Blocked |
+| `terminal` (dangerous commands: rm -rf, sudo, force-push, curl\|sh …), `write_file` to sensitive files | ⚠️ Approval (once / session / always) — see `docs/agent-runtime.md` §6 |
 | `browser_use`, `viking_store`, `diagram_design` | ✅ Auto-approved |
 
 ### Agency Layer (Agent Capabilities)
@@ -28,8 +29,8 @@
 - **Default Autonomy:** Semi-autonomous
 - **Max Concurrent Agents:** 4
 - **Max Agent Lifespan:** 60 minutes
-- **Allowed Tools:** browser_use, viking_store, agent_memory, diagram_design, webbuilder_audit, knowledge_base
-- **Blocked Tools:** shell_exec, file_system_write
+- **Allowed Tools:** browser_use, viking_store, agent_memory, diagram_design, webbuilder_audit, knowledge_base, terminal, read_file, write_file, patch, search_files (via the agent runtime)
+- **Approval-gated:** dangerous terminal commands and writes to sensitive files (`approvals.mode`), enforceable machine-wide with an admin policy file
 
 ### Runtime Layer (Budgets & Limits)
 
@@ -58,6 +59,10 @@ An audit task passes these gates before being marked COMPLETE:
 ---
 
 ## Required Tool Capabilities
+
+> In the agent runtime these names are aliases of Tool Store tools (`use_tool` accepts them; `tool_search` finds them) —
+> mapping in [docs/tool-store.md](docs/tool-store.md#names-used-in-agentsmd). `diagram_render` / `diagram_export` have
+> no separate tool: the diagram tools return Mermaid source.
 
 ### 1. BrowserUse — Browser Automation
 
