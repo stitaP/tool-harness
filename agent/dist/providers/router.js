@@ -1,0 +1,519 @@
+/**
+ * Model router: one llama-server that the harness itself starts, restarts and stops, serving a small fast model
+ * for simple turns and a stronger one for hard turns. On a 16 GB Mac both cannot be resident at once, so a switch
+ * is a restart (a few seconds for the 4B, 1-3 minutes for the 30B); the policy therefore switches up eagerly but
+ * down only after a dwell time, and never to a model whose context window cannot hold the conversation.
+ *
+ * config.yaml:
+ *   router:
+ *     enabled: true
+ *     mode: auto                       # auto | fast | strong (pinned)
+ *     models:
+ *       fast:   { name: qwen3-4b,         file: ~/models/Qwen3-4B-Instruct-2507-Q4_0.gguf, fit_margin_mb: 1024 }
+ *       strong: { name: qwen3-coder-30b,  file: ~/models/Qwen3-Coder-30B-A3B-UD-IQ2_M.gguf, fit_margin_mb: 768, min_wired_mb: 12800 }
+ */
+import { spawn, execFileSync } from "node:child_process";
+import { createWriteStream, existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { log } from "../util/log.js";
+import { sleep } from "../util/misc.js";
+export const ROUTER_DEFAULTS = {
+    enabled: false, mode: "auto", llama_server: "llama-server", port: 8081, kv: "q8_0", threads: 4,
+    min_dwell: 600, escalate_after: 8, start_timeout: 300, models: {},
+};
+const expand = (p) => p.replace(/^~(?=\/|$)/, homedir());
+// ── routing policy (pure, unit-tested) ──────────────────────────────────────────────────
+const HARD = /\b(implement|refactor|debug|architect|design|migrate|rewrite|investigate|optimi[sz]e|review|plan|integrat\w*|write (?:a |an |the )?(?:test|tests|function|class|module|script|parser|server|api)|fix (?:the |this |a )?(?:bug|failing|error|test)|multi-?file|root cause|why (?:does|is|do)\b.{0,40}\b(?:fail|crash|slow|break))/i;
+const PATHS = /(?:^|[\s"'`(])(?:\.{0,2}\/)?[\w.-]+\/[\w./-]+\.\w{1,6}\b/g;
+/** What happened since the user's last message: model calls (assistant messages) and failed tool results. */
+export function turnActivity(messages) {
+    let i = messages.length - 1;
+    let calls = 0, errors = 0;
+    for (; i >= 0 && messages[i].role !== "user"; i--) {
+        const m = messages[i];
+        if (m.role === "assistant")
+            calls++;
+        else if (m.role === "tool" && /^(error|\[error|failed|traceback|command failed|exit code [1-9])/i.test((m.content ?? "").trim()))
+            errors++;
+    }
+    const text = i >= 0 ? String(messages[i].content ?? "") : "";
+    return { calls, errors, lastUser: text, goal: /^\[?(goal|continue)\b|standing goal/i.test(text.trim()) };
+}
+export function scoreTask(text) {
+    const why = [];
+    let score = 0;
+    const t = text.trim();
+    if (t.length > 600) {
+        score += 2;
+        why.push("long request");
+    }
+    else if (t.length > 250) {
+        score += 1;
+        why.push("detailed request");
+    }
+    if (/```/.test(t)) {
+        score += 2;
+        why.push("code block");
+    }
+    if (HARD.test(t)) {
+        score += 2;
+        why.push("engineering keyword");
+    }
+    if ((t.match(PATHS) ?? []).length >= 2) {
+        score += 2;
+        why.push("several files");
+    }
+    if (/\b(step by step|then|after that|finally)\b/i.test(t) && t.length > 150) {
+        score += 1;
+        why.push("multi-step");
+    }
+    return { score, why };
+}
+export function decide(inp) {
+    const { mode, current, cfg } = inp;
+    if (!inp.hasStrong)
+        return { tier: "fast", reason: "no strong model configured" };
+    if (inp.pin === "fast")
+        return { tier: "fast", reason: "pinned to fast by the caller" };
+    if (inp.pin === "strong")
+        return inp.strongAvailable ? { tier: "strong", reason: "pinned to strong by the caller" } : { tier: "fast", reason: "strong model unavailable" };
+    if (mode === "fast")
+        return { tier: "fast", reason: "pinned to fast" };
+    if (mode === "strong")
+        return inp.strongAvailable ? { tier: "strong", reason: "pinned to strong" } : { tier: "fast", reason: "strong model unavailable" };
+    const act = turnActivity(inp.messages);
+    const { score, why } = scoreTask(act.lastUser);
+    let want;
+    if (act.calls >= cfg.escalate_after)
+        want = { tier: "strong", reason: `turn passed ${cfg.escalate_after} model calls` };
+    else if (act.errors >= 2)
+        want = { tier: "strong", reason: `${act.errors} failed tool calls this turn` };
+    else if (act.goal)
+        want = { tier: "strong", reason: "standing goal" };
+    else if (score >= 2)
+        want = { tier: "strong", reason: why.join(", ") };
+    else
+        want = { tier: "fast", reason: score ? why.join(", ") : "simple request" };
+    if (want.tier === "strong") {
+        const room = inp.ctx.strong || 32768;
+        if (!inp.strongAvailable)
+            return { tier: "fast", reason: `${want.reason}, but the strong model cannot start (GPU memory limit)` };
+        if (inp.tokens > room * 0.85)
+            return { tier: "fast", reason: `${want.reason}, but the conversation (${inp.tokens} tokens) does not fit the strong model's ${room}-token window` };
+        return want;
+    }
+    // wants fast while strong is loaded: keep strong inside a turn and for the dwell time, a restart is not free
+    if (current === "strong") {
+        if (act.calls > 0)
+            return { tier: "strong", reason: "finishing the turn on the strong model" };
+        if (inp.dwellMs < cfg.min_dwell * 1000)
+            return { tier: "strong", reason: `strong model loaded ${Math.round(inp.dwellMs / 1000)}s ago (dwell ${cfg.min_dwell}s)` };
+    }
+    return want;
+}
+// ── server manager ──────────────────────────────────────────────────────────────────────
+export function wiredLimitMb() {
+    if (process.platform !== "darwin")
+        return Infinity;
+    try {
+        return Number(execFileSync("sysctl", ["-n", "iogpu.wired_limit_mb"], { encoding: "utf8" }).trim()) || 0;
+    }
+    catch {
+        return 0;
+    }
+}
+export class ModelServer {
+    cfg;
+    logDir;
+    current = null;
+    loadedAt = 0;
+    ctx = { fast: 0, strong: 0 };
+    child = null;
+    logStream = null;
+    lock = Promise.resolve();
+    strongBlockedUntil = 0;
+    /** an llama-server we did not start is answering on the port: we cannot restart it, so we never switch */
+    external = null;
+    onStatus = () => undefined;
+    constructor(cfg, logDir) {
+        this.cfg = cfg;
+        this.logDir = logDir;
+        process.once("exit", () => this.kill());
+        for (const s of ["SIGINT", "SIGTERM"])
+            process.once(s, () => { this.kill(); process.exit(0); });
+    }
+    get baseUrl() { return `http://127.0.0.1:${this.cfg().port}`; }
+    strongAvailable() {
+        const m = this.cfg().models.strong;
+        if (!m || Date.now() < this.strongBlockedUntil)
+            return false;
+        if (m.min_wired_mb && wiredLimitMb() < m.min_wired_mb) {
+            this.strongBlockedUntil = Date.now() + 5 * 60_000;
+            this.onStatus(`strong model needs the GPU memory limit raised: sudo sysctl iogpu.wired_limit_mb=${Math.round(m.min_wired_mb / 256) * 256 + 512}`);
+            return false;
+        }
+        return !!existsSync(expand(m.file));
+    }
+    async probe() {
+        try {
+            const r = await fetch(`${this.baseUrl}/props`, { signal: AbortSignal.timeout(2000) });
+            if (!r.ok)
+                return null;
+            const j = await r.json();
+            return { alias: String(j.model_alias ?? j.model_path ?? ""), ctx: Number(j?.default_generation_settings?.n_ctx ?? 0) };
+        }
+        catch {
+            return null;
+        }
+    }
+    /** Make `tier` the loaded model. Calls are serialized; resolves when the server answers /health. */
+    ensure(tier) {
+        const run = this.lock.then(() => this.doEnsure(tier));
+        this.lock = run.catch(() => undefined);
+        return run;
+    }
+    async doEnsure(tier) {
+        const model = this.cfg().models[tier];
+        if (!model)
+            throw new Error(`router: no "${tier}" model configured`);
+        if (this.current === tier && this.child && this.child.exitCode === null)
+            return;
+        if (!this.child) {
+            const up = await this.probe();
+            if (up) {
+                const t = ["fast", "strong"].find((k) => this.cfg().models[k]?.name === up.alias);
+                this.external = up.alias;
+                if (t) {
+                    this.current = t;
+                    this.loadedAt ||= Date.now();
+                    this.ctx[t] = up.ctx;
+                }
+                if (t !== tier)
+                    log.warn(`router: another llama-server (${up.alias}) already owns port ${this.cfg().port}; staying on it`);
+                return;
+            }
+        }
+        await this.stop();
+        this.external = null;
+        this.onStatus(`loading ${model.name} (${tier}) — this takes ${tier === "strong" ? "1-3 minutes" : "a few seconds"}`);
+        await this.start(tier, model);
+    }
+    async start(tier, m) {
+        const c = this.cfg();
+        this.logStream?.end();
+        this.logStream = createWriteStream(join(this.logDir, "model.log"), { flags: "a" });
+        const { child, ctx } = await launchLlama(c, m, c.port, this.logStream, (ch) => {
+            this.child = ch;
+            ch.on("exit", () => { if (this.child === ch) {
+                this.child = null;
+                this.current = null;
+            } });
+        });
+        this.current = tier;
+        this.loadedAt = Date.now();
+        this.ctx[tier] = ctx;
+        this.onStatus(`${m.name} ready (${ctx.toLocaleString()}-token context)`);
+        void child;
+    }
+    async stop() {
+        const child = this.child;
+        if (!child)
+            return;
+        this.child = null;
+        this.current = null;
+        if (child.exitCode === null) {
+            const done = new Promise((res) => child.once("exit", () => res()));
+            child.kill("SIGTERM");
+            await Promise.race([done, sleep(15_000)]);
+            if (child.exitCode === null) {
+                child.kill("SIGKILL");
+                await Promise.race([done, sleep(5000)]);
+            }
+        }
+    }
+    kill() { try {
+        this.child?.kill("SIGKILL");
+    }
+    catch { /* gone */ } this.child = null; }
+}
+/** Start one llama-server and wait until it answers. Shared by the one-at-a-time ModelServer and the resident DuoServer. */
+export async function launchLlama(c, m, port, log, onChild) {
+    const file = expand(m.file);
+    if (!existsSync(file))
+        throw new Error(`router: model file not found: ${file}`);
+    const bin = expand(m.llama_server ?? c.llama_server);
+    const kv = m.kv ?? c.kv;
+    const ctxArgs = m.context ? ["-c", String(m.context), "-ngl", "99"] : [];
+    const args = ["-m", file, ...ctxArgs, "--fit", "on", "--fit-target", String(m.fit_margin_mb ?? 1024), "-np", "1", "-fa", "on",
+        "-ctk", kv, "-ctv", kv, "-t", String(c.threads), "--mlock", "--jinja", "--metrics", "--host", "127.0.0.1", "--port", String(port), "--alias", m.name, ...(m.extra_args ?? [])];
+    log.write(`\n=== ${new Date().toISOString()} router: starting ${m.name} on :${port} (${bin})\n`);
+    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    child.stdout.pipe(log, { end: false });
+    child.stderr.pipe(log, { end: false });
+    onChild?.(child);
+    let spawnErr = null;
+    child.on("error", (e) => { spawnErr = e; });
+    const deadline = Date.now() + c.start_timeout * 1000;
+    while (Date.now() < deadline) {
+        if (spawnErr)
+            throw new Error(`router: cannot run ${bin}: ${spawnErr.message}`);
+        if (child.exitCode !== null)
+            throw new Error(`router: llama-server exited (${child.exitCode}) while loading ${m.name}; see the model log`);
+        try {
+            const r = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(2000) });
+            if (r.ok && /"ok"/.test(await r.text()))
+                break;
+        }
+        catch { /* not up yet */ }
+        await sleep(1000);
+    }
+    if (child.exitCode !== null)
+        throw new Error(`router: ${m.name} failed to start`);
+    let ctx = 0;
+    try {
+        const r = await fetch(`http://127.0.0.1:${port}/props`, { signal: AbortSignal.timeout(3000) });
+        const j = await r.json();
+        ctx = Number(j?.default_generation_settings?.n_ctx ?? 0);
+    }
+    catch { /* leave 0 */ }
+    if (!ctx && child.exitCode === null && Date.now() >= deadline) {
+        try {
+            child.kill("SIGKILL");
+        }
+        catch { /* gone */ }
+        throw new Error(`router: ${m.name} did not become ready in ${c.start_timeout}s`);
+    }
+    return { child, ctx };
+}
+/**
+ * Resident mode: BOTH models stay loaded, each in its own llama-server on its own port, so switching tiers costs nothing.
+ * The strong model starts first with a large --fit-target, which makes llama.cpp leave that much GPU memory free; the fast
+ * model then fits into what is left. Everything is sized automatically (no context size is chosen by hand).
+ */
+export class DuoServer {
+    cfg;
+    logDir;
+    current = null;
+    loadedAt = 0;
+    ctx = { fast: 0, strong: 0 };
+    external = null;
+    onStatus = () => undefined;
+    slots = new Map();
+    lock = Promise.resolve();
+    failed = new Map();
+    errors = {};
+    constructor(cfg, logDir) {
+        this.cfg = cfg;
+        this.logDir = logDir;
+        process.once("exit", () => this.kill());
+        for (const s of ["SIGINT", "SIGTERM"])
+            process.once(s, () => { this.kill(); process.exit(0); });
+    }
+    portOf(tier) {
+        const c = this.cfg();
+        return c.models[tier]?.port ?? (tier === "strong" ? c.port : c.port + 1);
+    }
+    isUp(tier) { const s = this.slots.get(tier); return !!s && s.child.exitCode === null; }
+    strongAvailable() {
+        const m = this.cfg().models.strong;
+        if (!m)
+            return false;
+        if (this.isUp("strong"))
+            return true;
+        if ((this.failed.get("strong") ?? 0) > Date.now())
+            return false; // failed recently: do not retry on every request
+        if (m.min_wired_mb && wiredLimitMb() < m.min_wired_mb) {
+            this.errors.strong = `needs iogpu.wired_limit_mb >= ${m.min_wired_mb}`;
+            return false;
+        }
+        return existsSync(expand(m.file));
+    }
+    /** Make sure `tier` is serving. Never stops the other model. */
+    ensure(tier) {
+        const run = this.lock.then(() => this.doEnsure(tier));
+        this.lock = run.catch(() => undefined);
+        return run;
+    }
+    async doEnsure(tier) {
+        const c = this.cfg(), m = c.models[tier];
+        if (!m)
+            throw new Error(`router: no "${tier}" model configured`);
+        if (this.isUp(tier)) {
+            this.current = tier;
+            return;
+        }
+        const port = this.portOf(tier);
+        // adopt a server that is already answering on that port (a previous run, or one started by hand)
+        try {
+            const r = await fetch(`http://127.0.0.1:${port}/props`, { signal: AbortSignal.timeout(1500) });
+            if (r.ok) {
+                const j = await r.json();
+                this.ctx[tier] = Number(j?.default_generation_settings?.n_ctx ?? 0);
+                this.current = tier;
+                this.loadedAt ||= Date.now();
+                this.onStatus(`${m.name} already running on :${port}`);
+                return;
+            }
+        }
+        catch { /* nothing there */ }
+        this.onStatus(`loading ${m.name} (${tier}) on :${port}`);
+        const log = createWriteStream(join(this.logDir, tier === "strong" ? "model.log" : "model-fast.log"), { flags: "a" });
+        try {
+            const { child, ctx } = await launchLlama(c, m, port, log, (ch) => {
+                this.slots.set(tier, { child: ch, port, log });
+                ch.on("exit", () => { if (this.slots.get(tier)?.child === ch)
+                    this.slots.delete(tier); });
+            });
+            this.ctx[tier] = ctx;
+            this.current = tier;
+            this.loadedAt = Date.now();
+            delete this.errors[tier];
+            this.onStatus(`${m.name} ready on :${port} (${ctx.toLocaleString()}-token context)`);
+            void child;
+        }
+        catch (e) {
+            this.errors[tier] = e.message;
+            this.failed.set(tier, Date.now() + 5 * 60_000);
+            const s = this.slots.get(tier);
+            if (s) {
+                try {
+                    s.child.kill("SIGKILL");
+                }
+                catch { /* gone */ }
+                this.slots.delete(tier);
+            }
+            throw e;
+        }
+    }
+    /** Load both models, strong first. A model that cannot load is reported but does not stop the other. */
+    async ensureAll() {
+        const c = this.cfg();
+        for (const tier of ["strong", "fast"]) {
+            if (!c.models[tier])
+                continue;
+            try {
+                await this.ensure(tier);
+            }
+            catch (e) {
+                log.warn(`router (resident): ${tier} model did not start: ${e.message}`);
+                this.onStatus(`${tier} model did not start: ${e.message}`);
+            }
+        }
+    }
+    async stop() {
+        const all = [...this.slots.values()];
+        this.slots.clear();
+        this.current = null;
+        await Promise.all(all.map(async ({ child }) => {
+            if (child.exitCode !== null)
+                return;
+            const done = new Promise((res) => child.once("exit", () => res()));
+            child.kill("SIGTERM");
+            await Promise.race([done, sleep(15_000)]);
+            if (child.exitCode === null) {
+                child.kill("SIGKILL");
+                await Promise.race([done, sleep(5000)]);
+            }
+        }));
+    }
+    kill() { for (const { child } of this.slots.values()) {
+        try {
+            child.kill("SIGKILL");
+        }
+        catch { /* gone */ }
+    } this.slots.clear(); }
+}
+// ── provider ────────────────────────────────────────────────────────────────────────────
+const estimate = (messages, tools) => Math.round((messages.reduce((n, m) => n + (m.content?.length ?? 0) + (m.tool_calls ? JSON.stringify(m.tool_calls).length : 0), 0) + (tools ? JSON.stringify(tools).length : 0)) / 3.2);
+export class RouterProvider {
+    inner;
+    server;
+    cfg;
+    onEvent;
+    makeInner;
+    /** manual override from /route, persisted only for this process */
+    mode;
+    last = null;
+    inners = new Map();
+    constructor(inner, server, cfg, onEvent, 
+    /** resident mode: build the provider that talks to one tier's own port */
+    makeInner) {
+        this.inner = inner;
+        this.server = server;
+        this.cfg = cfg;
+        this.onEvent = onEvent;
+        this.makeInner = makeInner;
+        this.mode = cfg().mode;
+        server.onStatus = (m) => this.onEvent?.(m);
+    }
+    get resident() { return this.server instanceof DuoServer; }
+    get id() { return `router:${this.server.current ?? "idle"}:${this.inner.id}`; }
+    get model() { const t = this.server.current; return (t && this.cfg().models[t]?.name) || this.inner.model; }
+    get contextWindow() { const t = this.server.current; return (t && this.server.ctx[t]) || this.inner.contextWindow; }
+    /** The provider for a tier: the shared one when a single server is swapped, one per port in resident mode. */
+    innerFor(tier) {
+        if (!(this.server instanceof DuoServer) || !this.makeInner)
+            return this.inner;
+        const m = this.cfg().models[tier];
+        const key = `${tier}:${this.server.portOf(tier)}:${this.server.ctx[tier]}`;
+        let p = this.inners.get(tier);
+        if (!p || p.__key !== key) {
+            p = this.makeInner(tier, this.server.portOf(tier), m.name, this.server.ctx[tier]);
+            p.__key = key;
+            this.inners.set(tier, p);
+        }
+        return p;
+    }
+    async chat(req) {
+        const c = this.cfg();
+        const duo = this.server instanceof DuoServer ? this.server : null;
+        // aux calls (judge, titles, summaries) carry no tools: they run on a model that is already up (the fast one in resident mode)
+        if (!req.tools?.length) {
+            if (duo) {
+                const t = duo.isUp("fast") ? "fast" : "strong";
+                if (!duo.isUp(t))
+                    await duo.ensure(t);
+                return this.innerFor(t).chat(req);
+            }
+            if (this.server.current)
+                return this.inner.chat(req);
+        }
+        const hasStrong = !!c.models.strong;
+        const d = decide({
+            messages: req.messages, tokens: estimate(req.messages, req.tools), mode: this.mode, current: this.server.current,
+            dwellMs: duo ? Number.MAX_SAFE_INTEGER : this.server.current ? Date.now() - this.server.loadedAt : 0, cfg: c, ctx: this.server.ctx,
+            strongAvailable: hasStrong && this.server.strongAvailable(), hasStrong, pin: req.tier,
+        });
+        this.last = d;
+        if (duo) {
+            // both models are resident: no restart, just talk to the right port (start it if it is not up yet)
+            if (d.tier !== duo.current)
+                this.onEvent?.(`router → ${d.tier} model: ${d.reason}`);
+            try {
+                await duo.ensure(d.tier);
+            }
+            catch (e) {
+                const other = d.tier === "fast" ? "strong" : "fast";
+                log.warn(`router: ${d.tier} model unavailable: ${e.message}`);
+                this.onEvent?.(`router: the ${d.tier} model is not available (${e.message}); using the ${other} model`);
+                await duo.ensure(other);
+                return this.innerFor(other).chat(req);
+            }
+            return this.innerFor(d.tier).chat(req);
+        }
+        if (d.tier !== this.server.current) {
+            this.onEvent?.(`router → ${d.tier} model: ${d.reason}`);
+            try {
+                await this.server.ensure(d.tier);
+            }
+            catch (e) {
+                log.warn(`router: switch to ${d.tier} failed: ${e.message}`);
+                this.onEvent?.(`router: could not load the ${d.tier} model (${e.message}); using what is loaded`);
+                if (!this.server.current)
+                    await this.server.ensure(d.tier === "fast" ? "strong" : "fast");
+            }
+        }
+        return this.inner.chat(req);
+    }
+}

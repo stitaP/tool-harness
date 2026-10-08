@@ -1,3 +1,4 @@
+import { type RouterConfig } from "./providers/router.js";
 /** A named agent (config.yaml `agents:`): a chat or subagent runs with these instructions, tools and model. */
 export interface AgentDef {
     description?: string;
@@ -35,6 +36,7 @@ export declare const DEFAULT_CONFIG: {
     agent: {
         max_iterations: number;
         tool_profile: string;
+        tool_selection: "auto" | "on" | "off";
         max_tool_output_chars: number;
         parallel_tools: boolean;
         memory_nudge_every: number;
@@ -50,6 +52,7 @@ export declare const DEFAULT_CONFIG: {
     };
     goals: {
         max_turns: number;
+        max_idle_turns: number;
     };
     loops: {
         max_ticks: number;
@@ -172,7 +175,25 @@ export declare const DEFAULT_CONFIG: {
     kanban: {
         workers: number;
         enabled: boolean;
+        project_key: string;
+        cwd: string;
+        max_attempts: number;
+        test_timeout_s: number;
+        enforce_commit_keys: boolean;
+        verify: boolean;
+        worker_tier: "auto" | "fast" | "strong";
     };
+    lsp: {
+        enabled: boolean;
+        servers: Record<string, {
+            command: string;
+            args?: string[];
+            exts: string[];
+            roots?: string[];
+            languageId?: string;
+        }>;
+    };
+    router: RouterConfig;
 };
 export type Config = typeof DEFAULT_CONFIG;
 export declare function stitapRoot(): string;

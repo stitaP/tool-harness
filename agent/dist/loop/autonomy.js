@@ -98,6 +98,13 @@ export async function afterTurn(rt, sid, final, info) {
     g.turns++;
     g.last_reason = j.reason;
     const looped = [...rt.db.getMessages(sid)].reverse().find((m) => m.role === "assistant")?.meta?.loop_stopped;
+    // a turn that called no tool at all made no progress on a goal that needs work; several in a row means the model is stuck
+    // (typically it prints tool calls as text the server does not parse). Stop instead of burning the whole turn budget.
+    const all = rt.db.getMessages(sid);
+    const lastUser = all.map((m) => m.role).lastIndexOf("user");
+    const usedTools = all.slice(lastUser + 1).some((m) => m.role === "tool" || (m.role === "assistant" && m.tool_calls?.length));
+    g.idle_turns = usedTools ? 0 : (g.idle_turns ?? 0) + 1;
+    const maxIdle = rt.cfg.data.goals.max_idle_turns ?? 4;
     if (j.done)
         g.status = "done";
     else if (j.impossible) {
@@ -107,6 +114,10 @@ export async function afterTurn(rt, sid, final, info) {
     else if (looped) {
         g.status = "paused";
         g.last_reason = `paused — the agent was repeating itself instead of making progress (/goal resume to continue). ${j.reason}`;
+    }
+    else if (maxIdle > 0 && g.idle_turns >= maxIdle) {
+        g.status = "paused";
+        g.last_reason = `paused — ${g.idle_turns} turns in a row made no tool call, so nothing was happening. The model may be writing tool calls as plain text or be stuck; check the model/tool format, then /goal resume. ${j.reason}`;
     }
     else if (g.turns >= g.max_turns) {
         g.status = "paused";

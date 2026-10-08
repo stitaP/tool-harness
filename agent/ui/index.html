@@ -210,13 +210,66 @@ aside.right h4:first-child { margin-top: 0; }
 .tbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 .tbar input { flex: 1; min-width: 160px; padding: 6px 8px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text); }
 .tbar label { font-size: 12px; color: var(--muted); display: flex; gap: 5px; align-items: center; }
+
+/* kanban tab + full board */
+.kbcounts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.kbpill { border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; font-size: 12px; background: var(--panel); }
+.kbpill b { font-weight: 650; }
+.kbbar { height: 8px; border-radius: 99px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--border); }
+.kbbar > i { display: block; height: 100%; background: var(--ok); }
+.st-backlog { color: var(--muted); } .st-ready { color: oklch(0.6 0.12 250); } .st-running { color: var(--warn); } .st-done { color: var(--ok); } .st-blocked { color: var(--err); } .st-review { color: var(--accent); }
+.live { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); animation: pulse 1s infinite; margin-right: 5px; }
+#kb { position: fixed; inset: 0; z-index: 25; background: var(--bg); display: none; flex-direction: column; }
+#kb.on { display: flex; }
+#kb .kbhd { display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
+#kb .kbhd b { font-size: 16px; } #kb .kbhd .sp { flex: 1; }
+#kb select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; font: inherit; font-size: 13px; }
+#kb .kbmain { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 0; }
+#kb.detail .kbmain { grid-template-columns: minmax(0, 1fr) min(520px, 46vw); }
+.kbcols { display: flex; gap: 10px; padding: 12px; overflow: auto; align-items: flex-start; }
+.kbcol { flex: 0 0 230px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); max-height: 100%; display: flex; flex-direction: column; }
+.kbcol h4 { margin: 0; padding: 9px 12px; font-size: 13px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); text-transform: capitalize; }
+.kbcol .cards { padding: 8px; overflow: auto; display: grid; gap: 8px; }
+.kbcard { border: 1px solid var(--border); background: var(--bg); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; cursor: pointer; }
+.kbcard:hover, .kbcard.sel { border-color: var(--accent); }
+.kbcard .k { color: var(--muted); font-size: 11.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.kbcard .t { font-weight: 600; margin: 2px 0 4px; }
+.tag { border: 1px solid var(--border); border-radius: 6px; padding: 0 5px; font-size: 11px; color: var(--muted); }
+.tag.ok { color: var(--ok); border-color: var(--ok); } .tag.bad { color: var(--err); border-color: var(--err); }
+.kbside { border-left: 1px solid var(--border); overflow: auto; padding: 14px 16px; background: var(--panel); display: none; }
+#kb.detail .kbside { display: block; }
+.kbside h3 { margin: 0 0 4px; font-size: 16px; } .kbside h5 { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.kbside pre { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; font-size: 12px; max-height: 220px; overflow: auto; margin: 4px 0; }
+.kbshots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.kbshots img { width: 100%; border: 1px solid var(--border); border-radius: 6px; cursor: zoom-in; background: #fff; }
+.kbact { font-size: 12.5px; border-left: 2px solid var(--border); padding: 2px 8px; margin: 4px 0; }
+.kbact.tool { color: var(--muted); } .kbact.assistant { border-color: var(--accent); }
+.kbcm { font-size: 13px; padding: 5px 0; border-bottom: 1px dashed var(--border); } .kbcm.reply { margin-left: 18px; }
+.kbcm small { color: var(--muted); }
+#kb .m { color: var(--muted); font-size: 12px; } #kb .err { color: var(--err); font-size: 12px; } #kb .hint2 { color: var(--muted); font-size: 12px; }
+.kbepics { display: flex; gap: 8px; padding: 8px 16px; overflow: auto; border-bottom: 1px solid var(--border); }
+.kbepic { flex: 0 0 150px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; background: var(--panel); }
+.kbepic.sel { border-color: var(--accent); }
+#kbZoom { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; padding: 20px; }
+#kbZoom.on { display: flex; } #kbZoom img { max-width: 100%; max-height: 100%; background: #fff; }
+@media (max-width: 900px) { #kb.detail .kbmain { grid-template-columns: 0 1fr; } #kb.detail .kbcols { display: none; } }
+
+.modesw { display: inline-flex; padding: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2); flex: none; }
+.modesw button { border: 0; background: transparent; color: var(--muted); padding: 4px 12px; border-radius: 999px; font-size: 13px; }
+.modesw button.on { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+body.ragmode .composer-wrap textarea { border-color: var(--accent); }
+.dz { margin: 0 12px 8px; padding: 12px; border: 2px dashed var(--border); border-radius: var(--radius-lg); text-align: center; cursor: pointer; font-size: 13px; }
+.dz.over, .dz:hover { border-color: var(--accent); background: var(--panel-2); }
+.rgdoc .n { word-break: break-all; } .rgdoc .row { display: flex; gap: 6px; margin-top: 6px; }
+.rgdoc.bad { border-color: var(--err); } .rgdoc .w { color: var(--warn); font-size: 11.5px; }
+.ragsrc { color: var(--accent); font-weight: 600; }
 </style>
 </head>
 <body>
 <div class="app" id="app">
   <aside class="left" id="left">
     <div class="brand"><span class="dot"></span>stitaP agent<button class="gear" id="settingsBtn" title="Settings: agents and configuration">⚙</button></div>
-    <div class="tabs"><button class="on" data-pane="chats">Chats</button><button data-pane="skills">Skills</button><button data-pane="mcp">MCP</button></div>
+    <div class="tabs"><button class="on" data-pane="chats">Chats</button><button data-pane="skills">Skills</button><button data-pane="mcp">MCP</button><button data-pane="kanban">Kanban</button><button data-pane="rag">RAG</button></div>
     <div class="pane on" id="pane-chats">
       <div class="newrow"><button class="newbtn" id="newBtn">＋ New chat</button><select id="agentPick" title="Agent for new chats"><option value="default">default</option></select></div>
       <button class="deffolder" id="defFolderBtn" title="Folder new chats start in — click to change">📁 <span id="defFolder">…</span></button>
@@ -248,11 +301,21 @@ aside.right h4:first-child { margin-top: 0; }
         <div class="err" id="mcpErr"></div>
       </div>
     </div>
+    <div class="pane" id="pane-kanban">
+      <div class="plist" id="kbSide"><div class="hint2" style="padding:8px">Loading board…</div></div>
+      <div class="pform"><button class="btn primary" id="kbOpen">Open full board</button><div class="err" id="kbErr"></div></div>
+    </div>
+    <div class="pane" id="pane-rag">
+      <div class="dz" id="ragDrop"><b>Share documents</b><div class="hint2">Drop files here or click. Word, Excel, PowerPoint, PDF, OpenDocument, RTF, HTML, CSV, text and code are converted to markdown.</div><input type="file" id="ragFile" multiple hidden></div>
+      <div class="plist" id="ragList"></div>
+      <div class="pform"><button class="btn primary" id="ragUse">Ask the RAG Bot</button><div class="hint2" id="ragNote"></div><div class="err" id="ragErr"></div></div>
+    </div>
     <div class="left-foot" id="foot">connecting…</div>
   </aside>
   <main>
     <div class="topbar">
       <button class="iconbtn menu-btn" id="menuBtn">☰</button>
+      <div class="modesw" id="modeSw" role="group" aria-label="Chat mode"><button data-m="agent" class="on">Agent</button><button data-m="rag">RAG Bot</button></div>
       <div class="title" id="title">New chat</div>
       <span class="pill" id="agentPill" hidden></span>
       <span class="pill" id="goalPill" hidden></span>
@@ -287,10 +350,11 @@ aside.right h4:first-child { margin-top: 0; }
     <h4>Agent</h4><div id="agentInfo" class="kv"></div>
   </aside>
 </div>
-<div class="modal" id="settings"><div class="box"><div class="hd"><b>Settings</b><div class="stabs"><button class="on" data-st="agents">Agents</button><button data-st="tools">Tools</button><button data-st="general">General</button></div><button class="btn" id="settingsClose">Close</button></div>
+<div class="modal" id="settings"><div class="box"><div class="hd"><b>Settings</b><div class="stabs"><button class="on" data-st="agents">Agents</button><button data-st="tools">Tools</button><button data-st="general">General</button><button data-st="bench">Benchmarks</button></div><button class="btn" id="settingsClose">Close</button></div>
   <div class="bd" id="stAgents"></div>
   <div class="bd" id="stTools" hidden></div>
   <div class="bd" id="stGeneral" hidden></div>
+  <div class="bd" id="stBench" hidden></div>
 </div></div>
 <div class="modal" id="folders"><div class="box"><div class="hd"><b id="fdTitle">Working folder</b><button class="btn" id="fdClose">Close</button></div><div class="bd">
   <div class="fdpath"><button class="btn" id="fdUp" title="Parent folder">↑</button><input id="fdPath" spellcheck="false"><button class="btn" id="fdGo">Go</button></div>
@@ -301,6 +365,14 @@ aside.right h4:first-child { margin-top: 0; }
   <div class="fdrow"><button class="btn primary" id="fdUse">Use this folder</button><span class="err" id="fdErr"></span></div>
 </div></div></div>
 <div class="modal" id="modal"><div class="box"><div class="hd"><b id="modalTitle"></b><button class="btn primary" id="modalUse">Use in chat</button><button class="btn" id="modalClose">Close</button></div><div class="bd content" id="modalBody"></div></div></div>
+<div id="kb"><div class="kbhd"><b>Kanban</b><span id="kbHdCounts" class="kbcounts" style="margin:0"></span><span class="sp"></span>
+  <select id="kbEpic" title="Filter by phase"><option value="">All phases</option></select>
+  <button class="btn" id="kbDispatch" title="Start workers on ready cards">Run workers</button>
+  <button class="btn" id="kbResume" title="Re-queue cards interrupted by a crash or restart, then dispatch">Resume interrupted</button>
+  <button class="btn" id="kbClose">Close</button></div>
+  <div class="kbepics" id="kbEpics"></div>
+  <div class="kbmain"><div class="kbcols" id="kbCols"></div><div class="kbside" id="kbSideDetail"></div></div></div>
+<div id="kbZoom"><img alt=""></div>
 <script>
 "use strict";
 const TOKEN = "__STITAP_TOKEN__";
@@ -543,7 +615,152 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   document.querySelectorAll(".pane").forEach((x) => x.classList.toggle("on", x.id === "pane-" + b.dataset.pane));
   if (b.dataset.pane === "skills") loadSkills();
   if (b.dataset.pane === "mcp") loadMcp();
+  if (b.dataset.pane === "kanban") kbLoad();
+  if (b.dataset.pane === "rag") ragLoad();
 });
+
+// ── Kanban: sidebar summary + full board ──
+let kbData = null, kbSel = null, kbEpic = "", kbTimer = null;
+const KB_COLS = ["backlog", "ready", "running", "review", "blocked", "done"];
+const kbAgo = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`; };
+const kbImg = (key, f) => `/api/kanban/evidence/${encodeURIComponent(key)}/${f.split("/").map(encodeURIComponent).join("/")}?token=${encodeURIComponent(TOKEN)}`;
+async function kbLoad() {
+  try { kbData = await api("/api/kanban/board"); $("kbErr").textContent = ""; } catch (e) { $("kbErr").textContent = e.message; return; }
+  kbSideRender();
+  if ($("kb").classList.contains("on")) { kbRender(); if (kbSel) kbDetail(kbSel, true); }
+}
+function kbSideRender() {
+  const d = kbData, box = $("kbSide"); if (!d) return;
+  if (!d.total) { box.innerHTML = '<div class="hint2" style="padding:8px">The board is empty. Ask the agent to run <b>kanban import</b> on a plan folder, or add cards with the kanban tool.</div>'; return; }
+  const pct = Math.round((d.counts.done / d.total) * 100);
+  let h = `<div class="kbcounts">${KB_COLS.map((s) => `<span class="kbpill"><span class="st-${s}">●</span> ${s} <b>${d.counts[s]}</b></span>`).join("")}</div>
+    <div class="kbbar"><i style="width:${pct}%"></i></div><div class="hint2" style="margin:4px 0 10px">${d.counts.done} of ${d.total} cards done (${pct}%) · ${d.workers} worker${d.workers === 1 ? "" : "s"}${d.enabled ? "" : " · workers disabled"}</div>`;
+  h += `<b style="font-size:12px">Working now</b>`;
+  h += d.working.length ? d.working.map((w) => `<div class="pitem click" data-k="${esc(w.key)}"><div class="n">${w.active ? '<span class="live"></span>' : ""}${esc(w.key)} <span class="m">attempt ${w.attempts}${w.active ? "" : " · no live worker"}</span></div><div class="d">${esc(w.title)}</div>
+      ${w.activity.slice(-2).map((a) => `<div class="d" style="-webkit-line-clamp:2">${a.tools.length ? "⚙ " + esc(a.tools.join(", ")) : esc(a.role)}: ${esc(a.text)}</div>`).join("")}</div>`).join("") : '<div class="hint2" style="padding:4px 0 8px">No card is running.</div>';
+  h += `<b style="font-size:12px">Recent changes</b>` + d.recent.slice(0, 8).map((r) => `<div class="pitem click" data-k="${esc(r.key)}"><div class="n">${esc(r.key)} <span class="m">${esc(r.from || "new")} → <span class="st-${esc(r.to)}">${esc(r.to)}</span></span></div><div class="d">${esc(r.title)}</div><div class="m">${esc(r.by)} · ${kbAgo(r.at)}${r.reason ? " · " + esc(r.reason) : ""}</div></div>`).join("");
+  box.innerHTML = h;
+  box.querySelectorAll("[data-k]").forEach((x) => x.onclick = () => { kbOpen(); kbDetail(x.dataset.k); });
+}
+function kbOpen() { $("kb").classList.add("on"); kbRender(); }
+function kbRender() {
+  const d = kbData; if (!d) return;
+  $("kbHdCounts").innerHTML = KB_COLS.map((s) => `<span class="kbpill"><span class="st-${s}">●</span> ${s} <b>${d.counts[s]}</b></span>`).join("");
+  const sel = $("kbEpic"), cur = kbEpic;
+  sel.innerHTML = '<option value="">All phases</option>' + d.epics.map((e) => `<option value="${esc(e.key)}">${esc(e.title)} (${e.done}/${e.total})</option>`).join(""); sel.value = cur;
+  $("kbEpics").innerHTML = d.epics.map((e) => `<div class="kbepic ${e.key === kbEpic ? "sel" : ""}" data-e="${esc(e.key)}"><b>${esc(e.title.replace(/^Phase\s*/i, "P"))}</b><div class="kbbar" style="margin-top:4px"><i style="width:${e.total ? Math.round(e.done / e.total * 100) : 0}%"></i></div></div>`).join("");
+  $("kbEpics").querySelectorAll("[data-e]").forEach((x) => x.onclick = () => { kbEpic = kbEpic === x.dataset.e ? "" : x.dataset.e; kbRender(); });
+  const cards = d.cards.filter((c) => c.type !== "epic" && (!kbEpic || c.parent === kbEpic));
+  $("kbCols").innerHTML = "";
+  for (const s of KB_COLS) {
+    const list = cards.filter((c) => c.status === s);
+    const col = el("div", "kbcol", `<h4><span class="st-${s}">${s}</span><span>${list.length}</span></h4><div class="cards"></div>`);
+    for (const c of list) {
+      const tags = [c.type === "bug" ? '<span class="tag bad">bug</span>' : "", c.test ? `<span class="tag ${c.test.code === 0 ? "ok" : "bad"}">tests ${c.test.code === 0 ? "pass" : "fail"}</span>` : c.has_test ? '<span class="tag">tests not run</span>' : "",
+        c.verification ? `<span class="tag ${c.verification.ok ? "ok" : "bad"}">verify ${c.verification.ok ? "ok" : "fail"}</span>` : "", c.commits ? `<span class="tag">${c.commits} commit${c.commits === 1 ? "" : "s"}</span>` : "", c.attempts > 1 ? `<span class="tag">try ${c.attempts}</span>` : ""].join("");
+      const card = el("div", "kbcard" + (c.key === kbSel ? " sel" : ""), `<div class="k">${c.active ? '<span class="live"></span>' : ""}${esc(c.key)}${c.parent ? " · " + esc(c.parent) : ""}${c.depends_on.length && c.status === "ready" ? " · waits on " + esc(c.depends_on.join(",")) : ""}</div><div class="t">${esc(c.title)}</div><div class="k">${tags}<span>${kbAgo(c.updated_at)}</span></div>`);
+      card.onclick = () => kbDetail(c.key);
+      col.querySelector(".cards").appendChild(card);
+    }
+    if (!list.length) col.querySelector(".cards").innerHTML = '<div class="hint2">—</div>';
+    $("kbCols").appendChild(col);
+  }
+}
+async function kbDetail(key, quiet) {
+  kbSel = key; if (!quiet) kbRender();
+  const box = $("kbSideDetail"); $("kb").classList.add("detail");
+  let c; try { c = await api(`/api/kanban/card/${encodeURIComponent(key)}`); } catch (e) { box.innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  const keepScroll = box.scrollTop;
+  const hist = (c.history || []).slice().reverse().map((h) => `<div class="kbcm">${esc(h.from || "new")} → <b class="st-${esc(h.to)}">${esc(h.to)}</b> <small>${esc(h.by)} · ${kbAgo(h.at)}${h.reason ? " · " + esc(h.reason) : ""}</small></div>`).join("");
+  const cms = (c.comments || []).map((m) => `<div class="kbcm ${m.reply_to ? "reply" : ""}"><b>${esc(m.by)}</b> <small>${kbAgo(m.at)}${m.id ? " · " + esc(m.id) : ""}</small><div>${esc(m.text).replace(/\n/g, "<br>")}</div></div>`).join("");
+  const act = (c.activity || []).map((a) => `<div class="kbact ${esc(a.role)}">${a.tools.length ? "⚙ <b>" + esc(a.tools.join(", ")) + "</b> " : ""}${esc(a.text)}</div>`).join("");
+  box.innerHTML = `<div style="display:flex;gap:8px;align-items:start"><div style="flex:1"><div class="m">${esc(c.key)} · ${esc(c.type)}${c.parent ? " · " + esc(c.parent) : ""}${c.branch ? " · " + esc(c.branch) : ""}</div><h3>${esc(c.title)}</h3>
+      <span class="tag ${c.status === "done" ? "ok" : c.status === "blocked" ? "bad" : ""}">${esc(c.status)}</span> ${c.active ? '<span class="live"></span>worker running' : ""} <span class="m">attempts ${c.attempts}</span></div>
+      <button class="btn" id="kbDetClose">✕</button></div>
+    ${c.session_id ? `<div style="margin:8px 0"><button class="btn primary" id="kbWatch">Watch agent session</button></div>` : ""}
+    ${act ? `<h5>What the agent is doing</h5>${act}` : ""}
+    ${c.acceptance && c.acceptance.length ? `<h5>Acceptance criteria</h5><ul style="margin:4px 0;padding-left:18px">${c.acceptance.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
+    ${c.test_cmd ? `<h5>Tests</h5><div><code>${esc(c.test_cmd)}</code></div>${c.test_result ? `<div class="${c.test_result.code === 0 ? "st-done" : "st-blocked"}">last run: exit ${c.test_result.code} · ${kbAgo(c.test_result.at)}</div><pre>${esc(c.test_result.output)}</pre>` : '<div class="hint2">not run yet</div>'}` : ""}
+    ${c.evidence && c.evidence.shots.length ? `<h5>Screenshots (${c.evidence.shots.length})</h5><div class="kbshots">${c.evidence.shots.map((f) => `<div><img loading="lazy" src="${kbImg(c.key, f)}" data-full="${kbImg(c.key, f)}" title="${esc(f)}"><div class="m">${esc(f.split("/").pop())}</div></div>`).join("")}</div>` : ""}
+    ${c.verification ? `<h5>Verification: <span class="${c.verification.ok ? "st-done" : "st-blocked"}">${c.verification.ok ? "PASS" : "FAIL"}</span> · ${kbAgo(c.verification.at)}</h5>${c.report ? `<pre>${esc(c.report)}</pre>` : ""}` : ""}
+    <h5>Commits (${(c.commits || []).length})</h5>${(c.commits || []).map((m) => `<div class="kbcm"><code>${esc(m.hash.slice(0, 8))}</code> ${esc(m.message)}</div>`).join("") || '<div class="hint2">none yet</div>'}
+    ${c.children && c.children.length ? `<h5>Cards in this phase</h5>${c.children.map((k) => `<div class="kbcm"><a href="#" data-k="${esc(k.key)}">${esc(k.key)}</a> <span class="st-${esc(k.status)}">${esc(k.status)}</span> ${esc(k.title)}</div>`).join("")}` : ""}
+    ${c.depends_on_keys && c.depends_on_keys.length ? `<h5>Depends on</h5>${c.depends_on_keys.map((k) => `<a href="#" data-k="${esc(k)}">${esc(k)}</a>`).join(", ")}` : ""}
+    ${c.body ? `<h5>Description</h5><pre>${esc(c.body.slice(0, 3000))}</pre>` : ""}
+    <h5>History</h5>${hist || '<div class="hint2">none</div>'}
+    <h5>Comments</h5>${cms || '<div class="hint2">none</div>'}
+    <div style="margin-top:8px"><textarea id="kbCm" rows="2" style="width:100%;box-sizing:border-box" placeholder="Add a comment for the agent or reviewers"></textarea><button class="btn" id="kbCmAdd">Comment</button><span class="err" id="kbCmErr"></span></div>`;
+  box.scrollTop = keepScroll;
+  $("kbDetClose").onclick = () => { kbSel = null; $("kb").classList.remove("detail"); kbRender(); };
+  if ($("kbWatch")) $("kbWatch").onclick = () => { $("kb").classList.remove("on"); openSession(c.session_id); };
+  box.querySelectorAll("a[data-k]").forEach((a) => a.onclick = (e) => { e.preventDefault(); kbDetail(a.dataset.k); });
+  box.querySelectorAll("img[data-full]").forEach((i) => i.onclick = () => { $("kbZoom").querySelector("img").src = i.dataset.full; $("kbZoom").classList.add("on"); });
+  $("kbCmAdd").onclick = async () => { const t = $("kbCm").value.trim(); if (!t) return; try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}/comment`, { method: "POST", body: JSON.stringify({ text: t }) }); kbDetail(c.key); } catch (e) { $("kbCmErr").textContent = e.message; } };
+}
+$("kbOpen").onclick = () => { kbOpen(); kbLoad(); };
+$("kbClose").onclick = () => $("kb").classList.remove("on");
+$("kbZoom").onclick = () => $("kbZoom").classList.remove("on");
+$("kbEpic").onchange = () => { kbEpic = $("kbEpic").value; kbRender(); };
+$("kbDispatch").onclick = async () => { try { const r = await api("/api/kanban/dispatch", { method: "POST", body: "{}" }); $("kbDispatch").textContent = `Started ${r.dispatched}`; setTimeout(() => $("kbDispatch").textContent = "Run workers", 2500); kbLoad(); } catch (e) { alert(e.message); } };
+$("kbResume").onclick = async () => { try { const r = await api("/api/kanban/resume", { method: "POST", body: "{}" }); $("kbResume").textContent = `Re-queued ${r.requeued}`; setTimeout(() => $("kbResume").textContent = "Resume interrupted", 2500); kbLoad(); } catch (e) { alert(e.message); } };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if ($("kbZoom").classList.contains("on")) $("kbZoom").classList.remove("on"); else if ($("kb").classList.contains("on")) $("kb").classList.remove("on"); } });
+kbTimer = setInterval(() => { if (!document.hidden && ($("kb").classList.contains("on") || $("pane-kanban").classList.contains("on"))) kbLoad(); }, 4000);
+
+// ── RAG bot: shared documents + Agent / RAG Bot toggle ──
+let curMode = "agent", ragDocs = [];
+const ragSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+function setModeUi(mode) {
+  curMode = mode === "rag" ? "rag" : "agent";
+  document.querySelectorAll("#modeSw button").forEach((b) => b.classList.toggle("on", b.dataset.m === curMode));
+  document.body.classList.toggle("ragmode", curMode === "rag");
+  $("input").placeholder = curMode === "rag" ? "Ask a question about the shared documents…" : "Give the agent a task…  (/ for commands, @file:path to attach files)";
+  const e = msgs.querySelector(".empty"); if (e) { e.remove(); showEmpty(); }
+}
+async function setMode(mode) {
+  if (!sid) await newSession();
+  try { await api(`/api/sessions/${sid}/mode`, { method: "POST", body: JSON.stringify({ mode }) }); } catch (e) { $("ragErr").textContent = e.message; return; }
+  setModeUi(mode);
+  const n = el("div", "notice");
+  n.textContent = mode === "rag" ? (ragDocs.length ? `RAG Bot on: answers come only from the ${ragDocs.length} shared document${ragDocs.length === 1 ? "" : "s"}.` : "RAG Bot on. No documents are shared yet: open the RAG tab on the left and add some.") : "Agent mode on: tools and the web are available again.";
+  msgs.appendChild(n); scroll(true);
+  if (mode === "rag") { document.querySelector('.tabs button[data-pane="rag"]').click(); }
+}
+document.querySelectorAll("#modeSw button").forEach((b) => b.onclick = () => { if (b.dataset.m !== curMode) setMode(b.dataset.m); });
+async function ragLoad() {
+  try { ragDocs = (await api("/api/rag/docs")).docs; } catch (e) { $("ragErr").textContent = e.message; return; }
+  const box = $("ragList");
+  box.innerHTML = ragDocs.length ? "" : '<div class="hint2" style="padding:8px">No documents yet.</div>';
+  for (const d of ragDocs) {
+    const it = el("div", "pitem rgdoc", `<div class="n">${esc(d.name)}</div><div class="m">${esc(d.format)} · ${ragSize(d.bytes)} → ${d.chars.toLocaleString()} chars · ${d.chunks} chunk${d.chunks === 1 ? "" : "s"}</div>${d.warnings.map((w) => `<div class="w">⚠ ${esc(w)}</div>`).join("")}
+      <div class="row"><button class="btn" data-a="view">View markdown</button><button class="btn danger" data-a="del">Remove</button></div>`);
+    it.querySelector('[data-a="view"]').onclick = async () => {
+      const r = await fetch(`/api/rag/docs/${encodeURIComponent(d.id)}/markdown`, { headers: H }); const t = await r.text();
+      $("modalTitle").textContent = `${d.name} → markdown`; $("modalBody").innerHTML = `<pre style="white-space:pre-wrap;font-size:12.5px">${esc(t.slice(0, 60000))}${t.length > 60000 ? "\n… (truncated in this view)" : ""}</pre>`;
+      $("modalUse").onclick = () => { window.open(`/api/rag/docs/${encodeURIComponent(d.id)}/markdown?token=${encodeURIComponent(TOKEN)}`, "_blank"); }; $("modalUse").textContent = "Open .md"; $("modal").classList.add("on");
+    };
+    it.querySelector('[data-a="del"]').onclick = async () => { if (!confirm(`Remove "${d.name}" from the shared documents?`)) return; await api(`/api/rag/docs/${encodeURIComponent(d.id)}`, { method: "DELETE" }); ragLoad(); };
+    box.appendChild(it);
+  }
+  $("ragNote").textContent = ragDocs.length ? `${ragDocs.length} document${ragDocs.length === 1 ? "" : "s"}, ${ragDocs.reduce((a, d) => a + d.chunks, 0)} searchable chunks. Search runs locally.` : "";
+}
+const b64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(new Error("could not read file")); r.readAsDataURL(file); });
+async function ragUpload(files) {
+  $("ragErr").textContent = "";
+  for (const f of files) {
+    const tmp = el("div", "pitem rgdoc", `<div class="n">${esc(f.name)}</div><div class="m">converting to markdown…</div>`); $("ragList").prepend(tmp);
+    try { await api("/api/rag/docs", { method: "POST", body: JSON.stringify({ name: f.name, data: await b64(f) }) }); }
+    catch (e) { tmp.classList.add("bad"); tmp.querySelector(".m").textContent = e.message; await new Promise((r) => setTimeout(r, 3500)); }
+  }
+  ragLoad();
+}
+const dz = $("ragDrop");
+dz.onclick = () => $("ragFile").click();
+$("ragFile").onchange = (e) => { ragUpload([...e.target.files]); e.target.value = ""; };
+dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("over"); };
+dz.ondragleave = () => dz.classList.remove("over");
+dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove("over"); ragUpload([...e.dataTransfer.files]); };
+$("ragUse").onclick = () => { if (curMode !== "rag") setMode("rag"); $("input").focus(); };
+ragLoad();
 let skillsCache = [];
 async function loadSkills() {
   try {
@@ -565,7 +782,7 @@ function renderSkills() {
   }
 }
 async function openSkill(name) {
-  const s = await api(`/api/skills/${encodeURIComponent(name)}`);
+  const s = await api(`/api/skills/${encodeURIComponent(name)}`); $("modalUse").textContent = "Use in chat";
   $("modalTitle").textContent = `${s.name} — ${s.category || "skill"}`;
   $("modalBody").innerHTML = md(s.content || s.description || "");
   $("modalUse").onclick = () => { $("input").value = `/${s.name} `; $("modal").classList.remove("on"); $("input").focus(); };
@@ -782,10 +999,29 @@ $("settingsClose").onclick = () => $("settings").classList.remove("on");
 $("settings").onclick = (e) => { if (e.target === $("settings")) $("settings").classList.remove("on"); };
 document.querySelectorAll(".stabs button").forEach((b) => b.onclick = () => {
   document.querySelectorAll(".stabs button").forEach((x) => x.classList.toggle("on", x === b));
-  $("stAgents").hidden = b.dataset.st !== "agents"; $("stGeneral").hidden = b.dataset.st !== "general"; $("stTools").hidden = b.dataset.st !== "tools";
-  if (b.dataset.st === "general") renderGeneral(); else if (b.dataset.st === "tools") renderTools(); else renderAgentList();
+  $("stAgents").hidden = b.dataset.st !== "agents"; $("stGeneral").hidden = b.dataset.st !== "general"; $("stTools").hidden = b.dataset.st !== "tools"; $("stBench").hidden = b.dataset.st !== "bench";
+  if (b.dataset.st === "bench") renderBench(); else if (b.dataset.st === "general") renderGeneral(); else if (b.dataset.st === "tools") renderTools(); else renderAgentList();
 });
 loadAgents().catch(() => {});
+
+// ── benchmarks: speed and goal results per model × tool profile, from real use ──
+async function renderBench(days = 7) {
+  const box = $("stBench");
+  box.textContent = "Loading…";
+  let r; try { r = await api(`/api/bench?days=${days}`); } catch (e) { box.textContent = e.message; return; }
+  box.textContent = "";
+  const bar = document.createElement("div"); bar.className = "trow";
+  bar.append("Last ");
+  for (const d of [1, 7, 30]) { const b = document.createElement("button"); b.className = "btn"; b.textContent = d === 1 ? "24 h" : `${d} days`; b.disabled = d === days; b.onclick = () => renderBench(d); bar.append(b, " "); }
+  box.append(bar);
+  if (!r.summary.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Nothing recorded yet. Speeds and goal results are collected from your normal chats."; box.append(p); return; }
+  const t = document.createElement("table"); t.style.cssText = "width:100%;border-collapse:collapse;font-size:13px";
+  const row = (cells, head) => { const tr = document.createElement("tr"); for (const c of cells) { const td = document.createElement(head ? "th" : "td"); td.textContent = c; td.style.cssText = "text-align:left;padding:4px 8px;border-top:1px solid var(--border)"; tr.append(td); } return tr; };
+  t.append(row(["Model", "Profile", "Calls", "Gen tok/s", "Prefill tok/s", "Cache", "Goals done / paused", "By prompt size (gen tok/s)"], true));
+  const n = (v) => v === null ? "–" : String(v);
+  for (const m of r.summary) t.append(row([m.model, m.profile, m.calls, n(m.gen_tps), n(m.prompt_tps), m.cache_hit === null ? "–" : m.cache_hit + "%", `${m.goals_done} / ${m.goals_paused}`, m.by_bucket.map((b) => `${b.bucket}: ${n(b.gen_tps)}`).join("   ")]));
+  box.append(t);
+}
 
 // ── working folder (like opening Claude Code in a project folder) ──
 let fdMode = "chat", fdCur = "", foldersInfo = null;
@@ -890,6 +1126,7 @@ async function openSession(id) {
   showCwd(d.cwd);
   const ag = d.session.meta && d.session.meta.agent; $("agentPill").hidden = !ag; $("agentPill").textContent = ag ? `agent: ${ag}` : "";
   $("sessInfo").innerHTML = `<b>id</b> ${esc(d.session.id)}<br><b>cwd</b> ${esc(d.cwd)}<br><b>source</b> ${esc(d.session.source)}`;
+  setModeUi(d.session.meta && d.session.meta.mode);
   renderTodos(d.todos); renderGoal(d.goal); refreshStats();
   const results = {};
   for (const m of d.messages) if (m.role === "tool") results[m.tool_call_id] = m;
@@ -909,12 +1146,16 @@ async function openSession(id) {
 }
 function showEmpty() {
   const e = el("div", "empty");
+  if (curMode === "rag") {
+    e.innerHTML = `<h2>Ask your documents</h2><div>${ragDocs.length ? `Answers come only from the ${ragDocs.length} shared document${ragDocs.length === 1 ? "" : "s"}, with the source named. If the answer is not in them, the bot says so.` : "No documents are shared yet. Open the <b>RAG</b> tab on the left and drop in your files."}</div>`;
+    msgs.appendChild(e); return;
+  }
   e.innerHTML = `<h2>What should we get done?</h2><div>The agent runs commands, edits files, browses the web and keeps going until the task is done.</div><div class="chips"></div>`;
   const ideas = ["List the files here and summarize this project", "/goal Make the tests in this repo pass", "Search the web for today's top AI news and summarize", "Write a Python script that converts all CSVs in this folder to JSON, then run it"];
   for (const t of ideas) { const c = el("button", "chip"); c.textContent = t; c.onclick = () => { $("input").value = t; send(); }; e.querySelector(".chips").appendChild(c); }
   msgs.appendChild(e);
 }
-async function newSession() { const r = await api("/api/sessions", { method: "POST", body: JSON.stringify({ agent: $("agentPick").value }) }); await refreshSessions(); await openSession(r.id); $("input").focus(); }
+async function newSession() { const want = curMode; const r = await api("/api/sessions", { method: "POST", body: JSON.stringify({ agent: $("agentPick").value }) }); await refreshSessions(); await openSession(r.id); if (want === "rag") await setMode("rag"); $("input").focus(); }
 
 // ── composer ──
 async function send() {

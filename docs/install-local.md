@@ -238,7 +238,9 @@ journalctl -u stitap -f            # launcher output; model/agent logs are in ~/
 
 `/schedule in 2h | <task>` (or the agent's `cronjob_manage` tool) runs tasks unattended in their own chat; risky
 commands in unattended runs follow *Unattended risky commands* (default `deny`). Long tasks use `/goal`, plans
-(`todo_list`) and automatic context compaction — see [agent-runtime.md](agent-runtime.md).
+(`todo_list`) and automatic context compaction; many spec documents in a row use `/pipeline` (each document's test
+decides when it is done, and earlier documents' tests and pages must keep passing) — see [agent-runtime.md](agent-runtime.md).
+Check on a running pipeline from any chat with `/pipeline status`.
 
 ---
 
@@ -252,11 +254,14 @@ Set them as environment variables (`NAME=value node …` on macOS/Linux, `$env:N
 | `FIT_MARGIN_MB` | `1024` | GPU memory to leave free when `CTX=auto` (raise it to keep room for other apps) |
 | `KV` | `q8_0` | context-cache precision: `q8_0`, `f16`, or `q4_0` (twice the context, slightly less accurate) |
 | `NGL` | all | GPU layers when `CTX` is fixed; `0` = CPU only |
-| `PROFILE` | `slm` | agent tools: `slm` (fast, ~10 tools), `standard`, `full` |
+| `PROFILE` | `slm` | agent tools sent on every call: `slm` (16 tools, shortest prompt — fastest), `standard`, `full`; the rest stay reachable through `tool_search` |
 | `THREADS` | `4` | CPU threads |
 | `PORT` / `UI_PORT` | `8081` / `7420` | model server / web chat ports |
 | `LLAMA_SERVER` | `llama-server` | path to llama.cpp's server if it is not on PATH |
 | `STITAP_ROOT` | `~/.stitap` | where config, chats, memory and skills are kept |
+| `MODEL` | — | model file, instead of passing it as the first argument |
+| `ALIAS` | file name | model name shown in the chat and stats |
+| `ALLOW_BIG_MODEL` | — | `1` starts a model bigger than ~¾ of RAM anyway (runs from disk, ~1–3 tok/s) |
 | `--no-open` | — | do not open a browser (servers) |
 
 Everything else — default working folder, agents, every tool, approvals, compaction, scheduling — is in the web
@@ -272,6 +277,7 @@ Only needed for the tools that use them.
 |---|---|---|---|
 | Screenshots / screen video (`screen_capture`, `screen_record`, `desktop`) | System Settings ▸ Privacy & Security ▸ **Screen Recording** (and **Accessibility** for `desktop` clicks/typing): allow Terminal or the app that starts the agent, then reopen it | works out of the box (PowerShell) | Wayland: `grim` (+ `wf-recorder` for video) · X11: ImageMagick or `scrot`, `xdotool` for window capture |
 | Screen video on Windows/Linux, camera everywhere (`camera_capture`) | `brew install ffmpeg` | `winget install Gyan.FFmpeg` | `sudo apt install ffmpeg` |
+| Page checks (`page_check`, the pipeline's visual gate) | `node agent/node_modules/playwright-core/cli.js install chromium` | same | same, plus `npx playwright install-deps` |
 | Browser tests (`webtest`) | `node agent/node_modules/playwright-core/cli.js install chromium` (or ask the agent: `webtest action=install`; add `webkit` for the Safari engine) | same | same, plus `npx playwright install-deps` for system libraries |
 
 The browser tools need Playwright's driver once: `node agent/bin/harness.mjs browser setup`. Office conversion
@@ -300,10 +306,12 @@ on Windows `winget uninstall llama.cpp`.
 | `the agent is not built yet` | run `npm install && npm run agent:build` in the `tool-harness` folder |
 | The model server stops right after starting | not enough GPU memory: use the 4B model, lower `CTX` (e.g. `CTX=8192`), raise the macOS GPU limit, or close other apps; details in `~/.stitap/logs/model.log` |
 | Very slow replies (a few tok/s) | the model is running on the CPU or swapping: check the GPU line the launcher prints and the **Model stats** panel; use a smaller model or `/compact` long chats |
-| `Unknown command /…` when pasting a path | fixed in current versions — update (section 7) |
 | The agent writes files in the wrong place | click 📁 in the top bar and choose the project folder (tick *default* to use it for new chats) |
 | `Safari is not set up for automation` | do the three Safari steps in section 2 |
 | `Screen Recording permission is missing` (screenshots only show the wallpaper) | allow the app that runs the agent under System Settings ▸ Privacy & Security ▸ Screen Recording, then quit and reopen it |
 | `needs ffmpeg` (screen video, camera) | install ffmpeg — see [Optional extras](#optional-extras) |
 | `webtest`: browser executable doesn't exist | `node agent/node_modules/playwright-core/cli.js install chromium` (or `webtest action=install`) |
-| Disk filling up | old versions snapshotted large files before every write; update, then delete `~/.stitap/checkpoints` |
+| Disk filling up | checkpoints never include files over 10 MB, models, archives or media; to reclaim space anyway, stop the agent and delete `~/.stitap/checkpoints` (you lose `/rollback` history) |
+| Token counts in **Model stats** look huge | every call re-reads the conversation; the panel splits *new* tokens from tokens *reused from cache*, which cost no compute |
+| `/pipeline stop` can't find the pipeline | pipeline commands work from any chat; `/pipeline list` shows every pipeline and the chat that started it |
+| A chat can't be removed | hover it in the left sidebar: **Archive** or **Delete** |

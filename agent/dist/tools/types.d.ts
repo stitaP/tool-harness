@@ -38,6 +38,8 @@ export interface ToolResult {
 export interface Tool {
     name: string;
     description: string;
+    /** optional hand-written line for the tool planner's catalog (default: the description's first sentence) */
+    summary?: string;
     parameters: any;
     toolset: string;
     tier?: Tier;

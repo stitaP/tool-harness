@@ -373,3 +373,30 @@ test("strapi_cms: field shorthand and Strapi content-type files", async () => {
   assert.deepEqual([schema.kind, schema.info.pluralName, schema.collectionName], ["collectionType", "categories", "categories"]);
   assert.match(files["src/api/category/routes/category.ts"], /createCoreRouter\('api::category\.category'\)/);
 });
+
+test("inline tool calls: Qwen-Coder XML (<function=…><parameter=…>), with and without the <tool_call> wrapper", () => {
+  const tools = [
+    { name: "kanban", parameters: { properties: { action: { type: "string" }, path: { type: "string" }, priority: { type: "integer" }, review: { type: "boolean" }, depends_on: { type: "array" }, title: { type: "string" } } } },
+    { name: "terminal", parameters: { properties: { command: { type: "string" } } } },
+  ];
+  const names = tools.map((t) => t.name);
+  // exactly what the model printed: no opening <tool_call>, a stray closing one
+  const seen = "I need to import the kanban board now.\n<function=kanban>\n<parameter=action>\nimport\n</parameter>\n<parameter=path>\n~/Documents/AgenticAI/Idea_plan\n</parameter>\n<parameter=key_prefix>\nPT\n</parameter>\n</function>\n</tool_call>";
+  const r = extractInlineToolCalls(seen, names, tools);
+  assert.equal(r.calls.length, 1);
+  assert.equal(r.calls[0].name, "kanban");
+  assert.deepEqual(JSON.parse(r.calls[0].arguments), { action: "import", path: "~/Documents/AgenticAI/Idea_plan", key_prefix: "PT" });
+  assert.equal(r.rest, "I need to import the kanban board now.");
+  // wrapped, typed values, several calls, unclosed last call
+  const two = extractInlineToolCalls('<tool_call><function=kanban><parameter=action>create</parameter><parameter=title>2024 plan</parameter><parameter=priority>5</parameter><parameter=review>true</parameter><parameter=depends_on>["PT-1","PT-2"]</parameter></function></tool_call>\n<tool_call><function=terminal><parameter=command>ls -la\ncd ..</parameter>', names, tools);
+  assert.equal(two.calls.length, 2);
+  assert.deepEqual(JSON.parse(two.calls[0].arguments), { action: "create", title: "2024 plan", priority: 5, review: true, depends_on: ["PT-1", "PT-2"] }); // title stays a string
+  assert.deepEqual(JSON.parse(two.calls[1].arguments), { command: "ls -la\ncd .." });
+  assert.equal(two.rest, "");
+  // a tool the model may not call is left as text, never executed; plain text is untouched
+  const bad = extractInlineToolCalls("<function=rm_everything><parameter=x>1</parameter></function>", names, tools);
+  assert.equal(bad.calls.length, 0); assert.match(bad.rest, /rm_everything/);
+  assert.equal(extractInlineToolCalls("just words", names, tools).calls.length, 0);
+  // the JSON form still works
+  assert.equal(extractInlineToolCalls('<tool_call>{"name":"terminal","arguments":{"command":"ls"}}</tool_call>', names, tools).calls.length, 1);
+});

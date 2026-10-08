@@ -814,3 +814,24 @@ test("on-demand tools: not sent with every call, but tool_search finds them and 
     assert.match(results[3], /"emi":16607\.15/);
   } finally { await t.close(); }
 });
+
+test("/goal: pauses when several turns in a row call no tool (model stuck printing tool calls as text)", async () => {
+  const t = await setup("goals:\n  max_turns: 50\n  max_idle_turns: 3\n");
+  try {
+    t.mock.script([
+      { match: "completion judge", sticky: true, content: '{"done": false, "impossible": false, "reason": "kanban import not confirmed"}' },
+      ...Array.from({ length: 10 }, () => ({ content: "I will import the board now." })),
+    ]);
+    const { runCommand } = await import(dist("runtime/commands.js"));
+    const s = t.rt.createSession({ source: "cli" });
+    const r = await runCommand("/goal import the kanban board", { rt: t.rt, sid: s.id, source: "cli" });
+    await t.rt.send(s.id, r.send);
+    await t.rt.waitIdle(s.id);
+    const g = t.rt.db.getMeta(`goal:${s.id}`);
+    assert.equal(g.status, "paused");
+    assert.equal(g.turns, 3);          // stopped after 3 idle turns, not 50
+    assert.equal(g.idle_turns, 3);
+    assert.match(g.last_reason, /3 turns in a row made no tool call/);
+    assert.match(g.last_reason, /plain text/);
+  } finally { await t.close(); }
+});

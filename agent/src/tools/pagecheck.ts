@@ -36,7 +36,7 @@ export function sitePages(root: string): string[] {
   return out.sort();
 }
 
-function serve(root: string): Promise<{ server: Server; base: string }> {
+export function serve(root: string): Promise<{ server: Server; base: string }> {
   return new Promise((res, rej) => {
     const server = createServer((req, resp) => {
       let p = decodeURIComponent((req.url ?? "/").split("?")[0]);

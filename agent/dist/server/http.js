@@ -9,6 +9,8 @@ import { dirname, join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir, totalmem } from "node:os";
+import { benchText, summarize } from "../runtime/bench.js";
+import { MCP_PRESETS, presetConfig } from "../mcp/presets.js";
 import { currentBrowserId, detectBrowsers, resetBrowsers, testBrowser } from "../tools/browser.js";
 import { resourcePath } from "../util/resources.js";
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -17,6 +19,7 @@ import { listCommands, looksLikeCommand, runCommand, insights } from "../runtime
 import { barePathHint, expandReferences } from "../prompt/references.js";
 import { goalKey, loopKey, heartbeatKey } from "../loop/autonomy.js";
 import { handleChatCompletions, handleModels } from "./openai-api.js";
+import { boardSummary, cardDetail, evidenceFile } from "../kanban/dashboard.js";
 import { log } from "../util/log.js";
 import { errMsg } from "../util/misc.js";
 export function serverToken(home) {
@@ -534,6 +537,13 @@ export async function startServer(rt, opts = {}) {
                     }
                     return json(res, 200, { ok: true });
                 }
+                if (sub === "/mode" && req.method === "POST") {
+                    const b = await body(req);
+                    if (b.mode !== "agent" && b.mode !== "rag")
+                        return json(res, 400, { error: "mode must be agent or rag" });
+                    rt.setMode(sid, b.mode);
+                    return json(res, 200, { ok: true, mode: b.mode });
+                }
                 if (sub === "/archive" && req.method === "POST") {
                     const b = await body(req);
                     const on = b.archived !== false;
@@ -589,8 +599,69 @@ export async function startServer(rt, opts = {}) {
             }
             if (p === "/api/cron")
                 return json(res, 200, rt.cron.list());
+            // ── RAG bot: shared documents converted to markdown ──
+            if (p === "/api/rag/docs" && req.method === "GET")
+                return json(res, 200, { docs: rt.rag.list() });
+            if (p === "/api/rag/docs" && req.method === "POST") {
+                const b = await body(req, 80 * 1024 * 1024);
+                const name = String(b.name ?? "").trim();
+                if (!name || typeof b.data !== "string")
+                    return json(res, 400, { error: "name and base64 data are required" });
+                try {
+                    return json(res, 200, { doc: await rt.rag.add(name, Buffer.from(b.data, "base64")) });
+                }
+                catch (e) {
+                    return json(res, 422, { error: errMsg(e), name });
+                }
+            }
+            const rdm = /^\/api\/rag\/docs\/([^/]+)(\/markdown)?$/.exec(p);
+            if (rdm && req.method === "DELETE" && !rdm[2])
+                return json(res, 200, { ok: rt.rag.remove(decodeURIComponent(rdm[1])) });
+            if (rdm && rdm[2] && req.method === "GET") {
+                const md = rt.rag.markdown(decodeURIComponent(rdm[1])), doc = rt.rag.get(decodeURIComponent(rdm[1]));
+                if (md === null || !doc)
+                    return json(res, 404, { error: "no such document" });
+                res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "content-disposition": `inline; filename="${doc.name.replace(/[^\w.-]+/g, "_")}.md"`, "x-content-type-options": "nosniff" });
+                res.end(md);
+                return;
+            }
+            if (p === "/api/rag/search" && req.method === "GET")
+                return json(res, 200, { hits: rt.rag.search(url.searchParams.get("q") ?? "", 8) });
             if (p === "/api/kanban")
                 return json(res, 200, rt.kanban.list());
+            if (p === "/api/kanban/board" && req.method === "GET")
+                return json(res, 200, boardSummary(rt));
+            if (p === "/api/kanban/dispatch" && req.method === "POST")
+                return json(res, 200, { dispatched: await rt.kanban.tick() });
+            if (p === "/api/kanban/resume" && req.method === "POST") {
+                const r = rt.kanban.recover();
+                return json(res, 200, { requeued: r.length, dispatched: await rt.kanban.tick() });
+            }
+            const kev = /^\/api\/kanban\/evidence\/([^/]+)\/(.+)$/.exec(p);
+            if (kev && req.method === "GET") {
+                const f = evidenceFile(rt, decodeURIComponent(kev[1]), decodeURIComponent(kev[2]));
+                if (!f)
+                    return json(res, 404, { error: "not found" });
+                res.writeHead(200, { "content-type": f.type, "cache-control": "no-store", "x-content-type-options": "nosniff" });
+                res.end(f.data);
+                return;
+            }
+            const kcm = /^\/api\/kanban\/card\/([^/]+)\/comment$/.exec(p);
+            if (kcm && req.method === "POST") {
+                const b = await body(req);
+                try {
+                    rt.kanban.comment(decodeURIComponent(kcm[1]), String(b.text ?? "").slice(0, 5000), "user", b.reply_to || undefined);
+                    return json(res, 200, { ok: true });
+                }
+                catch (e) {
+                    return json(res, 400, { error: errMsg(e) });
+                }
+            }
+            const kc = /^\/api\/kanban\/card\/([^/]+)$/.exec(p);
+            if (kc && req.method === "GET") {
+                const d = cardDetail(rt, decodeURIComponent(kc[1]));
+                return d ? json(res, 200, d) : json(res, 404, { error: "no such card" });
+            }
             if (p === "/api/skills" && req.method === "GET")
                 return json(res, 200, { skills: rt.skills.list().map((s) => ({ name: s.name, description: s.description, category: s.category, source: s.source })), dirs: rt.cfg.data.skills.external_dirs ?? [] });
             if (p === "/api/skills/dirs" && req.method === "POST") {
@@ -626,11 +697,25 @@ export async function startServer(rt, opts = {}) {
                     };
                 }));
             }
+            if (p === "/api/mcp/presets" && req.method === "GET")
+                return json(res, 200, Object.entries(MCP_PRESETS).map(([name, x]) => ({ name, description: x.description, usage: x.usage })));
             if (p === "/api/mcp" && req.method === "POST") {
                 const b = await body(req);
-                const name = String(b.name ?? "").trim();
+                const name = String(b.name ?? b.preset ?? "").trim();
                 if (!/^[A-Za-z0-9_-]{1,40}$/.test(name))
                     return json(res, 400, { error: "name: letters, digits, - and _ only" });
+                if (b.preset) {
+                    let entry;
+                    try {
+                        entry = presetConfig(String(b.preset), Array.isArray(b.args) ? b.args.map(String) : [], rt.defaultCwd());
+                    }
+                    catch (e) {
+                        return json(res, 400, { error: e.message });
+                    }
+                    rt.cfg.set(`mcp_servers.${name}`, entry);
+                    const conn = await rt.mcp.start(name, entry);
+                    return json(res, 200, { name, status: conn.status, error: conn.error, tools: conn.tools.map((t) => t.name) });
+                }
                 const kv = (x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, String(v)])) : undefined);
                 const cfgIn = b.url
                     ? { url: String(b.url), ...(kv(b.headers) ? { headers: kv(b.headers) } : {}) }
@@ -660,6 +745,10 @@ export async function startServer(rt, opts = {}) {
             }
             if (p === "/api/memory")
                 return json(res, 200, { memory: rt.memory.entries("memory"), user: rt.memory.entries("user") });
+            if (p === "/api/bench") {
+                const days = Math.max(1, Math.min(365, Number(url.searchParams.get("days")) || 7));
+                return json(res, 200, { days, summary: summarize(rt.bench.rows(days)), text: benchText(rt.bench.rows(days), days) });
+            }
             if (p === "/api/insights")
                 return json(res, 200, { text: insights(rt, Number(url.searchParams.get("days")) || 7) });
             return json(res, 404, { error: "not found" });

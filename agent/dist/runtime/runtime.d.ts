@@ -1,8 +1,4 @@
-/**
- * Runtime: the long-lived agent process. Owns state, tools, providers,
- * sessions (each with a FIFO turn queue), approvals, background schedulers,
- * and an event stream that every client (CLI, web, gateway, API) subscribes to.
- */
+import { BenchRecorder } from "./bench.js";
 import { EventEmitter } from "node:events";
 import { ConfigStore } from "../config.js";
 import { type Session, type StateDB } from "../state/db.js";
@@ -19,6 +15,7 @@ import { type TurnResult } from "../loop/agent.js";
 import { type GoalState } from "../loop/autonomy.js";
 import { CronScheduler } from "../cron/scheduler.js";
 import { KanbanBoard } from "../kanban/board.js";
+import { RagStore } from "../rag/index.js";
 import { McpManager } from "../mcp/client.js";
 import { HookBus } from "./hooks.js";
 import { StoreBridge } from "./store-bridge.js";
@@ -85,7 +82,9 @@ export declare class Runtime extends EventEmitter {
     readonly cron: CronScheduler;
     readonly pipelines: PipelineRunner;
     readonly kanban: KanbanBoard;
+    readonly rag: RagStore;
     readonly storeBridge: StoreBridge;
+    readonly bench: BenchRecorder;
     terminal: TerminalBackend;
     gateway: GatewayLike | null;
     readonly startCwd: string;
@@ -110,6 +109,8 @@ export declare class Runtime extends EventEmitter {
     ensureSystemPrompt(sid: string): Session;
     /** Rebuild the system prompt now (breaks the prompt cache; used by --now commands). */
     refreshSystemPrompt(sid: string): void;
+    /** Switch a chat between the normal agent and the RAG bot (answers only from the shared documents). */
+    setMode(sid: string, mode: "agent" | "rag"): void;
     /** Run this chat as a named agent from config `agents:` (null/"default" = plain settings). Rebuilds prompt and tools. */
     applyAgent(sid: string, name: string | null): void;
     sessionCwd(sid: string): string;
@@ -127,6 +128,14 @@ export declare class Runtime extends EventEmitter {
     }): void;
     /** Tools in the model schema for this session — fixed at first use for cache stability. */
     activeTools(sid: string, allowed?: Set<string>): Tool[];
+    dropToolCache(sid: string): void;
+    /**
+     * The system prompt and tool schemas are sent with every call. When they take most of a small window (51 tools
+     * are ~12K tokens, a 16K window leaves nothing for the conversation, and compression cannot shrink them) the chat
+     * moves to the compact core profile and, unless agent.tool_selection is "off", the tool planner picks the extra
+     * tools each task needs (loop/toolselect.ts). agent.tool_selection "on" does that for every chat.
+     */
+    private shrinkToWindow;
     providerFor(sid: string): Provider;
     aux(): Provider;
     resetProviders(): void;
@@ -145,6 +154,7 @@ export declare class Runtime extends EventEmitter {
         goal?: string;
         cwd?: string;
         tools?: string[];
+        tier?: "fast" | "strong";
     }): Promise<{
         sessionId: string;
         final: string;

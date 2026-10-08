@@ -2,34 +2,34 @@
 
 **A tool harness that lets Small Language Models (0.5B – 8B parameters) do real work.**
 
-The SLM only has to *decide which tool to call*. The 350+ deterministic tools in this repository do the actual computation — finance, analytics, browser automation, OCR, CFD, code generation, document capture and more — entirely on your own hardware.
+The SLM only has to *decide which tool to call*. The 367 deterministic tools in this repository do the actual computation — finance, analytics, browser automation, OCR, CFD, code generation, document capture and more — entirely on your own hardware.
 
 > Full project overview, capability tables and the tool-authoring guide: [docs/project-overview.md](docs/project-overview.md)
 
 ---
 
-## New: the autonomous agent runtime (`agent/`)
+## The agent runtime (`agent/`)
 
-The harness now ships a long-lived **agent runtime** that chats with you, runs real commands,
-edits files and keeps working until the task is done (`/goal`), with memory, skills, cron,
-MCP, Telegram/Discord/Slack, a web chat and an OpenAI-compatible API — zero runtime dependencies.
+A long-lived **agent** that chats with you, runs real commands, edits files and keeps working until the task is done
+(`/goal`, `/pipeline`), with memory, skills, schedules, MCP, Telegram/Discord/Slack, a web chat and an
+OpenAI-compatible API — zero runtime dependencies, tuned for small local models.
 
 ```bash
-node agent/bin/harness.mjs setup    # choose your model server (Ollama, llama.cpp, LM Studio, OpenAI-compatible gateway…)
-node agent/bin/harness.mjs          # terminal chat
-node agent/bin/harness.mjs ui       # web chat → http://127.0.0.1:7420 (the React app also has /chat)
-pip install stitap-harness          # Python-only machines (bundled executable or pure-Python lite core)
+npm install && npm run agent:build                                              # once
+node agent/scripts/start-local.mjs ~/models/Qwen3-4B-Instruct-2507-Q4_0.gguf   # local model + web chat → http://127.0.0.1:7420
+node agent/bin/harness.mjs setup                                                # or use Ollama, LM Studio, OpenAI, Anthropic, a company gateway…
+pip install stitap-harness                                                      # Python-only machines
 ```
 
-Guide: [docs/agent-runtime.md](docs/agent-runtime.md) · Plan & status: [docs/hermes-parity-plan.md](docs/hermes-parity-plan.md)
-
-**Ready-made sites:** the agent builds websites from pinned open-source templates (MIT/Apache) instead of writing
-them: e-commerce (Next.js + Payload CMS, or a Nuxt storefront on it), Strapi headless CMS, a lending / NBFC portal on
-Apache Fineract with WhatsApp updates, docs portals, dashboards and more — plus exact loan maths (`finance_calc`).
-See [docs/site-templates.md](docs/site-templates.md).
-
-**Long builds:** `/pipeline` works through many spec documents unattended; a document is done only when its own test
-passes *and* earlier documents' tests and pages still work.
+- **Install and first steps:** [agent/README.md](agent/README.md) · every system in detail: [docs/install-local.md](docs/install-local.md)
+- **Full guide** (commands, tools, safety, automation, integrations): [docs/agent-runtime.md](docs/agent-runtime.md)
+- **Ready-made sites:** e-commerce (Next.js + Payload CMS, or a Nuxt storefront on it), Strapi headless CMS, a lending /
+  NBFC portal on Apache Fineract with WhatsApp updates, docs portals, dashboards and more, from pinned MIT/Apache
+  templates — [docs/site-templates.md](docs/site-templates.md)
+- **Long builds:** `/pipeline` works through many spec documents unattended; a document is done only when its own test
+  passes *and* earlier documents' tests and pages still work
+- **Tool Store:** the 367 tools below, reachable from the agent — [docs/tool-store.md](docs/tool-store.md) ·
+  [docs/tool-catalog.md](docs/tool-catalog.md)
 
 ## Contents
 
@@ -64,7 +64,7 @@ A 3B model can't reliably compute an amortization table, parse a WhatsApp paymen
       ▼
  ┌──────────────┐   Thought / Action / Action Input   ┌──────────────────┐
  │  SLM (3–8B)  │ ──────────────────────────────────▶ │  Tool Registry   │
- │  decides     │ ◀────────────────────────────────── │  350+ tools      │
+ │  decides     │ ◀────────────────────────────────── │  367 tools       │
  └──────────────┘            Observation              │  (deterministic) │
       │                                                └──────────────────┘
       ▼
@@ -303,7 +303,7 @@ const tools: AgentTool[] = manifests.map((m) => ({
 const agent = new AgentExecutor({ tools, maxIterations: 8 });
 ```
 
-> **Rule of thumb:** give a ≤3B model **5–15 tools** per request, not 350. Pre-filter by category (or use session profiles, [§7](#7-keeping-the-system-prompt-small-session-profiles)) and let a router chain pick the category first if you need broader coverage.
+> **Rule of thumb:** give a ≤3B model **5–15 tools** per request, not hundreds. Pre-filter by category (or use session profiles, [§7](#7-keeping-the-system-prompt-small-session-profiles)) and let a router chain pick the category first if you need broader coverage.
 
 ### Two-stage routing for broader coverage
 
@@ -459,6 +459,10 @@ Models the NLP layer already references, plus common alternatives — all availa
 | Qwen2-VL-2B-Instruct | 2B (VLM) | Used for screenshot/vision understanding |
 | Mistral-7B-Instruct / Qwen2.5-7B | 7B | Comfortable upper bound for CPU-only desktops |
 
+For the **agent runtime** (`agent/`), the models tested end to end are **Qwen3-4B-Instruct-2507 Q4_0** (fast, ~30 tok/s on
+an M4 Mac, simple tasks) and **Qwen3-Coder-30B-A3B UD-IQ2_M** (much stronger at coding, needs ~12 GB of GPU memory) —
+download and start commands in [agent/README.md](agent/README.md#3-download-a-model-once).
+
 Quantization guidance: **Q4_K_M** is the default sweet spot; use **Q5_K_M** if you have RAM to spare and see tool-name hallucinations; use **IQ2/IQ3** only for ≤2B browser deployments.
 
 ---
@@ -492,7 +496,10 @@ src/lib/
 ├── analytics/ cfd/ math/ ml/ graph/ sandbox/ office/ capture/ video/ vision/ …   other engines
 src/pages/           React UI (store, playground, modules, agents, docs…)
 src/convex/          Convex backend (auth, captures, retention)
-docs/                Architecture, tool catalog, use cases, roadmap, testing
+agent/               the agent runtime (CLI, web chat, tools, pipelines, site templates) — see agent/README.md
+python/              pip package: launcher, SDK and pure-Python lite core for the agent
+bench/               model-speed experiments (e.g. moe-stream: large MoE models streamed from SSD)
+docs/                Guides, tool catalog, use cases, roadmap, testing
 extension/ desktop/ engines/   Chrome extension, Tauri desktop app, Rust capture engine notes
 ```
 

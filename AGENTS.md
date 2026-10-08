@@ -7,7 +7,7 @@
 3. **Diagramming Standard:** All architectural flows must be rendered in standard Mermaid syntax via the `DiagramDesign` skill module.
 4. **Verification Gates:** An audit task is marked COMPLETE only when every route listed in `sitemap.xml` has a corresponding L1 overview and interaction sequence diagram.
 5. **Spend Awareness:** Always check CAR framework spend rails before executing token-intensive operations. Stay within budget limits.
-6. **Sandbox First for untrusted code:** The agent runtime (`agent/`, `harness`) executes real commands. Untrusted or unattended work (cron, webhooks, kanban workers) runs with `approvals.mode: deny` or the `docker` terminal backend; interactive work is gated by dangerous-command approvals and automatic checkpoints (`/rollback`).
+6. **Sandbox First for untrusted code:** The agent runtime (`agent/`, `harness`) executes real commands. Untrusted or unattended work (cron, webhooks, kanban workers) runs with `approvals.mode: deny` or the `docker` terminal backend; interactive work is gated by dangerous-command approvals and automatic checkpoints (`/rollback`, `file_history`). Provided tests and vendored code are locked with a `.stitap-protected` file (e.g. `tests/**`); `write_file` never wipes most of an existing file; multi-document builds run through `/pipeline`, where a document counts as done only when its own test passes and earlier documents' tests and pages still pass.
 7. **Memory Persistence:** Store user preferences, project context, and audit findings in AgentMemory for cross-session persistence.
 8. **Progressive Loading:** Never load L2 (full raw) data unless explicitly required for deep editing. Start with L0 summaries, upgrade to L1 overview as needed.
 

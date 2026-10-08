@@ -76,6 +76,7 @@ test("MCP: `harness mcp serve` is consumable by the harness MCP client", async (
     const names = t.rt.tools.all().filter((x) => x.toolset === "mcp:me").map((x) => x.name);
     assert.ok(names.includes("mcp__me__read_file"));
     assert.ok(names.includes("mcp__me__store_search"));
+    t.rt.cfg.set("model.context_window", 131072); t.rt.resetProviders();   // a window this size keeps every tool in the schema (no tool planner)
     t.mock.script([{ tool_calls: [call("mcp__me__read_file", { path: join(serverHome, "hello.txt") })] }, { content: "read via MCP" }]);
     const s = t.rt.createSession({ source: "cli" });
     await t.rt.send(s.id, "read through mcp");

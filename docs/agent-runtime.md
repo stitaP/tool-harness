@@ -43,7 +43,11 @@ Anything OpenAI-compatible works (`model.provider: openai`): Ollama
 LiteLLM, OpenRouter, OpenAI, Azure/enterprise gateways. Native Anthropic: `provider: anthropic`.
 
 Small models (0.5B–8B):
-- `agent.tool_profile: slm` exposes ~12 tools and a shorter system prompt.
+- `agent.tool_profile: slm` sends 16 tools on every call (`terminal`, `read_file`, `write_file`, `patch`, `search_files`,
+  `run_tests`, `page_check`, `file_history`, `todo_list`, `memory`, `skill_view`, `web_search`, `web_extract`,
+  `docs_lookup`, `tool_search`, `use_tool`) and a shorter system prompt; everything else is reached through `tool_search`.
+- With a local llama.cpp server the agent reads the **real** context size from the server (`/props`), so `--fit` /
+  `CTX` choices are what autocompaction and the stats use, whatever `model.context_window` says.
 - `model.tool_mode: auto` uses native tool calls and permanently switches to the ReAct text
   protocol if the server rejects tools; `react` forces it.
 - `<tool_call>{…}</tool_call>` text (Qwen/Hermes style), malformed JSON and misspelled tool
@@ -234,6 +238,18 @@ store tools that implement them — table in [tool-store.md](tool-store.md#names
 `ctx.on("pre_tool_call" | "post_tool_call" | "on_turn_end" | "on_session_start" | "on_message", fn)`.
 A `pre_tool_call` handler returning a string blocks the call. Shell hooks: `hooks: { post_tool_call: ["cmd"] }`.
 
+### Developer integrations (git, code search, language servers, router, benchmarks, MCP presets)
+
+| Feature | What it gives the agent | Use it |
+|---|---|---|
+| `git` / `github` tools | Typed git (status, diff, log, add, commit, branch, stash, push…) and `gh` (PRs, issues, CI checks). Changes ask for approval; nothing is forced. `github` appears only when `gh` is installed. | automatic |
+| `code_search` | Ranked, symbol-aware search of the working folder (BM25 over code chunks + definitions for TS/JS/Python/Go/Rust/Swift/Java/C/Ruby/shell/Markdown). No model, no dependencies, re-reads only changed files. Actions: `search`, `symbols`, `outline`, `refresh`. | automatic (also in the `slm` profile) |
+| `lsp` | Diagnostics, go-to-definition, references, hover and outline from the project's language server, started on first use and stopped after 5 idle minutes. Built in: `typescript-language-server`, `pyright-langserver`, `gopls`, `rust-analyzer`, `clangd`, `sourcekit-lsp`. Add or override under `lsp.servers`. | install the server you need; the tool's error names the command |
+| Tool planner | On a small context window the chat starts with a compact core (17 tools) instead of all 51 (~12K tokens). Per task, the model reads the task plus a one-line catalog of the other tools (~1K tokens), picks what it needs and up to 2 search queries (store/MCP tools); only those schemas are loaded, big ones abbreviated (`tool_search <exact name>` returns the full parameter docs), and a short suggested plan is appended to the request. Picks stay for the chat (max 10). | `agent.tool_selection: auto` (default: only when the full tool set would take >55% of the window) · `on` · `off`; a tool can set `summary` for its catalog line |
+| Model router | The harness starts, restarts and stops `llama-server` itself and serves a fast model for simple turns and a strong one for hard turns (engineering keywords, code blocks, several files, long or failing turns, goals). Up-switches are immediate; down-switches wait `router.min_dwell` (600 s) and the end of the turn; a model is skipped if the conversation does not fit its context window or the GPU limit is too low. `/route` shows the loaded model and why, `/route fast\|strong\|auto` pins it. | `router.enabled: true` and `router.models.fast/strong` (`file`, `name`, `fit_margin_mb`, `min_wired_mb`), or run `start-router-chat.sh` |
+| Benchmarks | Every model call and finished goal is folded into per-day aggregates by model × tool profile × prompt size: generation and prefill speed, cache hit rate, goals done vs paused. | `/bench [days]`, Settings → Benchmarks, `GET /api/bench` |
+| MCP presets | One-line setup for `filesystem`, `fetch`, `sqlite`, `postgres`, `memory` MCP servers. | `harness mcp presets`, `harness mcp add sqlite ./app.db`, `POST /api/mcp {"preset": "filesystem"}` |
+
 ## 6. Security & enterprise controls
 
 - **Approvals.** Dangerous commands (recursive deletes, sudo, `curl | sh`, force-push, disk/
@@ -251,8 +267,16 @@ A `pre_tool_call` handler returning a string blocks the call. Shell hooks: `hook
   `Host` headers (DNS rebinding) and only allows CORS from `server.cors_origins`. Web tools
   refuse private-network addresses unless `web.allow_private: true`; `web.egress_allowlist`
   restricts domains.
-- **Secrets** live only in `~/.stitap/.env` (0600) and are redacted from tool output, logs and
-  outbound messages. `security.blocked_paths` (default `~/.ssh`, `~/.aws`, `~/.gnupg`).
+- **Secrets** live only in `~/.stitap/.env` (0600). Logs and outbound messages are redacted broadly (including
+  `password=…`/`token=…` assignments); tool output the model reads hides only unmistakable secrets (API-key formats,
+  private keys, values from `.env`) so code stays intact, and file tools refuse to write a `[REDACTED]` placeholder
+  into code. Generated projects (`site_template`, `strapi_cms setup`) get their `.env` set to 0600 too.
+- **Paths.** `security.blocked_paths` (default `~/.ssh`, `~/.aws`, `~/.gnupg`) can't be read or written;
+  `security.protected_paths` or a `.stitap-protected` file in a project (glob lines such as `tests/**`) can be read
+  but never written by the agent — use it for provided tests and vendored code.
+- **Write guards.** `write_file` won't replace more than half of an existing file of 20+ lines (unattended runs can't
+  override; elsewhere the model must pass `replace_whole=true`); in pipeline runs a script that wipes or deletes a
+  project file gets it restored.
 - **Admin policy.** `/etc/stitap/policy.yaml`, `/Library/Application Support/stitap/policy.yaml`
   or `%ProgramData%\stitap\policy.yaml` (or `STITAP_POLICY_FILE`):
 
@@ -293,10 +317,11 @@ load external ES modules).
 clients: terminal chat · web chat (ui/ and /chat) · Telegram/Discord/Slack/webhooks · /v1 API · MCP · Python SDK
                                         │  events (SSE) + JSON API
 Runtime ── sessions (FIFO queue, interrupt, steer) ── runTurn loop ── providers (native | ReAct | fallback)
-   │                                                        └── tools (registry, approvals, checkpoints, redaction)
+   │                                                        └── tools (registry, approvals, checkpoints, write guards, redaction)
    ├── state.db (sessions, messages + FTS5, meta, usage, records)    ├── memory (MEMORY.md, USER.md)
    ├── autonomy (/goal judge, /loop, /heartbeat, curator)           ├── skills (SKILL.md)
-   ├── cron scheduler · kanban workers · background processes       └── MCP client · plugins/hooks · Tool Store bridge
+   ├── cron scheduler · kanban workers · background processes       ├── MCP client · plugins/hooks · Tool Store bridge
+   ├── pipelines (per-document goal chats, test + regression + visual gates)   └── site templates (catalog + packs)
 ```
 
 Design rules borrowed from Hermes Agent: the system prompt and tool list are fixed for a

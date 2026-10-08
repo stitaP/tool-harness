@@ -236,7 +236,7 @@ export class OpenAIProvider {
                 let piece = d.content;
                 if (piece.includes("<think>"))
                     inThink = true;
-                if (!inThink && !content.includes("<tool_call>"))
+                if (!inThink && !content.includes("<tool_call>") && !content.includes("<function="))
                     req.onToken?.(piece);
                 if (piece.includes("</think>"))
                     inThink = false;
@@ -264,7 +264,7 @@ export class OpenAIProvider {
         let toolCalls = o.toolCalls;
         let text = content;
         if (!toolCalls.length && req.tools?.length) {
-            const inline = extractInlineToolCalls(content, req.tools.map((t) => t.name));
+            const inline = extractInlineToolCalls(content, req.tools.map((t) => t.name), req.tools);
             if (inline.calls.length) {
                 toolCalls = inline.calls.map((c) => ({ id: newId("call_"), ...c }));
                 text = inline.rest;

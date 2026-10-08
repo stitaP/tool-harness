@@ -3,6 +3,7 @@
  * repeat until the model answers without tools, the iteration budget runs out,
  * or the user interrupts. Strict role alternation is preserved at all times.
  */
+import { excerptBlock } from "../rag/index.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ProviderError } from "../providers/types.js";
@@ -11,6 +12,7 @@ import { errMsg, isAbort, truncateMiddle } from "../util/misc.js";
 import { redactToolOutput } from "../util/redact.js";
 import { log } from "../util/log.js";
 import { compressSession, estimateMessages } from "./compression.js";
+import { compactSchemas, planTools, selectionActive } from "./toolselect.js";
 import { collapseRepeats, sameReply } from "./repeats.js";
 function callKey(c) { return `${c.name}:${c.arguments}`; }
 const LOOP_WINDOW = 12;
@@ -55,10 +57,22 @@ export async function runTurn(rt, o) {
         if (every > 0 && userTurns > 0 && userTurns % every === 0 && !o.depth) {
             text += "\n\n(Reminder: if you've learned durable facts about the user or environment, save them with the memory tool.)";
         }
+        // tool planner: on small windows the model sees a compact core and loads the tools each task needs
+        if (!o.noTools && !o.depth && !o.allowedTools && !["goal", "loop", "heartbeat"].includes(source)) {
+            rt.activeTools(sid); // first use decides whether this chat needs the planner
+            if (selectionActive(rt, sid) && text.trim().length >= 12 && !text.trim().startsWith("/")) {
+                emit({ type: "status", text: "Planning which tools this task needs…" });
+                const p = await planTools(rt, sid, o.userText, o.signal);
+                if (p.note) {
+                    text += `\n\n${p.note}`;
+                    emit({ type: "status", text: p.added.length ? `Loaded tools: ${p.added.join(", ")}` : "Planner: no new tools needed" });
+                }
+            }
+        }
         rt.db.addMessage(sid, { role: "user", content: text, meta: { ...(o.images?.length ? { images: o.images } : {}), ...o.userMeta } });
     }
     const tools = o.noTools ? [] : rt.activeTools(sid, o.allowedTools);
-    const schemas = rt.tools.schemas(tools);
+    const schemas = selectionActive(rt, sid) ? compactSchemas(rt.tools.schemas(tools)) : rt.tools.schemas(tools);
     const provider = rt.providerFor(sid);
     const maxOut = rt.cfg.data.agent.tool_profile === "slm" ? Math.min(rt.cfg.data.agent.max_tool_output_chars, 4000) : rt.cfg.data.agent.max_tool_output_chars;
     const recent = []; // recent tool-call keys (window LOOP_WINDOW)
@@ -181,6 +195,13 @@ export async function runTurn(rt, o) {
             result.iterations++;
             budget.remaining--;
             const messages = [{ role: "system", content: rt.db.getSession(sid)?.system_prompt ?? "" }, ...collapseRepeats(history)];
+            if (session.meta?.mode === "rag" || rt.db.getSession(sid)?.meta?.mode === "rag") {
+                // RAG bot: the retrieved excerpts are put in front of the latest question for this call only (the chat keeps the plain question)
+                const li = messages.map((m) => m.role).lastIndexOf("user");
+                const q = li >= 0 ? messages[li].content : null;
+                if (typeof q === "string")
+                    messages[li] = { ...messages[li], content: `${excerptBlock(rt.rag, q)}\n\nQuestion: ${q}` };
+            }
             lastRawEstimate = estimateMessages(messages) + Math.ceil(JSON.stringify(schemas).length / 4);
             const mc = rt.cfg.data.model;
             const maxTokens = outputBudget(provider.contextWindow, Math.round(lastRawEstimate * tokenCalib), mc.max_output_tokens ?? 4096, mc.provider === "anthropic" ? 32000 : undefined);
@@ -188,7 +209,7 @@ export async function runTurn(rt, o) {
             let resp;
             try {
                 resp = await provider.chat({
-                    messages, tools: schemas.length ? schemas : undefined, signal: o.signal, maxTokens,
+                    messages, tools: schemas.length ? schemas : undefined, signal: o.signal, maxTokens, tier: rt.db.getSession(sid)?.meta?.router_tier,
                     onToken: (t) => emit({ type: "token", text: t }),
                     onReasoning: (t) => emit({ type: "reasoning", text: t }),
                     stream: rt.cfg.data.agent.stream,

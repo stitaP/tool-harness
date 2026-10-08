@@ -16,6 +16,7 @@ export interface GoalState {
     max_turns: number;
     last_reason?: string;
     created_at: number;
+    idle_turns?: number;
 }
 export interface LoopState {
     prompt: string;

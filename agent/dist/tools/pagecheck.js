@@ -34,7 +34,7 @@ export function sitePages(root) {
     add(root, 0);
     return out.sort();
 }
-function serve(root) {
+export function serve(root) {
     return new Promise((res, rej) => {
         const server = createServer((req, resp) => {
             let p = decodeURIComponent((req.url ?? "/").split("?")[0]);

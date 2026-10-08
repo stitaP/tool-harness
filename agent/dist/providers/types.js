@@ -86,7 +86,48 @@ export function splitThinking(text) {
  * server doesn't parse them. Recover `<tool_call>{json}</tool_call>` and
  * bare `{"name":…, "arguments":…}` objects.
  */
-export function extractInlineToolCalls(text, toolNames) {
+/** Coerce an XML parameter value to what the tool schema expects (numbers, booleans, arrays, objects); strings stay strings. */
+function coerceParam(raw, schema) {
+    const v = raw.replace(/^\n+|\n+$/g, "");
+    const t = schema?.type;
+    if (t === "integer" || t === "number") {
+        const n = Number(v.trim());
+        return v.trim() !== "" && Number.isFinite(n) ? n : v;
+    }
+    if (t === "boolean")
+        return /^true$/i.test(v.trim()) ? true : /^false$/i.test(v.trim()) ? false : v;
+    if (t === "array" || t === "object") {
+        try {
+            return JSON.parse(v);
+        }
+        catch {
+            return t === "array" ? v.split("\n").map((x) => x.trim()).filter(Boolean) : v;
+        }
+    }
+    if (!t && /^\s*[\[{]/.test(v)) {
+        try {
+            return JSON.parse(v);
+        }
+        catch { /* keep the text */ }
+    }
+    return v;
+}
+/** Qwen-Coder style XML calls: <function=name><parameter=key>value</parameter>…</function>, with or without the <tool_call> wrapper. */
+function extractXmlToolCalls(text, toolNames, tools) {
+    const calls = [];
+    const rest = text.replace(/<function=([A-Za-z0-9_.\-]+)>\s*([\s\S]*?)\s*(?:<\/function>|$)/g, (m, name, body) => {
+        if (!toolNames.includes(name))
+            return m;
+        const props = tools?.find((t) => t.name === name)?.parameters?.properties ?? {};
+        const args = {};
+        for (const pm of body.matchAll(/<parameter=([A-Za-z0-9_.\-]+)>([\s\S]*?)(?:<\/parameter>|(?=<parameter=)|$)/g))
+            args[pm[1]] = coerceParam(pm[2], props[pm[1]]);
+        calls.push({ name, arguments: JSON.stringify(args) });
+        return "";
+    }).replace(/<\/?tool_call>/g, "");
+    return { calls, rest: calls.length ? rest.trim() : text };
+}
+export function extractInlineToolCalls(text, toolNames, tools) {
     const calls = [];
     let rest = text.replace(/<tool_call>\s*([\s\S]*?)\s*(<\/tool_call>|$)/g, (_m, body) => {
         try {
@@ -110,5 +151,7 @@ export function extractInlineToolCalls(text, toolNames) {
             catch { /* not a call */ }
         }
     }
+    if (!calls.length)
+        return extractXmlToolCalls(text, toolNames, tools);
     return { calls, rest: rest.trim() };
 }

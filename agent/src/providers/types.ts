@@ -14,6 +14,8 @@ export interface ChatRequest {
   /** ask for a JSON object reply (judge/curator); providers do best effort */
   json?: boolean;
   stream?: boolean;
+  /** model router: require this tier for the request (kanban workers and reviewers) */
+  tier?: "fast" | "strong";
 }
 
 export interface ChatResponse {
@@ -107,7 +109,32 @@ export function splitThinking(text: string): { content: string; reasoning: strin
  * server doesn't parse them. Recover `<tool_call>{json}</tool_call>` and
  * bare `{"name":…, "arguments":…}` objects.
  */
-export function extractInlineToolCalls(text: string, toolNames: string[]): { calls: { name: string; arguments: string }[]; rest: string } {
+/** Coerce an XML parameter value to what the tool schema expects (numbers, booleans, arrays, objects); strings stay strings. */
+function coerceParam(raw: string, schema: any): unknown {
+  const v = raw.replace(/^\n+|\n+$/g, "");
+  const t = schema?.type;
+  if (t === "integer" || t === "number") { const n = Number(v.trim()); return v.trim() !== "" && Number.isFinite(n) ? n : v; }
+  if (t === "boolean") return /^true$/i.test(v.trim()) ? true : /^false$/i.test(v.trim()) ? false : v;
+  if (t === "array" || t === "object") { try { return JSON.parse(v); } catch { return t === "array" ? v.split("\n").map((x) => x.trim()).filter(Boolean) : v; } }
+  if (!t && /^\s*[\[{]/.test(v)) { try { return JSON.parse(v); } catch { /* keep the text */ } }
+  return v;
+}
+
+/** Qwen-Coder style XML calls: <function=name><parameter=key>value</parameter>…</function>, with or without the <tool_call> wrapper. */
+function extractXmlToolCalls(text: string, toolNames: string[], tools?: { name: string; parameters?: any }[]): { calls: { name: string; arguments: string }[]; rest: string } {
+  const calls: { name: string; arguments: string }[] = [];
+  const rest = text.replace(/<function=([A-Za-z0-9_.\-]+)>\s*([\s\S]*?)\s*(?:<\/function>|$)/g, (m, name: string, body: string) => {
+    if (!toolNames.includes(name)) return m;
+    const props = tools?.find((t) => t.name === name)?.parameters?.properties ?? {};
+    const args: Record<string, unknown> = {};
+    for (const pm of body.matchAll(/<parameter=([A-Za-z0-9_.\-]+)>([\s\S]*?)(?:<\/parameter>|(?=<parameter=)|$)/g)) args[pm[1]] = coerceParam(pm[2], props[pm[1]]);
+    calls.push({ name, arguments: JSON.stringify(args) });
+    return "";
+  }).replace(/<\/?tool_call>/g, "");
+  return { calls, rest: calls.length ? rest.trim() : text };
+}
+
+export function extractInlineToolCalls(text: string, toolNames: string[], tools?: { name: string; parameters?: any }[]): { calls: { name: string; arguments: string }[]; rest: string } {
   const calls: { name: string; arguments: string }[] = [];
   let rest = text.replace(/<tool_call>\s*([\s\S]*?)\s*(<\/tool_call>|$)/g, (_m, body) => {
     try {
@@ -128,5 +155,6 @@ export function extractInlineToolCalls(text: string, toolNames: string[]): { cal
       } catch { /* not a call */ }
     }
   }
+  if (!calls.length) return extractXmlToolCalls(text, toolNames, tools);
   return { calls, rest: rest.trim() };
 }

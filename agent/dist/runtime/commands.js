@@ -3,6 +3,7 @@
  * Mutations that affect the system prompt or tool schema take effect next
  * session unless `--now` is passed (prompt-cache friendly).
  */
+import { importPlan } from "../kanban/plan.js";
 import { expandDocs, filterRange } from "../loop/pipeline.js";
 import { existsSync } from "node:fs";
 import { compressSession, estimateMessages } from "../loop/compression.js";
@@ -10,6 +11,8 @@ import { draftContract, goalKey, heartbeatKey, loopKey } from "../loop/autonomy.
 import { PERSONALITIES } from "../prompt/builder.js";
 import { fmtDuration, parseDuration, splitArgs } from "../util/misc.js";
 import { exportSession } from "./export.js";
+import { benchText } from "./bench.js";
+import { RouterProvider } from "../providers/router.js";
 const ok = (text) => ({ text });
 function lastUserIndex(rt, sid) {
     const msgs = rt.db.getMessages(sid);
@@ -89,6 +92,7 @@ const COMMANDS = [
             const msgs = c.rt.db.getMessages(c.sid);
             return ok(`This session: ${rows.length} model calls, ${i.toLocaleString()} input + ${o.toLocaleString()} output tokens.\nCurrent context ≈ ${estimateMessages(msgs).toLocaleString()} tokens of ${c.rt.providerFor(c.sid).contextWindow.toLocaleString()}.`);
         } },
+    { name: "bench", group: "context", usage: "/bench [days]", help: "Speed and goal results per model and tool profile, by prompt size", handler: (a, c) => { const d = Math.max(1, Number(a) || 7); return ok(benchText(c.rt.bench.rows(d), d)); } },
     { name: "insights", group: "context", usage: "/insights [days]", help: "Usage across sessions", handler: (a, c) => ok(insights(c.rt, Number(a) || 7)) },
     { name: "model", group: "config", usage: "/model [name | provider:name | base_url=… | reset]", help: "Show or switch the model for this session", handler: (a, c) => {
             const s = c.rt.db.getSession(c.sid);
@@ -116,6 +120,23 @@ const COMMANDS = [
             }
             c.rt.db.updateSession(c.sid, { meta: { ...s.meta, model_override: { ...(s.meta.model_override ?? {}), ...ov } } });
             return ok(`Session model → ${JSON.stringify({ ...(s.meta.model_override ?? {}), ...ov })}. (Use \`harness config set model.name …\` to change the default.)`);
+        } },
+    { name: "route", group: "config", usage: "/route [auto | fast | strong]", help: "Model router: show which model is loaded and why, or pin fast/strong (auto picks per request)", handler: (a, c) => {
+            const p = c.rt.providerFor(c.sid);
+            if (!(p instanceof RouterProvider))
+                return ok("The router is off. Enable it with: harness config set router.enabled true (and define router.models.fast / strong).");
+            const arg = a.trim().toLowerCase();
+            if (arg) {
+                if (!["auto", "fast", "strong"].includes(arg))
+                    return ok("Usage: /route [auto | fast | strong]");
+                p.mode = arg;
+            }
+            const srv = p.server;
+            if (p.resident) {
+                const line = (t) => { const m = c.rt.cfg.data.router.models[t]; return m ? `${t}: ${m.name} — ${srv.isUp(t) ? `running on :${srv.portOf(t)}, ${srv.ctx[t].toLocaleString()}-token context` : `not running${srv.errors[t] ? ` (${srv.errors[t]})` : ""}`}` : `${t}: not configured`; };
+                return ok(`Router mode: ${p.mode} (both models resident, no restarts)\n${line("strong")}\n${line("fast")}\nLast used: ${srv.current ?? "none"}\nLast decision: ${p.last ? `${p.last.tier} — ${p.last.reason}` : "none"}`);
+            }
+            return ok(`Router mode: ${p.mode}\nLoaded: ${srv.current ? `${srv.current} (${p.model}, ${srv.ctx[srv.current].toLocaleString()}-token context)` : "nothing yet"}${srv.external ? ` [external server ${srv.external}: no switching]` : ""}\nLast decision: ${p.last ? `${p.last.tier} — ${p.last.reason}` : "none"}`);
         } },
     { name: "tools", group: "config", usage: "/tools [list | disable <name> | enable <name>] [--now]", help: "Show or toggle tools", handler: (a, c) => {
             const [sub, name] = splitArgs(a.replace("--now", ""));
@@ -432,15 +453,53 @@ const COMMANDS = [
                 return ok(C.remove(id) ? "Removed." : "Not found.");
             return ok('Usage: /cron [list | add "<schedule>" <task> | run <id> | pause <id> | resume <id> | remove <id>]');
         } },
-    { name: "kanban", group: "automation", usage: "/kanban [list | add <title> | run]", help: "Kanban board", handler: async (a, c) => {
+    { name: "kanban", group: "automation", usage: "/kanban [list | board | report | show <key> | add <title> | comment <key> <text> | reply <key> <comment-id> <text> | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> [projectDir] [testsDir]]", help: "Jira-style kanban board", handler: async (a, c) => {
             const [sub = "list", ...rest] = splitArgs(a);
-            if (sub === "add") {
-                const k = c.rt.kanban.create({ title: rest.join(" ") });
-                return ok(`Added ${k.id}`);
+            const K = c.rt.kanban;
+            try {
+                if (sub === "add") {
+                    const k = K.create({ title: rest.join(" ") });
+                    return ok(`Added ${k.key} (${k.id})`);
+                }
+                if (sub === "run")
+                    return ok(`Dispatched ${await K.tick()} card(s).`);
+                if (sub === "resume") {
+                    const r = K.recover();
+                    return ok(`Re-queued ${r.length} interrupted card(s); dispatched ${await K.tick()}.`);
+                }
+                if (sub === "show")
+                    return ok(K.show(rest[0]));
+                if (sub === "board")
+                    return ok(K.board());
+                if (sub === "report")
+                    return ok(K.report());
+                if (sub === "comment") {
+                    K.comment(rest[0], rest.slice(1).join(" "), "user");
+                    return ok("Comment added.");
+                }
+                if (sub === "reply") {
+                    K.comment(rest[0], rest.slice(2).join(" "), "user", rest[1]);
+                    return ok("Reply added.");
+                }
+                if (sub === "test") {
+                    const t = await K.runTests(rest[0]);
+                    return ok(`exit ${t.code}\n${t.output}`);
+                }
+                if (sub === "verify")
+                    return ok((await K.verify(rest[0])).markdown);
+                if (sub === "gentests")
+                    return ok(`Wrote ${K.genTests(rest[0])}`);
+                if (sub === "regression")
+                    return ok(await K.regression(rest[0]));
+                if (sub === "sync")
+                    return ok(`Linked ${await K.syncCommits(rest[0])} new commit(s).`);
+                if (sub === "import")
+                    return ok(importPlan(K, { planDir: rest[0], projectDir: rest[1], testsDir: rest[2] }));
             }
-            if (sub === "run")
-                return ok(`Dispatched ${await c.rt.kanban.tick()} card(s).`);
-            return ok(c.rt.kanban.list().map((k) => `${k.id} [${k.status}] ${k.title}`).join("\n") || "Board is empty.");
+            catch (e) {
+                return ok(`kanban: ${e.message}`);
+            }
+            return ok(K.list().map((k) => K.fmt(k)).join("\n") || "Board is empty.");
         } },
     { name: "mcp", group: "integrations", usage: "/mcp", help: "MCP server status", handler: (_a, c) => ok(c.rt.mcp.summary()) },
     { name: "reload-mcp", group: "integrations", usage: "/reload-mcp", help: "Restart MCP servers (new tools apply to new sessions)", handler: async (_a, c) => ok(await c.rt.mcp.reload()) },

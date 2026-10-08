@@ -1,4 +1,5 @@
 /** `harness` command-line entry point. */
+import { importPlan } from "../kanban/plan.js";
 import { existsSync, readFileSync, statSync, watch, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -11,6 +12,7 @@ import { setup } from "./setup.js";
 import { startServer } from "../server/http.js";
 import { GatewayManager, approvePairing } from "../gateway/manager.js";
 import { serveMcp } from "../mcp/server.js";
+import { presetConfig, presetList } from "../mcp/presets.js";
 import { runBatch } from "../batch/runner.js";
 import { exportSession } from "../runtime/export.js";
 import { insights } from "../runtime/commands.js";
@@ -63,6 +65,7 @@ ${bold("Server & integrations")}
   harness gateway                 serve + Telegram/Discord/Slack/webhook gateway
   harness mcp serve               expose tools over MCP (stdio) for Claude Desktop, Cursor, VS Code…
   harness mcp list                status of configured MCP servers
+  harness mcp presets | add <preset> [args]   one-line setup: filesystem, fetch, sqlite, postgres, memory
   harness pairing list | approve <code>
 
 ${bold("Setup")}
@@ -76,7 +79,7 @@ ${bold("Setup")}
 
 ${bold("Automation")}
   harness cron list | add "<schedule>" "<prompt>" [--deliver telegram:<id>] | run <id> | pause <id> | resume <id> | rm <id> | tick
-  harness kanban list | add "<title>" [--goal "<details>"] | run
+  harness kanban list | board | report | show <key> | add "<title>" [--goal ..] [--test "<cmd>"] [--type epic|task|bug] | comment <key> "<text>" [--reply <id>] | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> --project <dir> [--tests <dir>] [--key PT]
   harness batch <prompts.jsonl> --out traj.jsonl [--concurrency 4]
 
 ${bold("Data")}
@@ -161,6 +164,17 @@ export async function main(argv: string[]): Promise<void> {
     }
     case "mcp": {
       if (rest[0] === "serve") { const rt = await makeRuntime(f); await serveMcp(rt); await rt.shutdown(); return; }
+      if (rest[0] === "presets") { console.log(`MCP presets:\n${presetList()}`); return; }
+      if (rest[0] === "add") {
+        const home = resolveHome(f.profile), cfg = new ConfigStore(home);
+        const [, preset, ...pargs] = rest;
+        try {
+          const entry = presetConfig(preset ?? "", pargs, process.cwd());
+          cfg.set(`mcp_servers.${f.name ?? preset}`, entry);
+          console.log(`added MCP server "${f.name ?? preset}": ${[entry.command, ...(entry.args ?? [])].join(" ")}\nrestart the chat (or run \`harness mcp list\`) to connect`);
+        } catch (e: any) { console.error(e.message); process.exitCode = 1; }
+        return;
+      }
       const rt = await makeRuntime(f);
       console.log(rt.mcp.summary());
       for (const conn of rt.mcp.conns.values()) for (const t of conn.tools) console.log(`  ${conn.name}.${t.name}: ${(t.description ?? "").slice(0, 100)}`);
@@ -208,10 +222,24 @@ export async function main(argv: string[]): Promise<void> {
     }
     case "kanban": {
       const rt = await makeRuntime(f);
-      const [sub = "list", a1] = rest;
-      if (sub === "add") console.log(rt.kanban.create({ title: a1, body: f.goal ?? "" }).id);
-      else if (sub === "run") { const ready = rt.kanban.ready(); for (const card of ready.slice(0, rt.cfg.data.kanban.workers)) { const done = await rt.kanban.work(card.id); console.log(`${done.id} → ${done.status}`); } if (!ready.length) console.log("no ready cards"); }
-      else for (const k of rt.kanban.list()) console.log(`${k.id} [${k.status}] ${k.title}`);
+      const [sub = "list", a1, a2] = rest;
+      const K = rt.kanban;
+      try {
+        if (sub === "add") console.log(K.create({ title: a1, body: f.goal ?? "", test_cmd: f.test, type: f.type, parent: f.parent, cwd: f.cwd }).key);
+        else if (sub === "run") { K.recover(); const ready = K.ready(); for (const card of ready.slice(0, rt.cfg.data.kanban.workers)) { const done = await K.work(card.id); console.log(`${done.key ?? done.id} → ${done.status}`); } if (!ready.length) console.log("no ready cards"); }
+        else if (sub === "resume") { const r = K.recover(); console.log(`re-queued ${r.length} interrupted card(s)`); }
+        else if (sub === "show") console.log(K.show(a1));
+        else if (sub === "board") console.log(K.board());
+        else if (sub === "report") console.log(K.report());
+        else if (sub === "comment") { K.comment(a1, a2, "user", f.reply); console.log("ok"); }
+        else if (sub === "test") { const t = await K.runTests(a1); console.log(`exit ${t.code}\n${t.output}`); }
+        else if (sub === "verify") { const v = await K.verify(a1); console.log(v.markdown); if (!v.ok) process.exitCode = 1; }
+        else if (sub === "gentests") console.log(`wrote ${K.genTests(a1)}`);
+        else if (sub === "regression") console.log(await K.regression(a1));
+        else if (sub === "sync") console.log(`linked ${await K.syncCommits(a1)} commit(s)`);
+        else if (sub === "import") console.log(importPlan(K, { planDir: a1, projectDir: f.project, testsDir: f.tests, keyPrefix: f.key }));
+        else for (const k of K.list()) console.log(K.fmt(k));
+      } catch (e: any) { console.error(`kanban: ${e.message}`); process.exitCode = 1; }
       await rt.shutdown();
       return;
     }

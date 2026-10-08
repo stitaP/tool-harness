@@ -3,6 +3,10 @@
  * sessions (each with a FIFO turn queue), approvals, background schedulers,
  * and an event stream that every client (CLI, web, gateway, API) subscribes to.
  */
+import { gitTool, githubTool } from "../tools/git.js";
+import { BenchRecorder } from "./bench.js";
+import { codeSearchTool } from "../tools/codeindex.js";
+import { lspTool, stopAllLsp } from "../tools/lsp.js";
 import { EventEmitter } from "node:events";
 import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, statSync } from "node:fs";
@@ -44,6 +48,8 @@ import { afterTurn, goalKey, heartbeatKey, heartbeatPrompt, loopKey, loopPrompt 
 import { curate } from "../loop/curator.js";
 import { CronScheduler, cronTool } from "../cron/scheduler.js";
 import { KanbanBoard, kanbanTool } from "../kanban/board.js";
+import { RouterProvider } from "../providers/router.js";
+import { RagStore, ragSearchTool, RAG_SYSTEM_PROMPT } from "../rag/index.js";
 import { McpManager } from "../mcp/client.js";
 import { HookBus } from "./hooks.js";
 import { StoreBridge } from "./store-bridge.js";
@@ -138,7 +144,7 @@ class SessionRunner {
         try {
             rt.maybeTitle(sid);
             const s = rt.db.getSession(sid);
-            if (rt.cfg.data.curator.enabled && result.toolCalls >= rt.cfg.data.curator.min_tool_calls && s && !["subagent", "cron", "kanban", "api", "webhook"].includes(s.source)) {
+            if (rt.cfg.data.curator.enabled && result.toolCalls >= rt.cfg.data.curator.min_tool_calls && s && !["subagent", "cron", "kanban", "api", "webhook"].includes(s.source) && s.meta?.mode !== "rag") {
                 void curate(rt, sid).catch((e) => log.warn(`curator: ${errMsg(e)}`));
             }
             // goal judge / loop bookkeeping happens before the session is reported idle
@@ -171,7 +177,9 @@ export class Runtime extends EventEmitter {
     cron;
     pipelines;
     kanban;
+    rag;
     storeBridge;
+    bench;
     terminal;
     gateway = null;
     startCwd;
@@ -208,7 +216,9 @@ export class Runtime extends EventEmitter {
         this.cron = new CronScheduler(this);
         this.pipelines = new PipelineRunner(this);
         this.kanban = new KanbanBoard(this);
+        this.rag = new RagStore(this.home);
         this.storeBridge = new StoreBridge(() => this.cfg.data.store_bridge.enabled, () => this.cfg.data.store_bridge.path, this);
+        this.bench = new BenchRecorder(this);
         this.registerBuiltinTools();
         this.processes.on("exit", (p) => this.onProcessExit(p));
     }
@@ -236,10 +246,10 @@ export class Runtime extends EventEmitter {
     }
     registerBuiltinTools() {
         for (const t of [
-            terminalTool, processTool, runTestsTool, fileHistoryTool, pageCheckTool, siteTemplateTool, financeTool, strapiTool, readFileTool, writeFileTool, patchTool, searchFilesTool, listDirTool, officeTool,
+            terminalTool, processTool, runTestsTool, gitTool, githubTool, codeSearchTool, lspTool, fileHistoryTool, pageCheckTool, siteTemplateTool, financeTool, strapiTool, readFileTool, writeFileTool, patchTool, searchFilesTool, listDirTool, officeTool,
             webSearchTool, webExtractTool, docsLookupTool, todoTool, memoryTool, skillsListTool, skillViewTool, skillManageTool,
             sessionSearchTool, clarifyTool, toolSearchTool, useToolTool, delegateTool, executeCodeTool, visionTool,
-            cronTool, pipelineTool, kanbanTool, ...browserTools, desktopTool, ...captureTools, webtestTool,
+            cronTool, pipelineTool, kanbanTool, ragSearchTool, ...browserTools, desktopTool, ...captureTools, webtestTool,
         ])
             this.tools.register(t);
     }
@@ -270,6 +280,10 @@ export class Runtime extends EventEmitter {
             throw new Error(`no session ${sid}`);
         if (s.system_prompt)
             return s;
+        if (s.meta.mode === "rag") {
+            this.db.updateSession(sid, { system_prompt: RAG_SYSTEM_PROMPT });
+            return { ...s, system_prompt: RAG_SYSTEM_PROMPT };
+        }
         const agent = s.meta.agent ? this.cfg.data.agents?.[s.meta.agent] : undefined;
         const extra = agent?.instructions ? `## Agent: ${s.meta.agent}\n${agent.instructions.trim()}` : undefined;
         const prompt = buildSystemPrompt(this, { cwd: s.cwd || this.defaultCwd(), source: s.source, personality: s.meta.personality, profile: s.meta.tool_profile, extra });
@@ -285,6 +299,20 @@ export class Runtime extends EventEmitter {
             this.db.updateSession(sid, { meta: { ...s.meta, tool_names: undefined } });
         this.ensureSystemPrompt(sid);
     }
+    /** Switch a chat between the normal agent and the RAG bot (answers only from the shared documents). */
+    setMode(sid, mode) {
+        const s = this.db.getSession(sid);
+        if (!s)
+            throw new Error(`no session ${sid}`);
+        const meta = { ...s.meta };
+        if (mode === "rag")
+            Object.assign(meta, { mode: "rag", tool_names: ["rag_search"], tool_names_explicit: true, tool_selection: undefined });
+        else
+            Object.assign(meta, { mode: undefined, tool_names: undefined, tool_names_explicit: undefined });
+        this.db.updateSession(sid, { system_prompt: null, meta });
+        this.toolCache.delete(sid);
+        this.ensureSystemPrompt(sid);
+    }
     /** Run this chat as a named agent from config `agents:` (null/"default" = plain settings). Rebuilds prompt and tools. */
     applyAgent(sid, name) {
         const s = this.db.getSession(sid);
@@ -297,7 +325,7 @@ export class Runtime extends EventEmitter {
         const m = a?.model && Object.values(a.model).some((v) => v !== undefined && v !== "") ? Object.fromEntries(Object.entries(a.model).filter(([, v]) => v !== undefined && v !== "")) : undefined;
         this.db.updateSession(sid, { system_prompt: null, meta: {
                 ...s.meta, agent: n ?? undefined, personality: a?.personality ?? undefined, tool_profile: a?.tool_profile ?? undefined,
-                tool_names: a?.tools?.length ? a.tools : undefined, model_override: m, max_iterations: a?.max_iterations ?? undefined,
+                tool_names: a?.tools?.length ? a.tools : undefined, tool_names_explicit: a?.tools?.length ? true : undefined, model_override: m, max_iterations: a?.max_iterations ?? undefined,
             } });
         this.toolCache.delete(sid);
     }
@@ -343,12 +371,53 @@ export class Runtime extends EventEmitter {
                 list = names.map((n) => this.tools.get(n)).filter((t) => !!t && this.tools.isAvailable(t, this));
             else {
                 list = this.tools.active(this, { profile: s?.meta?.tool_profile });
+                // planner-selected tools (loop/toolselect.ts) come on top of the compact core
+                const extras = s?.meta?.tool_extras ?? [];
+                if (extras.length) {
+                    const have = new Set(list.map((t) => t.name));
+                    for (const n of extras) {
+                        const t = this.tools.get(n);
+                        if (t && !have.has(n) && this.tools.isAvailable(t, this))
+                            list.push(t);
+                    }
+                    list.sort((a, b) => a.name.localeCompare(b.name));
+                }
                 if (s)
                     this.db.updateSession(sid, { meta: { ...s.meta, tool_names: list.map((t) => t.name) } });
             }
             this.toolCache.set(sid, list);
+            if (this.shrinkToWindow(sid, list))
+                return this.activeTools(sid, allowed);
         }
         return allowed ? list.filter((t) => allowed.has(t.name)) : list;
+    }
+    dropToolCache(sid) { this.toolCache.delete(sid); }
+    /**
+     * The system prompt and tool schemas are sent with every call. When they take most of a small window (51 tools
+     * are ~12K tokens, a 16K window leaves nothing for the conversation, and compression cannot shrink them) the chat
+     * moves to the compact core profile and, unless agent.tool_selection is "off", the tool planner picks the extra
+     * tools each task needs (loop/toolselect.ts). agent.tool_selection "on" does that for every chat.
+     */
+    shrinkToWindow(sid, list) {
+        const s = this.db.getSession(sid);
+        const mode = this.cfg.data.agent.tool_selection;
+        if (!s || s.meta?.tool_names_explicit || s.meta?.tool_selection)
+            return false;
+        const compact = s.meta?.tool_profile === "slm" || (!s.meta?.tool_profile && this.cfg.data.agent.tool_profile === "slm");
+        const window = this.providerFor(sid).contextWindow;
+        const fixed = Math.ceil((JSON.stringify(this.tools.schemas(list)).length + (s.system_prompt?.length ?? 0)) / 3.2);
+        const tooBig = window > 0 && fixed > window * 0.55;
+        if (compact && mode !== "on")
+            return false;
+        if (!compact && !tooBig && mode !== "on")
+            return false;
+        if (tooBig && !compact) {
+            this.emitEvent(sid, { type: "status", text: `Tools and instructions take ~${fixed} of ${window} tokens; this chat uses the compact tool set${mode === "off" ? " (other tools via tool_search)" : " and the tool planner picks the rest per task"}` });
+            log.warn(`session ${sid}: fixed prompt ~${fixed} tokens of a ${window}-token window; compact tools${mode === "off" ? "" : " + planner"}`);
+        }
+        this.db.updateSession(sid, { meta: { ...s.meta, tool_profile: "slm", tool_names: undefined, ...(mode === "off" ? {} : { tool_selection: true }) } });
+        this.refreshSystemPrompt(sid);
+        return true;
     }
     providerFor(sid) {
         if (this.opts.provider)
@@ -390,7 +459,7 @@ export class Runtime extends EventEmitter {
     waitIdle(sid) { return this.runners.get(sid)?.waitIdle() ?? Promise.resolve(); }
     /** Run a prompt in a fresh session with nobody watching; waits for goal continuations to finish. */
     async runHeadless(o) {
-        const s = this.createSession({ source: o.source, title: o.title ?? "", cwd: o.cwd ?? this.defaultCwd(), meta: o.tools ? { tool_names: o.tools } : {} });
+        const s = this.createSession({ source: o.source, title: o.title ?? "", cwd: o.cwd ?? this.defaultCwd(), meta: { ...(o.tools ? { tool_names: o.tools, tool_names_explicit: true } : {}), ...(o.tier ? { router_tier: o.tier } : {}) } });
         if (o.goal)
             this.db.setMeta(goalKey(s.id), { text: o.goal, status: "active", turns: 0, max_turns: this.cfg.data.goals.max_turns, created_at: Date.now() });
         const first = await this.send(s.id, o.prompt, { source: o.source, approvalMode: o.approvalMode ?? "deny" });
@@ -548,7 +617,22 @@ export class Runtime extends EventEmitter {
         fast.unref();
         slow.unref();
         this.tickers.push(fast, slow);
+        // resident router: bring both models up now instead of on the first request
+        try {
+            const p = this.providerFor("");
+            if (p instanceof RouterProvider && p.resident)
+                void p.server.ensureAll().catch((e) => log.warn(`router: ${errMsg(e)}`));
+        }
+        catch (e) {
+            log.warn(`router start: ${errMsg(e)}`);
+        }
         setTimeout(() => { if (this.ownsTicker()) {
+            try {
+                this.kanban.recover();
+            }
+            catch (e) {
+                log.warn(`kanban recover: ${errMsg(e)}`);
+            }
             void this.cron.tick();
             void this.pipelines.tick();
         } }, 2000).unref();
@@ -589,6 +673,7 @@ export class Runtime extends EventEmitter {
             r.interrupt(true);
         this.processes.killAll();
         this.mcp.closeAll();
+        stopAllLsp();
         await closeBrowsers();
         await this.storeBridge.close();
         for (const s of this.runners.keys())

@@ -16,6 +16,8 @@ export interface ChatRequest {
     /** ask for a JSON object reply (judge/curator); providers do best effort */
     json?: boolean;
     stream?: boolean;
+    /** model router: require this tier for the request (kanban workers and reviewers) */
+    tier?: "fast" | "strong";
 }
 export interface ChatResponse {
     content: string;
@@ -63,12 +65,10 @@ export declare function splitThinking(text: string): {
     content: string;
     reasoning: string;
 };
-/**
- * Many local models (Qwen, Hermes, Llama) emit tool calls as text when the
- * server doesn't parse them. Recover `<tool_call>{json}</tool_call>` and
- * bare `{"name":…, "arguments":…}` objects.
- */
-export declare function extractInlineToolCalls(text: string, toolNames: string[]): {
+export declare function extractInlineToolCalls(text: string, toolNames: string[], tools?: {
+    name: string;
+    parameters?: any;
+}[]): {
     calls: {
         name: string;
         arguments: string;

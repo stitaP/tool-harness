@@ -4,12 +4,14 @@ import { sleep, isAbort } from "../util/misc.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAIProvider } from "./openai.js";
 import { ReactAdapter } from "./react.js";
+import { DuoServer, ModelServer, RouterProvider } from "./router.js";
 import { type ChatRequest, type ChatResponse, type Provider, ProviderError } from "./types.js";
 
 export * from "./types.js";
 export { OpenAIProvider } from "./openai.js";
 export { AnthropicProvider } from "./anthropic.js";
 export { ReactAdapter, FunctionProvider } from "./react.js";
+export { RouterProvider, ModelServer } from "./router.js";
 
 /** Native tool calling first; permanently switch to ReAct if the server rejects tools. */
 export class AutoToolProvider implements Provider {
@@ -106,7 +108,22 @@ export function buildProvider(mc: ModelConfig, cfg: ConfigStore): Provider {
 export function buildMainProvider(cfg: ConfigStore, onEvent?: (m: string) => void, override?: Partial<ModelConfig>): ResilientProvider {
   const main = { ...cfg.data.model, ...override } as ModelConfig;
   const chain = [main, ...(cfg.data.fallback_models ?? [])].map((m) => buildProvider({ ...cfg.data.model, ...m } as ModelConfig, cfg));
-  return new ResilientProvider(chain, cfg.data.agent.retries, onEvent);
+  const resilient = new ResilientProvider(chain, cfg.data.agent.retries, onEvent);
+  if (cfg.data.router?.enabled && !override) {
+    const makeInner = cfg.data.router.resident
+      ? (_tier: "fast" | "strong", port: number, name: string, ctx: number) => buildProvider({ ...cfg.data.model, base_url: `http://127.0.0.1:${port}/v1`, name, ...(ctx ? { context_window: ctx } : {}) } as ModelConfig, cfg)
+      : undefined;
+    return new RouterProvider(resilient, modelServerFor(cfg), () => cfg.data.router, onEvent, makeInner) as unknown as ResilientProvider;
+  }
+  return resilient;
+}
+
+const servers = new WeakMap<ConfigStore, ModelServer | DuoServer>();
+/** One llama-server manager per config (all providers and sessions share the one GPU model). */
+export function modelServerFor(cfg: ConfigStore): ModelServer | DuoServer {
+  let s = servers.get(cfg);
+  if (!s) { s = cfg.data.router?.resident ? new DuoServer(() => cfg.data.router, cfg.home) : new ModelServer(() => cfg.data.router, cfg.home); servers.set(cfg, s); }
+  return s;
 }
 
 /** Auxiliary model for judge / compression / curator / titles — defaults to the main model. */

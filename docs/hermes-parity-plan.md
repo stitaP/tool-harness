@@ -2,6 +2,10 @@
 
 _Prepared 2 Oct 2026 from a side-by-side read of `stitaP/tool-harness` (commit 46db156) and `NousResearch/hermes-agent` (main, shallow clone)._
 
+> **This is the original plan, kept for history.** Sections 0–7 describe the harness as it was on 2 Oct 2026 (before
+> the agent runtime existed) and what was planned. **What exists now is in [§8](#8-implementation-status)**; how to use
+> it is in [agent-runtime.md](agent-runtime.md).
+
 ---
 
 ## 0. The one-paragraph diagnosis
@@ -317,13 +321,12 @@ PR 1 adds `protocol/` (spec + JSON Schemas) before any core code. SEA packaging 
 
 ---
 
-## 8. Implementation status (2 Oct 2026)
+## 8. Implementation status
 
-Built in `agent/` (Node.js, zero runtime dependencies), `python/` (launcher, SDK, pure-Python
-lite core) and `src/pages/Chat.tsx`. Verified by 96 Node tests (end-to-end against the mock model plus unit tests) and 8 Python tests
-against a scripted OpenAI-compatible mock model (real shell, files, SQLite, HTTP, MCP, browser).
-**Not yet verified against a live LLM** in this environment (model downloads were blocked) —
-run `harness doctor` with your model server first.
+_Updated 6 Oct 2026._ Built in `agent/` (Node.js, zero runtime dependencies), `python/` (launcher, SDK, pure-Python
+lite core) and `src/pages/Chat.tsx`. Verified by 187 Node tests (end-to-end against a scripted mock model, unit tests,
+HTTP/MCP surfaces) and 8 Python tests, and in daily use with local llama.cpp models (Qwen3-4B-Instruct Q4_0 and
+Qwen3-Coder-30B-A3B on a 16 GB M4 Mac), including multi-day unattended `/pipeline` runs.
 
 | Phase | Item | Status |
 |---|---|---|
@@ -337,13 +340,13 @@ run `harness doctor` with your model server first.
 | 0 | CLI: chat, one-shot (`--json`), setup wizard, doctor, config/secret/model | ✅ |
 | 1 | Daemon: JSON API + SSE, token auth, DNS-rebinding guard, CORS allow-list | ✅ |
 | 1 | Web chat (`agent/ui`, no build) + React `/chat` page | ✅ |
-| 1 | 39 slash commands incl. /new /resume /retry /undo /branch /model /compress /usage /insights /export | ✅ |
+| 1 | 40 slash commands incl. /new /resume /retry /undo /branch /model /compress /usage /insights /export | ✅ |
 | 1 | Context compression (preflight + on provider overflow, archive originals) | ✅ |
 | 1 | `/goal` with judge, completion contracts (`/goal draft`), turn budget, pause/resume | ✅ |
 | 1 | SLM guards: empty-response retry, repetition guard, slm tool profile | ✅ |
 | 2 | MEMORY.md / USER.md + memory tool + nudges | ✅ |
 | 2 | session_search (FTS5, optional summary) | ✅ |
-| 2 | Skills: SKILL.md, progressive disclosure, `/skill-name`, skill_manage, 13 bundled skills | ✅ |
+| 2 | Skills: SKILL.md, progressive disclosure, `/skill-name`, skill_manage, 19 bundled skills | ✅ |
 | 2 | Curator (background memory + skill extraction after complex turns) | ✅ |
 | 2 | @file / @folder / @diff / @staged / @url references, SOUL.md, /personality | ✅ |
 | 2 | Pluggable memory providers (Honcho/Mem0/OpenViking) | ❌ not started (OpenViking store not wired as a provider) |
@@ -359,7 +362,7 @@ run `harness doctor` with your model server first.
 | 4 | Ink TUI | 🟡 readline terminal chat with streaming, autocomplete, inline approvals (no full-screen TUI) |
 | 4 | ACP adapter (VS Code / Zed / JetBrains) | ❌ |
 | 5 | Plugins (tools + hooks), shell hooks, profiles, kanban workers, insights, logs, redaction, egress guard | ✅ |
-| 5 | Browser tools (Playwright, optional) | ✅ |
+| 5 | Browser tools: Safari on macOS (safaridriver) or Chromium browsers via Playwright | ✅ |
 | 5 | Tool Store bridge (`tool_search` / `use_tool`) | ✅ 367 tools, **all with executors** (agent secrets, model and memory wired in; side-effecting tools approval-gated) — see [tool-store.md](tool-store.md); `npm --prefix agent run test:store` runs every tool |
 | 5 | Batch runner + ShareGPT trajectory export | ✅ |
 | 5 | Credential pools / key rotation | 🟡 fallback model chain only |
@@ -370,5 +373,11 @@ run `harness doctor` with your model server first.
 | §7 | Python wheel: pure (JS engine + lite) and platform (embedded executable), engine auto-selection | ✅ |
 | §7 | Pure-Python lite core (terminal, files, web, todo, memory, skills, search, execute_code, approvals, compression, /goal, web UI) | ✅ |
 | 6 | Local-model operation (4 Oct 2026): cross-platform launcher (`start-local.mjs`, context sized to GPU memory), autocompact sized to the window with state re-attached, large phased plans, `/schedule` long tasks, agents + per-tool settings UI, working-folder picker, `docs_lookup` (official docs, with consent), Safari backend, loop/repeat guards, size-limited checkpoints | ✅ |
+| 6 | `/pipeline`: spec documents run one after another as goals in their own chats, each document's `**Test:**` command decides done; stuck → retried at the end; cumulative plan; one report; commands from any chat | ✅ |
+| 6 | Pipeline safeguards: regression gate (earlier tests must keep passing), visual gate (pages rendered in headless Chromium), no-wipe write guard, script-write restore, protected paths (`.stitap-protected`) | ✅ |
+| 6 | Recovery and test tools: `file_history` (checkpointed versions), `run_tests` (counts + failing assertions), `page_check`, `patch` closest-match hints, unchanged-file re-read short-circuit | ✅ |
+| 6 | Redaction that leaves code readable (tool output hides only real secret formats; `[REDACTED]` never written into code) | ✅ |
+| 6 | Web chat: chat archive/restore/delete; model stats with sub-chat totals, cache-reused vs new tokens, real server context size (llama.cpp `/props`), survives restarts; `@folder` trees with a context budget | ✅ |
+| 6 | Ready-made sites: `site_template` catalog of pinned MIT/Apache templates (e-commerce Next.js + Payload / Nuxt, Strapi CMS, Fineract lending portal with WhatsApp Cloud API updates, docs, dashboards, …), `strapi_cms`, `finance_calc` — see [site-templates.md](site-templates.md) | ✅ |
 | §7 | Corporate proxy support | ✅ re-launch with `NODE_USE_ENV_PROXY=1` when HTTPS_PROXY is set |
 | §7 | Versioned `protocol/` spec + cross-engine conformance suite | 🟡 both engines serve the same API and share the schema/UI; no formal spec file yet |

@@ -1,9 +1,11 @@
 import type { ConfigStore, ModelConfig } from "../config.js";
+import { DuoServer, ModelServer } from "./router.js";
 import { type ChatRequest, type ChatResponse, type Provider } from "./types.js";
 export * from "./types.js";
 export { OpenAIProvider } from "./openai.js";
 export { AnthropicProvider } from "./anthropic.js";
 export { ReactAdapter, FunctionProvider } from "./react.js";
+export { RouterProvider, ModelServer } from "./router.js";
 /** Native tool calling first; permanently switch to ReAct if the server rejects tools. */
 export declare class AutoToolProvider implements Provider {
     private inner;
@@ -30,5 +32,7 @@ export declare class ResilientProvider implements Provider {
 }
 export declare function buildProvider(mc: ModelConfig, cfg: ConfigStore): Provider;
 export declare function buildMainProvider(cfg: ConfigStore, onEvent?: (m: string) => void, override?: Partial<ModelConfig>): ResilientProvider;
+/** One llama-server manager per config (all providers and sessions share the one GPU model). */
+export declare function modelServerFor(cfg: ConfigStore): ModelServer | DuoServer;
 /** Auxiliary model for judge / compression / curator / titles — defaults to the main model. */
 export declare function buildAuxProvider(cfg: ConfigStore): Provider;

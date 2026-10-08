@@ -1,7 +1,7 @@
-# stitaP — Open Source Tool Harness for Autonomous Agents
+# stitaP — Tool Harness for Autonomous Agents
 
 <p align="center">
-  <strong>350 tools · 41 categories · SLM-native · Runs anywhere — laptop, old server, phone, or cloud</strong>
+  <strong>367 tools · 53 domains · an autonomous agent runtime · SLM-native · Runs anywhere — laptop, old server, phone, or cloud</strong>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@ Most AI agent frameworks assume you have access to GPT-4, Claude, or Gemini — 
 - **Developers in emerging markets** who need offline-capable agents
 - **Legacy hardware owners** who want to revive old servers as AI infrastructure
 
-stitap solves this by building **350 deterministic tools** that do the actual work, so a Small Language Model (SLM) with 3–8B parameters only needs to act as a **decision maker** — picking which tool to call, not how to do the computation.
+stitap solves this by building **367 deterministic tools** that do the actual work, so a Small Language Model (SLM) with 3–8B parameters only needs to act as a **decision maker** — picking which tool to call, not how to do the computation.
 
 ### The Core Insight
 
@@ -53,39 +53,76 @@ When a user says "What's the EMI on a ₹10 lakh home loan?", the SLM doesn't ca
 | **Auto-Dispatch** | SLM picks the right tool from the registry. No manual routing needed. |
 | **Kanban** | Agent task boards with status tracking, assignment, and deadline management. |
 
-### 350 Tools Across 41 Categories
+### 367 Tools Across 53 Domains
 
 <details>
-<summary><strong>Click to expand full tool catalog</strong></summary>
+<summary><strong>Click to expand the domain list</strong> (every tool with its parameters: <a href="tool-catalog.md">tool-catalog.md</a>)</summary>
 
-| Category | Count | Key Tools |
-|----------|-------|-----------|
-| **Browser Automation** | 25 | Navigate, click, inspect, network intercept, screenshots, console, responsive test, visual regression |
-| **Analytics & SQL** | 20 | Columnar DB with SQL/XQL/MDX, groupby, window functions, Power BI export |
-| **E-Commerce Operations** | 22 | Ticket classification, auto-reply, refund processing, order management, inventory, shipping, reviews, pricing |
-| **Business Verticals** | 28 | Financial calculator (loan/SIP/FD/tax), chit fund management, real estate company tools |
-| **Microfinance & Credit** | 22 | Ledger, EMI scheduling, WhatsApp payment parsing, collection route planner, defaulter detection, PhonePe reconciliation |
-| **Machine Learning** | 22 | Regression, classification, clustering, PCA, forecasting, anomaly detection |
-| **Design Engine** | 11 | Figma-style canvas, component library, design tokens, export to React/Tailwind/HTML |
-| **CFD & Engineering** | 6 | Navier-Stokes solver, heat transfer, beam analysis, stress analysis, mesh generation |
-| **Fractal Analysis** | 5 | Mandelbrot, Julia, IFS, L-systems, fractal dimension |
-| **Code Generation** | 9 | Language reference library (Python/Java/C++/C/JS/Rust), code generator, syntax validator, patterns |
-| **OCR & Indic Scripts** | 4 | Tesseract.js engine, 13 Indic language support, post-processing, layout analysis |
-| **Math & Symbolic** | 10 | Calculus, linear algebra, differential equations, optimization, symbolic computation |
-| **Sandbox & Execution** | 8 | Docker containers, chroot, WebWorker isolation, network policies, virtual filesystem |
-| **LLM & Inference** | 12 | Model routing, quantization, device probing, failover, benchmarking, download management |
-| **Orchestration** | 3 | Multi-agent swarm, chain engine, stateful graph workflows |
-| **Communication** | 8 | Email, SMS, voice, webhooks, notifications |
-| **Office & Documents** | 5 | Word, Excel, PowerPoint, PDF generation |
-| **Media & Video** | 13 | Canvas compositor, Web Audio, speech synthesis, video recording, annotation, captioning |
-| **Diagrams** | 7 | Mermaid generation, architecture diagrams, data flow, ER diagrams, sequence diagrams |
-| **Standards & QA** | 4 | ISO 25010, WCAG 2.2, OWASP, security compliance |
-| **South Indian Languages** | 7 | Telugu, Tamil, Kannada, Malayalam typography, text layout, rendering |
-| **Hugging Face** | 6 | Model search, download, quantization, cache management |
-| **Server Revival** | 4 | Hardware detection, llama.cpp build optimizer, RAG deployment planner |
-| **Knowledge Base** | 5 | Semantic search, Viking context store (L0/L1/L2 tiered loading) |
-| **Agent Memory** | 4 | Short-term, long-term, episodic memory with decay and merge |
+| Domain | Tools | Examples |
+|---|---|---|
+| **Browser Automation & Testing** | 42 | Navigate, Click, Type Text, Scroll, Screenshot |
+| **Finance & Lending Calculators** | 32 | Create Credit Order, Record Payment, Customer Balance, Mark Overdue EMIs, Parse WhatsApp Message |
+| **E-commerce** | 24 | Classify Customer Ticket, Auto-Reply to Ticket, Process Refund, Bulk Process Ticket Queue, Update Order Status |
+| **Indic Typography Engine** | 23 | Detect Indic Script, Get Indic Typography Rules, Generate Indic CSS, Generate Indic Design Tokens, Validate Indic Typography |
+| **Analytics & Database** | 20 | Import CSV, Import JSON, SQL Query, XQL Query, MDX Query |
+| **Engineering Mathematics** | 16 | Polynomial Regression, Symbolic Differentiation, Numerical Integration, ODE Solver, PDE Solver |
+| **Design System & Canvas** | 12 | Create Design Canvas, Add Artboard, Add Design Element, Add Component Preset, Auto-Layout |
+| **OS & Desktop Integration** | 10 | System Information, Read File, Write File, List Directory, Watch File |
+| **Real Estate** | 10 | Create Real Estate Project, Cost Estimation, Sales Pipeline, CRM Follow-up List, Cash Flow Report |
+| **Chit Funds** | 9 | Create Chit Group, Record Chit Bid, Close Chit Round, Record Chit Collection, Member Statement |
+| **Code Generation** | 9 | Generate Code, Validate Syntax, Language Reference Lookup, Language Profile, Generate Starter File |
+| **Sandbox Execution** | 8 | Create Sandbox, Execute in Sandbox, List Sandboxes, Destroy Sandbox, Browse Sandbox Scenarios |
+| **Machine Learning** | 8 | Train Model, Predict, Evaluate Model, K-Means Clustering, PCA (Dimensionality Reduction) |
+| **Video Editing & Rendering** | 7 | Record Screen, Annotate Frame, Capture Frame, Add Overlay, Add Caption |
+| **Diagram & Architecture** | 7 | User Journey Diagram, UI Component Tree, Data Flow Diagram, System Architecture, State Machine Diagram |
+| **Document Parsing** | 6 | Extract Steps, Detect Tutorial, Parse FAQ, Generate Tutorial Script, Extract API Reference |
+| **Media Processing** | 6 | Render Video, Synthesize Speech, Compose Audio Track, Generate Sticker, Generate Thumbnail |
+| **LLM Integration & Prompting** | 6 | Build Prompt, Parse Response, Route to Model, Manage Context, Call LLM |
+| **Hugging Face Hub** | 6 | Search HuggingFace Models, Download HuggingFace Model, List Downloaded Models, Delete Downloaded Model, Get Quantization Info |
+| **Computational Fluid Dynamics** | 6 | Create CFD Mesh, Solve Navier-Stokes, CFD Post-Processing, CFD Benchmark, CFD Auto-Dispatch |
+| **CAR Governance Framework** | 6 | CAR Configuration, Register Agent, Check Spend Rails, Evaluate Gates, Generate AGENTS.md |
+| **Agent Orchestration** | 5 | Agent Memory, Agent Skills, Self-Improvement, Real Terminal, Kanban Board |
+| **Maps & Geolocation** | 5 | Geocode Address, Reverse Geocode, Calculate Route, Isochrone, Geofence |
+| **Mobile Hardware** | 5 | Capture Photo, Get GPS Location, Clipboard, Text-to-Speech, Accelerometer |
+| **Inference & Model Management** | 5 | Inference Router, Hardware Probe, Quantization Menu, Model Download, Legacy Server Support |
+| **Text Analysis & NLP** | 5 | Train Text Classifier, Classify Text, Extract Keywords, Sentiment Analysis, BM25 Document Ranking |
+| **Fractal Analysis** | 5 | Fractal Generator, Fractal Dimension Analyzer, L-System Generator, IFS Fractal Generator, Chaos & Dynamical Systems |
+| **Office Document Generation** | 5 | Document Generator, Spreadsheet Generator, Presentation Generator, PDF Generator, Email Generator |
+| **OpenViking Context Store** | 5 | Create Viking Project, Index Resource, Query Context, Build LLM Context, WebBuilder Audit |
+| **Environment Management** | 4 | Create Environment, Run Code, List Environments, Destroy Environment |
+| **Database Connectors** | 4 | Database Query, Database Connect, Schema Inspector, Database Migration |
+| **Payment Processing** | 4 | Create Checkout, Verify Payment, Generate Invoice, Manage Subscription |
+| **Cloud Storage** | 4 | Upload File, Download File, List Files, Generate Share Link |
+| **Real-time Collaboration** | 4 | Create Session, Join Session, Operational Transform, Create Channel |
+| **Legacy Server Revival** | 4 | Hardware Detection, Legacy Server Database, llama.cpp Build Optimizer, RAG Server Deployment Kit |
+| **Standards** | 4 | Standards Compliance Audit, Quick Security Scan, Accessibility Audit (WCAG 2.2), Code Quality Audit (ISO 25010) |
+| **OCR & Text Recognition** | 4 | Indic Script Detector, Indic Text Recognition, Indic Batch OCR, Indic Text Normalizer |
+| **Fault Detection & Quality** | 3 | Anomaly / Fault Detection, Statistical Process Control (SPC), Rule-Based Fault Classifier |
+| **Graphs & Visualization** | 3 | Chart Generator, Quick Statistics, Fractal Visualization |
+| **Email Communication** | 2 | Send Email, Email Template |
+| **Chains** | 2 | Chains Run, ReAct Agent |
+| **SMS Communication** | 1 | Send SMS |
+| **Voice & Text-to-Speech** | 1 | Voice Call / TTS |
+| **Catalog** | 1 | Harness Catalog |
+| **Graph Execution** | 1 | Graph Run |
+| **Session Management** | 1 | Session Modules |
+| **Swarm Intelligence** | 1 | Swarm Configure |
+| **Enterprise Workflow** | 1 | Enterprise Project |
+| **Task Scheduling** | 1 | Task Scheduler |
+| **Knowledge Base** | 1 | Knowledge Base (RAG) |
+| **Notifications** | 1 | Notifications |
+| **Observability & Tracing** | 1 | Run Tracing |
+| **Governance** | 1 | Approval Gate |
+
 </details>
+
+### The agent runtime
+
+The tools are also driven by a long-lived **agent** (`agent/`): it chats with you, runs real commands, edits files and
+keeps working until the task is done — `/goal`, unattended `/pipeline` builds with regression and visual gates,
+ready-made sites from open-source templates (e-commerce, Strapi CMS, a Fineract lending portal with WhatsApp updates),
+schedules, memory, skills, MCP and a web chat. Guides: [agent-runtime.md](agent-runtime.md) ·
+[install-local.md](install-local.md) · [site-templates.md](site-templates.md).
 
 ### SLM-First Architecture
 
@@ -178,7 +215,7 @@ See `docs/self-hosted-capture-service.md` for full configuration.
 
 ### 1. Explore the Tool Store
 
-Navigate to `/store` in the app to browse all 350 tools. Each tool has:
+Navigate to `/store` in the app to browse all 367 tools. Each tool has:
 - **Description** — what it does
 - **Parameters** — input schema
 - **Tags** — category and capability labels
@@ -560,16 +597,21 @@ See `docs/native-apps.md` for detailed deployment guides.
 
 | Document | Description |
 |----------|-------------|
-| [Tool Catalog](docs/tool-catalog.md) | Complete reference for all 350 tools |
-| [Enterprise Use Cases](docs/enterprise-use-cases.md) | 21 real-world use cases with tool chains |
-| [Business Verticals](docs/business-verticals-use-cases.md) | 43 use cases for finance, chit fund, real estate, microfinance |
-| [Microfinance Guide](docs/microfinance-use-case.md) | Implementation guide for credit businesses |
-| [Deployment Architecture](docs/deployment-architecture.md) | System architecture and deployment topology |
-| [NLP Layer](docs/nlp-layer.md) | Natural language processing pipeline |
-| [Testing Guide](docs/testing.md) | QA and testing procedures |
-| [Roadmap](docs/roadmap.md) | Feature roadmap and milestones |
-| [Extension Docs](docs/current-tab-extension.md) | Chrome extension architecture |
-| [Self-Hosted Capture](docs/self-hosted-capture-service.md) | Self-hosting the screenshot API |
+| [Agent Runtime Guide](agent-runtime.md) | The autonomous agent: commands, tools, pipelines, safety, automation, integrations |
+| [Install Locally](install-local.md) | Run the agent with a local model on macOS, Windows, Linux desktops and servers |
+| [Site Templates](site-templates.md) | Ready-made sites (e-commerce, CMS, lending, docs…), `strapi_cms`, `finance_calc`, licensing |
+| [Tool Store](tool-store.md) | Using the 367 store tools from the agent: credentials, requirements, approvals |
+| [Tool Catalog](tool-catalog.md) | Every store tool with its parameters (generated) |
+| [Enterprise Use Cases](enterprise-use-cases.md) | Real-world use cases with tool chains |
+| [Business Verticals](business-verticals-use-cases.md) | Use cases for finance, chit fund, real estate, microfinance |
+| [Microfinance Guide](microfinance-use-case.md) | Implementation guide for credit businesses |
+| [Deployment Architecture](deployment-architecture.md) | System architecture and deployment topology |
+| [NLP Layer](nlp-layer.md) | Natural language processing pipeline |
+| [Testing Guide](testing.md) | Running the agent and web-app test suites |
+| [Roadmap](roadmap.md) | Capture product roadmap and milestones |
+| [Extension Docs](current-tab-extension.md) | Chrome extension architecture |
+| [Self-Hosted Capture](self-hosted-capture-service.md) | Self-hosting the screenshot API |
+| [Hermes Parity Plan](hermes-parity-plan.md) | Original agent-runtime plan and current implementation status |
 
 ---
 
@@ -578,6 +620,7 @@ See `docs/native-apps.md` for detailed deployment guides.
 - **Frontend:** Vite, React 19, TypeScript, Tailwind CSS v4, shadcn/ui, Framer Motion
 - **Backend:** Convex (database, auth, real-time)
 - **Agent Framework:** Custom multi-agent orchestration with swarm, chain, and teamwork engines
+- **Agent runtime (`agent/`):** Node.js 20.3+ with zero runtime dependencies, SQLite (`node:sqlite`) state with full-text search, llama.cpp / OpenAI-compatible / Anthropic models, Playwright or Safari for browsers
 - **Inference:** llama.cpp, OpenVINO, Hugging Face Transformers, ONNX Runtime
 - **Capture Engine:** Custom Rust implementation (from scratch — no Playwright, no external crates)
 - **Sandbox:** Docker containers, chroot, WebWorker isolation

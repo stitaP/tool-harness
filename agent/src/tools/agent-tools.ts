@@ -192,6 +192,9 @@ export const toolSearchTool: Tool = {
   async handler(a, ctx) {
     const rt = ctx.rt;
     const n = Math.min(Number(a.limit) || 8, 20);
+    // an exact tool name returns that tool's full documentation (the planner sends big schemas abbreviated)
+    const exact = rt.tools.get(String(a.query).trim());
+    if (exact && rt.tools.isAvailable(exact, rt)) return `${exact.name} [${exact.toolset}]\n${exact.description}\n\nparameters: ${JSON.stringify(exact.parameters, null, 1)}`;
     const active = rt.activeTools(ctx.session.id);
     const pool = rt.tools.discoverable(rt, active);
     const native = rt.tools.search(String(a.query), pool, n).map((t) => `- ${t.name} [${t.toolset}]: ${t.description.slice(0, 200)}\n  params: ${JSON.stringify(t.parameters?.properties ?? {}).slice(0, 300)}`);

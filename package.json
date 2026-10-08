@@ -17,6 +17,7 @@
     "agent:build": "tsc -p agent/tsconfig.json",
     "agent:test": "npm run agent:build && cd agent && node --test --test-concurrency=1 test/*.test.mjs",
     "agent:store": "node agent/scripts/build-store.mjs",
+    "agent:catalog": "node agent/scripts/gen-tool-catalog.mjs",
     "agent:serve": "node agent/bin/harness.mjs serve",
     "agent": "node agent/bin/harness.mjs",
     "agent:test:store": "npm --prefix agent run test:store"

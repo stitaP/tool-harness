@@ -1,1 +1,1 @@
-{"time": "19:18:01", "uptime_s": 146, "experts": 24576, "expert_gb": 20.06, "pinned_experts": 4899, "pinned_gb": 4.0, "budget_gb": 4.0, "resident_gb": 9.9, "misses_total": 24207, "misses_last_min": 9214, "prefetched_gb": 3.84, "mlock": true, "ready": true}
+{"time": "13:10:00", "uptime_s": 6559, "experts": 24576, "expert_gb": 20.06, "pinned_experts": 4899, "pinned_gb": 4.0, "budget_gb": 4.0, "resident_gb": 8.98, "misses_total": 1413105, "misses_last_min": 12808, "prefetched_gb": 228.65, "mlock": true, "ready": true}

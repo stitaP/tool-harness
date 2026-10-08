@@ -7,6 +7,7 @@ import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { parseYaml, stringifyYaml } from "./util/yaml.js";
 import { deepMerge, getPath, setPath } from "./util/misc.js";
+import { ROUTER_DEFAULTS, type RouterConfig } from "./providers/router.js";
 
 /** A named agent (config.yaml `agents:`): a chat or subagent runs with these instructions, tools and model. */
 export interface AgentDef {
@@ -51,6 +52,7 @@ export const DEFAULT_CONFIG = {
   agent: {
     max_iterations: 60,
     tool_profile: "standard", // slm | standard | full
+    tool_selection: "auto" as "auto" | "on" | "off", // planner picks per-task tools from a one-line catalog: auto = only when the full tool set would crowd the window
     max_tool_output_chars: 12000,
     parallel_tools: true,
     memory_nudge_every: 8,
@@ -60,7 +62,7 @@ export const DEFAULT_CONFIG = {
     retries: 3,
   },
   compression: { enabled: true, threshold: 0.6, keep_last: 8 },
-  goals: { max_turns: 20 },
+  goals: { max_turns: 20, max_idle_turns: 4 }, // pause a goal after this many consecutive turns that called no tool (0 = never)
   loops: { max_ticks: 100 },
   terminal: { backend: "local", shell: "auto", timeout: 120, docker_image: "python:3.12-slim", ssh_host: "", cwd: "" },
   approvals: { mode: "ask", allow_patterns: [] as string[], timeout: 300 },
@@ -91,7 +93,9 @@ export const DEFAULT_CONFIG = {
   plugins: { enabled: true },
   store_bridge: { enabled: true, path: "" },
   hooks: {} as Record<string, string[]>,
-  kanban: { workers: 1, enabled: true },
+  kanban: { workers: 1, enabled: true, project_key: "PT", cwd: "", max_attempts: 3, test_timeout_s: 600, enforce_commit_keys: true, verify: true, worker_tier: "auto" as "auto" | "fast" | "strong" },
+  lsp: { enabled: true, servers: {} as Record<string, { command: string; args?: string[]; exts: string[]; roots?: string[]; languageId?: string }> }, // lsp tool: extra/override language servers
+  router: ROUTER_DEFAULTS as RouterConfig, // starts/stops llama-server and picks a fast or strong model per request
 };
 
 export type Config = typeof DEFAULT_CONFIG;

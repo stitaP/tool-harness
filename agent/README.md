@@ -80,27 +80,21 @@ node agent/scripts/start-local.mjs ~/models/…gguf --no-open                   
 It starts the model server, sizes the context to the free GPU memory, runs a short speed test, then opens the web
 chat at **http://127.0.0.1:7420**. Leave the terminal window open while you work.
 
-**Example**
-
-Prompt used to start in Mac
+**Example:** keep chats and settings in your own folder and run the 30B coding model with all tools:
 
 ```bash
-STITAP_ROOT=~/Documents/AgenticAI/harness-home PROFILE=standard node agent/scripts/start-local.mjs ~/Documents/AgenticAI/GGUF/Qwen3-Coder-30B-A3B-Instruct-UD-IQ2_M.gguf
-```
-Command used to kill running llama-server:
-
-```bash
-pkill -f sweep80b.sh; pkill -f run-gguf-2bit.sh; pkill -INT -f "ggufcache.py run"; pkill llama-server
+STITAP_ROOT=~/AgenticAI/harness-home PROFILE=standard node agent/scripts/start-local.mjs ~/models/Qwen3-Coder-30B-A3B-Instruct-UD-IQ2_M.gguf
 ```
 
-
-**Stop:** press `Ctrl-C` in that terminal. **Restart:** run the same command again.
+**Stop:** press `Ctrl-C` in that terminal. **Restart:** run the same command again. From another terminal:
+`pkill llama-server; pkill -f "harness.mjs serve"` stops both (also stop `bench/moe-stream` runs first if you use them:
+`pkill -f run-gguf-2bit.sh; pkill -INT -f "ggufcache.py run"`).
 
 Useful options (macOS/Linux: put them before `node`; PowerShell: `$env:PROFILE = "standard"` first):
 
 ```bash
 PROFILE=standard node agent/scripts/start-local.mjs ~/models/Qwen3-Coder-30B-A3B-Instruct-UD-IQ2_M.gguf   # all tools (stronger models)
-CTX=16384 node agent/scripts/start-local.mjs ~/models/…gguf           # fixed context instead of "as big as fits"
+CTX=16384 node agent/scripts/start-local.mjs ~/models/…gguf           # fixed context instead of "as big as fits" (the agent reads the real size from the server)
 FIT_MARGIN_MB=3072 node agent/scripts/start-local.mjs ~/models/…gguf  # leave more memory for other apps
 ```
 
@@ -171,26 +165,29 @@ Then **⚙ Settings ▸ Tools ▸ browser ▸ Test**. Other installed browsers (
 | The model server stops right after starting | Not enough GPU memory: use the smaller model, raise the limit (step 3), or close other apps |
 | Replies are very slow | Check the **Model stats** panel (right sidebar); keep the context small with `/compact`, or use the 4B model |
 | Token counts look huge | The model re-reads the whole conversation every call; the stats split *new* tokens from tokens *reused from cache* (no compute) |
-| `/pipeline stop` says "No pipeline" | Update and restart: pipeline commands now find the running pipeline from any chat (`/pipeline list` shows all) |
-| A pipeline phase broke earlier pages or tests | Restart on this version: the regression and visual gates send such a phase back; `file_history` restores lost files |
+| Can't find the chat running a pipeline | `/pipeline status` / `stop` work from any chat; `/pipeline list` shows every pipeline and the chat that started it |
+| A pipeline phase broke earlier work | The regression and visual gates send such a phase back automatically; `file_history` (or `/rollback`) restores earlier file versions |
+| Can't remove a chat | Hover it in the left sidebar: **Archive** or **Delete** |
 | `Safari is not set up for automation` | Do the three Safari steps above |
 
 ## What's inside
+
+52 built-in tools (16 sent to small models on every call, the rest by profile or on demand through `tool_search`), 367 Tool Store tools, 19 bundled skills, 40 slash commands.
 
 | Area | Highlights |
 |---|---|
 | Agent loop | native tool calling (OpenAI-compatible + Anthropic), ReAct text fallback for models without tools, `<tool_call>` recovery, JSON repair, tool-name repair, streaming, interrupt & steer, retries + fallback models, iteration budget, context compression |
 | Work until done | `/goal` (judge-verified continuation), `/loop` (interval or back-to-back, `--until`, `--times`), `/heartbeat`, `todo_list`, background-process notifications |
-| Real execution | `terminal` (bash/zsh/sh, PowerShell, cmd; local · docker · ssh), `process_manage`, `read_file`, `write_file`, `patch` (whitespace-tolerant), `search_files` (ripgrep or built-in), `execute_code` (Python/JS scripts calling tools over local RPC), `delegate_task` (parallel subagents), browser (Playwright, optional), `vision_analyze`, web search/extract |
-| Safety | dangerous-command approvals (ask / yolo / deny; once / session / always), checkpoints + `/rollback` `/diff`, blocked paths, egress guard (no private-network fetches), secret redaction, admin policy file that locks settings |
-| Learning | `MEMORY.md` + `USER.md`, `session_search` (SQLite FTS5), skills (`SKILL.md`, agentskills.io format, 13 bundled), `skill_manage`, background curator that saves memories and new skills |
+| Real execution | `terminal` (bash/zsh/sh, PowerShell, cmd; local · docker · ssh), `process_manage`, `read_file`, `write_file`, `patch` (whitespace-tolerant), `search_files` (ripgrep or built-in), `execute_code` (Python/JS scripts calling tools over local RPC), `delegate_task` (parallel subagents), browser (Safari on macOS or Chromium browsers via Playwright), `vision_analyze`, web search/extract, `docs_lookup` (official documentation only) |
+| Safety | dangerous-command approvals (ask / yolo / deny; once / session / always), checkpoints + `/rollback` `/diff` + `file_history`, blocked and protected paths (`.stitap-protected`), write guards (no wiping files, no `[REDACTED]` placeholders written into code), egress guard (no private-network fetches), secret redaction that leaves code readable, admin policy file that locks settings |
+| Learning | `MEMORY.md` + `USER.md`, `session_search` (SQLite FTS5), skills (`SKILL.md`, agentskills.io format, 19 bundled), `skill_manage`, background curator that saves memories and new skills |
 | Automation | cron scheduler with natural-language schedules and delivery (log, Telegram, Discord, Slack, webhook), kanban board with dependency-aware worker agents, batch runner → ShareGPT trajectories |
-| Reach | web chat UI, terminal chat, JSON API + SSE, OpenAI-compatible `/v1/chat/completions`, MCP client (stdio + HTTP), MCP server (`harness mcp serve`), Telegram / Discord / Slack / webhook gateway with DM pairing |
+| Reach | web chat UI (chat archive/delete, live model stats: tokens incl. sub-chats, cache reuse, speed, real context size, GPU memory), terminal chat, JSON API + SSE, OpenAI-compatible `/v1/chat/completions`, MCP client (stdio + HTTP), MCP server (`harness mcp serve`), Telegram / Discord / Slack / webhook gateway with DM pairing |
 | Pipelines | `/pipeline` runs spec documents one after another with a regression gate (earlier tests must keep passing), a visual gate (pages must still render), no-wipe file guards, and stop/status from any chat |
 | Sites, CMS & finance | `site_template` (pinned open-source templates: e-commerce on Next.js + Payload or Nuxt, Strapi CMS, Fineract lending portal with WhatsApp updates, docs, dashboards, …), `strapi_cms` (content types + entries), `finance_calc` (EMI, schedules, prepayment, eligibility) — [docs/site-templates.md](../docs/site-templates.md) |
 | Testing & capture | `run_tests` (counts + failing assertions only), `page_check` (every page in headless Chromium), `file_history` (restore earlier file versions), `webtest` (Playwright: scaffold a suite, run recorded scenarios with a screenshot per step, video, trace, report and generated spec, run suites), `screen_capture` (screen/region/window/display), `screen_record` (screen video), `camera_capture`, skills for browser E2E, desktop UI, visual-regression, API/form testing and evidence capture |
 | Documents | `office_to_markdown`: Word, Excel, PowerPoint, OpenDocument and legacy `.doc` `.xls` `.ppt` `.rtf` → Markdown, all read natively (no LibreOffice, no external tools) |
-| Tool Store | `tool_search` + `use_tool` reach all 367 store tools (every one runs) without bloating the prompt — credentials, requirements and approvals in [docs/tool-store.md](../docs/tool-store.md) |
+| Tool Store | `tool_search` + `use_tool` reach all 367 store tools (every one runs) without bloating the prompt — credentials, requirements and approvals in [docs/tool-store.md](../docs/tool-store.md); every tool with its parameters in [docs/tool-catalog.md](../docs/tool-catalog.md) |
 | Extensibility | plugins (`~/.stitap/plugins/*.mjs`: tools + hooks), shell hooks, profiles (`-p work`) |
 
 ## Layout
@@ -211,7 +208,7 @@ agent/
   skills/                  bundled skills
   templates/               site_template catalog (catalog.json) and our patches to upstream templates (packs/)
   store/store.mjs          Tool Store bundled for Node (npm run build:store)
-  scripts/                 build-store, build-bundle (single file), build-sea (single executable)
+  scripts/                 start-local (model server + agent), build-store, gen-tool-catalog, build-bundle (single file), build-sea (single executable)
   test/                    node:test suites + scripted mock model
 ```
 

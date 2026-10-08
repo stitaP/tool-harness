@@ -2,6 +2,35 @@
 
 How to run every suite, what each one covers, and what it needs.
 
+## Agent runtime (`agent/`)
+
+```bash
+npm run agent:test          # build, then every agent suite against a scripted mock model (no real model needed)
+npm run agent:test:store    # every Tool Store executor (367 tools), with expected-failure accounting
+npm run agent:catalog       # regenerate docs/tool-catalog.md from the store after changing tools
+```
+
+`node:test` suites in `agent/test/` (about 190 tests; a few skip themselves when Playwright's Chromium is missing —
+install it with `node agent/node_modules/playwright-core/cli.js install chromium`):
+
+| File | Covers |
+| --- | --- |
+| `agent.test.mjs` | the agent loop end to end: tool calls, approvals, goals, loops, compaction, repeats and loop guards, pipelines (order, stuck/retry, regression gate, visual gate, stop from another chat), script-write guard, re-read short-circuit, `file_history`, `run_tests`, on-demand tools |
+| `unit.test.mjs` | parsers and pure functions: YAML, cron, JSON repair, patch matching and closest-match hints, redaction (logs vs tool output), write guards, `@folder` tree, test-output summaries, site-template catalog integrity (pinned, permissive licenses, patches present), `finance_calc`, Strapi field shorthand |
+| `surfaces.test.mjs` | HTTP API + SSE, chat archive/restore/delete, stats (sub-chats, cached tokens), OpenAI-compatible endpoint, MCP server ↔ client, gateway, CLI |
+| `local-model.test.mjs` | llama.cpp specifics: long prefill timeouts, keep-alive, invalid tool-call recovery, server timings |
+| `store.test.mjs` | the Tool Store bridge (`tool_search`, `use_tool`, aliases, approvals) |
+| `desktop-browser.test.mjs`, `capture.test.mjs`, `webtest.test.mjs` | browser backends (Safari/Chromium), screen/camera capture, Playwright scenarios |
+| `office*.test.mjs` | Word/Excel/PowerPoint/OpenDocument and legacy `.doc` `.xls` `.ppt` `.rtf` readers |
+
+Run one file with `cd agent && node --test test/unit.test.mjs`. Tip: when running a *single test* with
+`--test-name-pattern`, add `--test-reporter=tap` to see its result immediately.
+
+## Web app suites
+
+These scripts live in the hosted workspace's `scripts/` folder, which is not part of this repository snapshot
+(see the README's repository notes); the commands below work where that folder is present.
+
 ## One-liner
 
 ```bash
