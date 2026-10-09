@@ -19,4 +19,5 @@ export declare function importPlan(board: KanbanBoard, o: {
     testsDir?: string;
     keyPrefix?: string;
     split?: boolean;
+    board?: string;
 }): string;

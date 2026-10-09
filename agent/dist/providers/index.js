@@ -85,6 +85,14 @@ export class ResilientProvider {
                         await sleep(w, req.signal);
                         continue;
                     }
+                    // a GPU compute error repeats with the same prompt: retry once after a pause, then let the agent shrink the prompt
+                    if (pe.kind === "compute") {
+                        if (attempt >= 1)
+                            throw pe;
+                        this.onEvent?.("GPU compute error; retrying in 4s");
+                        await sleep(4000, req.signal);
+                        continue;
+                    }
                     if (!pe.retryable || attempt === this.retries)
                         break;
                     const wait = Math.min(pe.retryAfterMs ?? 1000 * 2 ** attempt, 30_000);

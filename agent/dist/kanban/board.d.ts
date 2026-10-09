@@ -1,5 +1,6 @@
 import type { Runtime } from "../runtime/runtime.js";
 import { type Tool } from "../tools/types.js";
+import { Boards, type CardRef } from "./boards.js";
 import type { Step } from "../tools/webtest.js";
 export type CardStatus = "backlog" | "ready" | "running" | "review" | "blocked" | "done";
 export type CardType = "epic" | "task" | "bug";
@@ -52,6 +53,10 @@ export interface Card {
     spec?: string;
     cwd?: string;
     functional?: Step[];
+    board?: string;
+    refs?: CardRef[];
+    summary?: string;
+    test_cases?: string[];
     kind?: "tests" | "story" | "gate";
     section?: string;
     files?: string[];
@@ -88,6 +93,9 @@ export type NewCard = {
     cwd?: string;
     functional?: Step[];
     key_prefix?: string;
+    board?: string;
+    summary?: string;
+    test_cases?: string[];
     kind?: Card["kind"];
     section?: string;
     files?: string[];
@@ -97,10 +105,15 @@ export type NewCard = {
 export declare class KanbanBoard {
     private rt;
     private active;
+    /** named boards, the active board, saving/restoring, and links between tickets on any board */
+    readonly boards: Boards;
     constructor(rt: Runtime);
     isActive(id: string): boolean;
     private get cfg();
-    list(status?: CardStatus): Card[];
+    /** Tickets of one board (default: the active board), highest priority first. */
+    list(status?: CardStatus, boardId?: string): Card[];
+    /** Tickets of every board. */
+    listAll(status?: CardStatus): Card[];
     /** Look a card up by id or by key (PT-12, case-insensitive). */
     get(ref: string): Card | null;
     private need;
@@ -114,6 +127,8 @@ export declare class KanbanBoard {
     comment(ref: string, text: string, by?: string, reply_to?: string): Card;
     /** Delete a card that has not been worked (used when a plan is re-imported in more detail). */
     remove(ref: string): boolean;
+    /** Delete a card and clean up what pointed at it: dependencies and links on any board. */
+    removeCard(id: string): boolean;
     /** An epic is running while any child runs/is ready, blocked if a child is, done when all children are done. */
     private rollup;
     cwdOf(c: Card): string;
@@ -147,11 +162,21 @@ export declare class KanbanBoard {
     ready(): Card[];
     /** Put cards that were left running by a crash or power cut back on the queue. */
     recover(): Card[];
+    /** "Stop" pressed by the user: no card is started until Resume/Dispatch. Survives a restart. */
+    get paused(): boolean;
+    setPaused(b: boolean): void;
+    private stopped;
+    /** Interrupt every running worker, put its card back on the queue (the attempt is not counted) and stop dispatching. */
+    stopAll(): string[];
     tick(): Promise<number>;
+    /** Each attempt must try something different, and from the second one on it must look things up on the web. */
+    attemptPlan(n: number, max: number): string;
     private buildPrompt;
     work(ref: string): Promise<Card>;
     fmt(c: Card): string;
     show(ref: string): string;
+    /** One line per board: name, progress, active/archived. */
+    describeBoards(): string;
     board(): string;
     report(): string;
 }

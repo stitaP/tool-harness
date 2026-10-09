@@ -835,3 +835,35 @@ test("/goal: pauses when several turns in a row call no tool (model stuck printi
     assert.match(g.last_reason, /plain text/);
   } finally { await t.close(); }
 });
+
+test("a repeated command that already succeeded is marked as finished", async () => {
+  const t = await setup();
+  try {
+    const cmd = `"${process.execPath}" -e "console.log('A README.md')"`;
+    t.mock.script([
+      { tool_calls: [call("terminal", { command: cmd })] },
+      { tool_calls: [call("terminal", { command: cmd })] },
+      { content: "done" },
+    ]);
+    const s = t.rt.createSession({ source: "cli" });
+    await t.rt.send(s.id, "restore the files");
+    const tool = t.rt.db.getMessages(s.id).filter((m) => m.role === "tool");
+    assert.doesNotMatch(tool[0].content, /already SUCCEEDED/);
+    assert.match(tool[1].content, /already SUCCEEDED.*Do NOT run it again/s);
+  } finally { await t.close(); }
+});
+
+test("llama.cpp 'Compute error' (500): the turn does not fail; the harness retries instead of showing the error", async () => {
+  const t = await setup();
+  try {
+    t.mock.script([
+      { status: 500, error: "Compute error." },
+      { status: 500, error: "Compute error." },
+      { content: "recovered after the compute error" },
+    ]);
+    const s = t.rt.createSession({ source: "cli" });
+    const r = await t.rt.send(s.id, "say something");
+    assert.equal(r.final, "recovered after the compute error");
+    assert.ok(t.events.some((e) => e.type === "status" && /compute error/i.test(e.text)));
+  } finally { await t.close(); }
+});

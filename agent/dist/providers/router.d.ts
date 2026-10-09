@@ -48,6 +48,11 @@ export interface RouterConfig {
     };
     /** keep BOTH models loaded at once, each on its own port, and route per request with no restarts (needs the memory for both) */
     resident?: boolean;
+    /** resident mode: the tier that does the work unless something says otherwise (default "fast", the old behaviour) */
+    default_tier?: Tier;
+    /** resident mode: tiers that stay on disk until a request needs them (e.g. ["fast"]); they are stopped again after idle_unload_min idle minutes */
+    on_demand?: Tier[];
+    idle_unload_min?: number;
 }
 export declare const ROUTER_DEFAULTS: RouterConfig;
 export interface RouteInput {
@@ -65,6 +70,10 @@ export interface RouteInput {
     hasStrong: boolean;
     /** a caller (kanban worker/reviewer) can require a tier for this request */
     pin?: Tier;
+    /** a caller's preferred tier: used unless the turn is going badly (failing tools, very long), then it escalates */
+    prefer?: Tier;
+    /** the tier that does the work when nothing else decides (resident mode with default_tier: "strong") */
+    defaultTier?: Tier;
 }
 export interface RouteDecision {
     tier: Tier;
@@ -129,7 +138,17 @@ export declare class DuoServer {
     private lock;
     private failed;
     readonly errors: Partial<Record<Tier, string>>;
+    private lastUsed;
+    private inflight;
+    private reaper;
     constructor(cfg: () => RouterConfig, logDir: string);
+    /** a tier that stays on disk until a request needs it */
+    isOnDemand(tier: Tier): boolean;
+    /** a request on this tier started / finished (the idle timer never stops a model that is answering) */
+    begin(tier: Tier): void;
+    end(tier: Tier): void;
+    /** stop on-demand models that have been idle for idle_unload_min minutes, so the memory is free again */
+    private startReaper;
     portOf(tier: Tier): number;
     isUp(tier: Tier): boolean;
     strongAvailable(): boolean;

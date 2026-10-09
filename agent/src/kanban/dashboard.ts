@@ -24,9 +24,17 @@ export function activity(rt: Runtime, sessionId?: string, n = 8): { at: number; 
   } catch { return []; }
 }
 
+/** A card can only start when everything it depends on is done: "ready" with unmet dependencies is shown as waiting. */
+function unmet(c: Card, byId: Map<string, Card>): string[] {
+  return c.depends_on.map((d) => byId.get(d)).filter((d): d is Card => !!d && d.status !== "done").map((d) => d.key ?? d.id);
+}
+
 function slim(rt: Runtime, c: Card, byId: Map<string, Card>) {
+  const waiting = unmet(c, byId);
   return {
-    id: c.id, key: c.key ?? c.id, type: c.type ?? "task", title: c.title, status: c.status, parent: c.parent ?? null, priority: c.priority, attempts: c.attempts,
+    id: c.id, key: c.key ?? c.id, type: c.type ?? "task", kind: c.kind ?? null, section: c.section ?? null, title: c.title, status: c.status,
+    display: c.status === "ready" && waiting.length ? "waiting" : c.status, waits_on: waiting,
+    parent: c.parent ?? null, priority: c.priority, attempts: c.attempts, criteria: c.acceptance?.length ?? 0, cases: c.test_cases?.length ?? 0, summary: c.summary ?? "",
     depends_on: c.depends_on.map((d) => byId.get(d)?.key ?? d), updated_at: c.updated_at, created_at: c.created_at, session_id: c.session_id ?? null,
     active: rt.kanban.isActive(c.id), commits: c.commits?.length ?? 0, comments: c.comments.length,
     test: c.test_result ? { code: c.test_result.code, at: c.test_result.at } : null, has_test: !!c.test_cmd,
@@ -34,19 +42,22 @@ function slim(rt: Runtime, c: Card, byId: Map<string, Card>) {
   };
 }
 
-export function boardSummary(rt: Runtime) {
-  const all = rt.kanban.list();
-  const byId = new Map(all.map((c) => [c.id, c]));
+export function boardSummary(rt: Runtime, boardRef?: string) {
+  const K = rt.kanban;
+  const board = (boardRef && K.boards.get(boardRef)) || K.boards.active();
+  const all = K.list(undefined, board.id);
+  const byId = new Map(K.listAll().map((c) => [c.id, c]));      // dependencies may point at tickets on other boards
   const cards = all.map((c) => slim(rt, c, byId));
   const work = cards.filter((c) => c.type !== "epic");
-  const counts = Object.fromEntries(STATUSES.map((s) => [s, work.filter((c) => c.status === s).length]));
-  const epics = cards.filter((c) => c.type === "epic").map((e) => {
+  const counts = Object.fromEntries([...STATUSES, "waiting"].map((s) => [s, work.filter((c) => (s === "ready" || s === "waiting" ? c.display === s : c.status === s)).length]));
+  const epics = cards.filter((c) => c.type === "epic").sort((a, b) => a.created_at - b.created_at || a.key.localeCompare(b.key, undefined, { numeric: true })).map((e) => {
     const kids = work.filter((c) => c.parent === e.key);
-    return { key: e.key, title: e.title, status: e.status, total: kids.length, done: kids.filter((k) => k.status === "done").length };
+    const n = (st: string) => kids.filter((k) => k.display === st).length;
+    return { key: e.key, title: e.title, status: e.status, total: kids.length, done: n("done"), running: n("running"), blocked: n("blocked"), review: n("review"), waiting: n("waiting"), ready: n("ready") };
   });
   const working = all.filter((c) => c.status === "running" && c.type !== "epic").map((c) => ({ key: c.key ?? c.id, title: c.title, active: rt.kanban.isActive(c.id), attempts: c.attempts, session_id: c.session_id ?? null, activity: activity(rt, c.session_id, 4) }));
   const recent = all.flatMap((c) => (c.history ?? []).map((h) => ({ ...h, key: c.key ?? c.id, title: c.title }))).sort((a, b) => b.at - a.at).slice(0, 15);
-  return { now: Date.now(), enabled: rt.cfg.data.kanban.enabled, workers: rt.cfg.data.kanban.workers, counts, total: work.length, epics, cards, working, recent };
+  return { now: Date.now(), board: { id: board.id, name: board.name, archived: !!board.archived, active: board.id === K.boards.activeId(), description: board.description ?? "" }, boards: K.boards.list({ archived: "all" }), enabled: rt.cfg.data.kanban.enabled, workers: rt.cfg.data.kanban.workers, counts, total: work.length, epics, cards, working, recent };
 }
 
 function evidenceRoot(rt: Runtime, c: Card): string { return join(rt.kanban.cwdOf(c), ".stitap", "evidence", c.key ?? c.id); }
@@ -68,15 +79,20 @@ function listEvidence(root: string): string[] {
 export function cardDetail(rt: Runtime, ref: string) {
   const c = rt.kanban.get(ref);
   if (!c) return null;
-  const byId = new Map(rt.kanban.list().map((x) => [x.id, x]));
+  const byId = new Map(rt.kanban.listAll().map((x) => [x.id, x]));
   const root = evidenceRoot(rt, c);
+  const bd = c.board ? rt.kanban.boards.get(c.board) : null;
   const files = listEvidence(root);
   return {
-    ...c, depends_on_keys: c.depends_on.map((d) => byId.get(d)?.key ?? d), active: rt.kanban.isActive(c.id),
+    ...c, board_info: bd ? { id: bd.id, name: bd.name, archived: !!bd.archived, active: bd.id === rt.kanban.boards.activeId() } : null, links_view: rt.kanban.boards.linksOf(c), depends_on_keys: c.depends_on.map((d) => byId.get(d)?.key ?? d), active: rt.kanban.isActive(c.id),
     activity: activity(rt, c.session_id, 12), cwd_resolved: rt.kanban.cwdOf(c),
     evidence: { dir: root, shots: files.filter((f) => /\.(png|jpe?g|webp)$/i.test(f)), other: files.filter((f) => !/\.(png|jpe?g|webp)$/i.test(f)) },
     report: existsSync(join(root, "report.md")) ? readFileSync(join(root, "report.md"), "utf8").slice(0, 8000) : null,
-    children: [...byId.values()].filter((x) => x.parent === c.key).map((x) => ({ key: x.key, title: x.title, status: x.status })),
+    children: [...byId.values()].filter((x) => x.parent === c.key).sort((a, b) => b.priority - a.priority).map((x) => ({ key: x.key, title: x.title, status: x.status, kind: x.kind ?? null })),
+    parent_card: c.parent ? (() => { const p = [...byId.values()].find((x) => x.key === c.parent); return p ? { key: p.key, title: p.title } : null; })() : null,
+    siblings: c.parent ? [...byId.values()].filter((x) => x.parent === c.parent).sort((a, b) => b.priority - a.priority).map((x) => x.key) : [],
+    waits_on: unmet(c, byId),
+    dependents: [...byId.values()].filter((x) => x.depends_on.includes(c.id)).map((x) => ({ key: x.key, title: x.title, status: x.status })),
   };
 }
 

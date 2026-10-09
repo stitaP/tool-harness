@@ -127,3 +127,10 @@ test("verify: functional steps run through the webtest engine against the projec
     assert.match(f.detail, /step \d+ expect_text failed/);
   } finally { await t.close(); }
 }, { timeout: 180000 });
+
+test("a CSS class in a heading (.btn) is not a file; real dotfiles (.gitignore) still are", async () => {
+  const { sectionManifest } = await import(dist("kanban/verify.js"));
+  assert.deepEqual(sectionManifest("Write `css/components/buttons.css` and `.btn`", "").files, ["css/components/buttons.css"]);
+  assert.deepEqual(sectionManifest("Create `.gitignore`", "").files, [".gitignore"]);
+  assert.deepEqual(sectionManifest("Create `.page-header`", "").files, []);
+});

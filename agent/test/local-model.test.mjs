@@ -148,3 +148,10 @@ test("an invalid tool call (llama.cpp 500 parse error) is fed back to the model 
     void seen;
   } finally { await t.close(); srv.close(); }
 });
+
+test("llama.cpp 'Compute error.' 500 is classified as a compute error (retryable), other 500s stay server errors", async () => {
+  const { classifyHttpError } = await import(dist("providers/types.js"));
+  const e = classifyHttpError(500, '{"error":{"code":500,"message":"Compute error.","type":"server_error"}}');
+  assert.equal(e.kind, "compute"); assert.equal(e.retryable, true);
+  assert.equal(classifyHttpError(500, '{"error":{"message":"boom"}}').kind, "server");
+});

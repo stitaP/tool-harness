@@ -128,3 +128,44 @@ test("router (resident): a model that cannot start is reported and the other one
     assert.equal(r.content, "served by small");                                        // wanted strong, got the fast one
   } finally { await srv.stop(); }
 });
+
+test("router policy: default strong, prefer fast for testing work, escalation still applies to a preferred tier", () => {
+  const d = { ...base, defaultTier: "strong" };
+  assert.equal(decide({ ...d, messages: [u("hello")] }).tier, "strong");                       // the strong model is the default for everything
+  assert.equal(decide({ ...d, messages: [u("write the tests")], prefer: "fast" }).tier, "fast");   // testing work prefers the small one
+  const failing = [u("run them"), a(), t("error: boom"), a(), t("Error: boom again")];
+  assert.equal(decide({ ...d, prefer: "fast", messages: failing }).tier, "strong");           // ...but a failing turn escalates
+  assert.equal(decide({ ...d, pin: "fast", messages: failing }).tier, "fast");                // a pin never escalates
+  assert.equal(decide({ ...d, prefer: "fast", strongAvailable: false, messages: failing }).tier, "fast");
+});
+
+test("router (resident, on demand): the fast model stays on disk until needed, aux calls never load it, and it unloads when idle", async () => {
+  const { DuoServer } = await import(dist("providers/router.js"));
+  const [pf, ps] = [await freePort(), await freePort()];
+  const fake = fileURLToPath(new URL("./fixtures/fake-llama-server.mjs", import.meta.url)), file = fileURLToPath(import.meta.url);
+  const cfg = { enabled: true, resident: true, default_tier: "strong", on_demand: ["fast"], idle_unload_min: 0.01, mode: "auto", llama_server: fake, port: ps, kv: "q8_0", threads: 1, min_dwell: 600, escalate_after: 8, start_timeout: 20,
+    models: { fast: { name: "small", file, port: pf }, strong: { name: "big", file, port: ps } } };
+  const srv = new DuoServer(() => cfg, mkdtempSync(join(tmpdir(), "duo-")));
+  const mk = (port) => ({ id: "i", model: "i", contextWindow: 1000, async chat() { const j = await (await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, { method: "POST", body: "{}" })).json(); return { content: j.choices[0].message.content, toolCalls: [], usage: { input: 0, output: 0 }, finishReason: "stop", model: "m" }; } });
+  const msgs = []; const rp = new RouterProvider(mk(ps), srv, () => cfg, (m) => msgs.push(m), (tier, port) => mk(port));
+  const tools = [{ name: "x", description: "x", parameters: {} }];
+  try {
+    await srv.ensureAll();
+    assert.equal(srv.isUp("strong"), true); assert.equal(srv.isUp("fast"), false);             // only the strong model was started
+    assert.ok(msgs.some((m) => /stays on disk/.test(m)));
+    let r = await rp.chat({ messages: [u("hello")], tools });                                  // everything goes to the strong one
+    assert.equal(r.content, "served by big"); assert.equal(srv.isUp("fast"), false);
+    r = await rp.chat({ messages: [u("name this chat")] });                                    // background call: does not load the fast model
+    assert.equal(r.content, "served by big"); assert.equal(srv.isUp("fast"), false);
+    r = await rp.chat({ messages: [u("write the tests")], tools, prefer: "fast" });            // testing work: loads it now
+    assert.equal(r.content, "served by small"); assert.equal(srv.isUp("fast"), true); assert.equal(srv.isUp("strong"), true);
+    r = await rp.chat({ messages: [u("name this chat")] });                                    // fast is up, so background calls may use it
+    assert.equal(r.content, "served by small");
+    // idle: it is unloaded again and the next testing request loads it again
+    await new Promise((res) => setTimeout(res, 31_000));
+    assert.equal(srv.isUp("fast"), false, "unloaded after idle"); assert.equal(srv.isUp("strong"), true, "the default model is never unloaded");
+    assert.ok(msgs.some((m) => /unloaded/.test(m)));
+    r = await rp.chat({ messages: [u("write the tests")], tools, prefer: "fast" });
+    assert.equal(r.content, "served by small");
+  } finally { await srv.stop(); }
+}, { timeout: 90000 });

@@ -64,6 +64,8 @@ export class ResilientProvider implements Provider {
           // a model that is (re)loading, or a local server that is restarting (a 30B GGUF takes 1–3 min), gets 5 minutes before we give up
           const loading = (pe.status === 503 && /still loading/.test(pe.message)) || (pe.kind === "network" && /ECONNREFUSED/.test(pe.message));
           if (loading && waited < 300_000) { const w = pe.retryAfterMs ?? 5000; waited += w; attempt--; this.onEvent?.("model server is loading; waiting"); await sleep(w, req.signal); continue; }
+          // a GPU compute error repeats with the same prompt: retry once after a pause, then let the agent shrink the prompt
+          if (pe.kind === "compute") { if (attempt >= 1) throw pe; this.onEvent?.("GPU compute error; retrying in 4s"); await sleep(4000, req.signal); continue; }
           if (!pe.retryable || attempt === this.retries) break;
           const wait = Math.min(pe.retryAfterMs ?? 1000 * 2 ** attempt, 30_000);
           log.warn(`model call failed (${pe.kind}), retry ${attempt + 1}/${this.retries} in ${wait}ms: ${pe.message.slice(0, 200)}`);

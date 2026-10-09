@@ -9,7 +9,7 @@ export class ProviderError extends Error {
         this.retryAfterMs = retryAfterMs;
         this.name = "ProviderError";
     }
-    get retryable() { return this.kind === "rate_limit" || this.kind === "server" || this.kind === "network"; }
+    get retryable() { return this.kind === "rate_limit" || this.kind === "server" || this.kind === "network" || this.kind === "compute"; }
 }
 export function classifyHttpError(status, body, retryAfter) {
     const b = body.slice(0, 600);
@@ -28,6 +28,9 @@ export function classifyHttpError(status, body, retryAfter) {
     // llama.cpp / Ollama / LM Studio answer 503 while (re)loading weights: wait it out instead of failing the turn
     if (status === 503 && /loading model|model is loading|currently loading|still loading/i.test(b))
         return new ProviderError(`model server is still loading the model: ${b}`, "server", status, ra ?? 5000);
+    // llama.cpp / Metal: "Compute error." (failed decode, GPU out of memory, command-buffer timeout). A smaller prompt usually fixes it.
+    if (status >= 500 && /compute error|failed to (decode|process|evaluate)|ggml|metal|out of memory|kIOGPU|insufficient memory/i.test(b))
+        return new ProviderError(`the model server hit a compute error (GPU/memory): ${b}`, "compute", status);
     if (status >= 500)
         return new ProviderError(`server error ${status}: ${b}`, "server", status);
     return new ProviderError(`request failed ${status}: ${b}`, "bad_request", status);

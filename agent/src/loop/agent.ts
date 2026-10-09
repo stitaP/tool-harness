@@ -109,6 +109,7 @@ export async function runTurn(rt: Runtime, o: TurnOptions): Promise<TurnResult> 
   const schemas = selectionActive(rt, sid) ? compactSchemas(rt.tools.schemas(tools)) : rt.tools.schemas(tools);
   const provider = rt.providerFor(sid);
   const maxOut = rt.cfg.data.agent.tool_profile === "slm" ? Math.min(rt.cfg.data.agent.max_tool_output_chars, 4000) : rt.cfg.data.agent.max_tool_output_chars;
+  const lastOut = new Map<string, string>(); // callKey -> output of its previous run (to spot repeated successes)
   const recent: string[] = [];           // recent tool-call keys (window LOOP_WINDOW)
   const recentTexts: string[] = [];      // recent assistant texts that came with tool calls
   let textRepeats = 0;
@@ -119,6 +120,7 @@ export async function runTurn(rt: Runtime, o: TurnOptions): Promise<TurnResult> 
     try { const a = JSON.parse(c.arguments || "{}"); return typeof a.path === "string" ? a.path.replace(/^\.\//, "") : null; } catch { return null; }
   };
   let compressedThisTurn = 0;
+  let computeRetries = 0;
   let badToolCalls = 0;
   let tokenCalib = 1, lastRawEstimate = 0, lastCompressAt = -99, overflowRetries = 0;
   let emptyRetries = 0;
@@ -226,7 +228,7 @@ export async function runTurn(rt: Runtime, o: TurnOptions): Promise<TurnResult> 
       let resp: ChatResponse;
       try {
         resp = await provider.chat({
-          messages, tools: schemas.length ? schemas : undefined, signal: o.signal, maxTokens, tier: rt.db.getSession(sid)?.meta?.router_tier,
+          messages, tools: schemas.length ? schemas : undefined, signal: o.signal, maxTokens, tier: rt.db.getSession(sid)?.meta?.router_tier, prefer: rt.db.getSession(sid)?.meta?.router_prefer,
           onToken: (t) => emit({ type: "token", text: t }),
           onReasoning: (t) => emit({ type: "reasoning", text: t }),
           stream: rt.cfg.data.agent.stream,
@@ -243,6 +245,14 @@ export async function runTurn(rt: Runtime, o: TurnOptions): Promise<TurnResult> 
               : "the arguments were not valid JSON";
           emit({ type: "status", text: "Invalid tool call from the model — asking it to retry" });
           rt.db.addMessage(sid, { role: "user", content: `[Your last tool call could not be executed: ${hint}. Retry it. Inside JSON strings escape every double quote as \\" and newlines as \\n. For large content prefer several smaller patch calls, or write_file with the complete file.]`, meta: { tool_call_repair: true } });
+          result.iterations--; budget.remaining++;
+          continue;
+        }
+        if (e instanceof ProviderError && e.kind === "compute" && computeRetries++ < 3) {
+          // Metal/llama.cpp "Compute error": the prompt is too heavy for the GPU right now. Shrink it and try again.
+          emit({ type: "status", text: `The model server hit a GPU compute error — compressing the conversation and retrying (${computeRetries}/3)` });
+          try { await compressSession(rt, sid, { signal: o.signal, reason: "GPU compute error" }); compressedThisTurn++; } catch (ce) { log.warn(`compress after compute error failed: ${errMsg(ce)}`); }
+          await new Promise((r) => setTimeout(r, 3000 * computeRetries));
           result.iterations--; budget.remaining++;
           continue;
         }
@@ -328,6 +338,14 @@ export async function runTurn(rt: Runtime, o: TurnOptions): Promise<TurnResult> 
           const n = (fileReads.get(offsetKey) ?? 0) + 1;
           fileReads.set(offsetKey, n);
           if (n >= 2) outputs[i] += `\n\n[Note: you already read this part of ${p} earlier in this task and have not changed the file since. Do not read it again — make the change now with patch or write_file.]`;
+        }
+        // a command that already succeeded and gave the same output again: tell the model it is DONE (weak models re-run it forever)
+        for (const [i, c] of resp.toolCalls.entries()) {
+          const k = keys[i], out = (outputs[i] ?? "").replace(/\n?\[cwd is now [^\]]*\]\s*$/, "");
+          const prev = lastOut.get(k);
+          if (prev !== undefined && prev === out && !/^(error|\[skipped)/i.test(out) && !/exit(ed)?( code)?:? ?[1-9]/i.test(out))
+            outputs[i] += `\n\n[Note: this exact ${c.name} call already SUCCEEDED earlier with the same output. It is finished — the state is already as you wanted. Do NOT run it again. Go to the next item on your todo_list.]`;
+          lastOut.set(k, out);
         }
         if (loopNote) outputs[outputs.length - 1] += loopNote;
         const steer = o.takeSteer?.();

@@ -19,7 +19,8 @@ export interface Manifest { files: string[]; exports: Record<string, string[]>; 
 export interface CheckLine { name: string; ok: boolean; skipped?: boolean; detail: string }
 export interface VerifyReport { key: string; ok: boolean; checks: CheckLine[]; evidenceDir: string; shots: string[]; markdown: string }
 
-const FILE_RE = /^[\w./-]+\.(?:m?js|html|css|json|md|svg|ya?ml|txt|xml)$/;
+const FILE_RE = /^(?:\.(?:git\w+|env(?:\.[\w-]+)?|editorconfig|nvmrc|npmrc|prettierrc(?:\.\w+)?|eslintrc(?:\.\w+)?|htaccess|dockerignore|babelrc)|[\w./-]+\.(?:m?js|html|css|json|md|svg|ya?ml|txt|xml))$/;
+const REFERENCE_DOC = /^docs\/(?:phase-\d+|00-[\w-]+)\.md$/;
 
 /** Files, exports and pages a phase spec promises. */
 export function parseManifest(md: string): Manifest {
@@ -68,14 +69,26 @@ export function checkBuilt(cwd: string, files: string[] = [], exports: Record<st
   return problems;
 }
 
-/** Files named in a section's heading/opening lines, and the exports declared in its code blocks. */
+/** Files named in a section's heading/opening lines, the exports declared in its code blocks, and (for a "folders" section) the folders it lists. */
 export function sectionManifest(heading: string, body: string): { files: string[]; exports: Record<string, string[]> } {
-  const head = [heading, ...body.split("\n").slice(0, 8)].join("\n");
-  const files = [...new Set([...head.matchAll(/`([^`]+)`/g)].map((m) => m[1]).filter((t) => FILE_RE.test(t) && !t.startsWith("tests/") && !t.startsWith("docs/")))];
+  const pick = (text: string) => [...new Set([...text.matchAll(/`([^`]+)`/g)].map((m) => m[1]).filter((t) => FILE_RE.test(t) && !t.startsWith("tests/") && !REFERENCE_DOC.test(t)))];
+  // the files of a story are the ones its HEADING names; only a heading without any file ("3. Pages") takes them from the opening lines
+  let files = pick(heading);
+  if (!files.length) {
+    // "Create these 20 files (paths relative to `css/`):" followed by a block of names: those are the deliverables
+    const rel = /paths? relative to `([^`]+)`[^\n]*\n```[\w]*\n([\s\S]*?)```/i.exec(body);
+    if (rel) { const prefix = rel[1].replace(/\/*$/, "/"); files = rel[2].split(/\s+/).filter((w) => FILE_RE.test(w)).map((w) => prefix + w); }
+    // otherwise the opening lines, ignoring files named only as an example
+    else files = pick(body.split("\n").slice(0, 8).filter((l) => !/for example|e\.g\.|such as/i.test(l)).join("\n"));
+  }
   const names = [...body.matchAll(/export\s+(?:async\s+)?(?:function\*?|const|let|class)\s+(\w+)/g)].map((m) => m[1]);
   // tables like | `getProductById(id, list)` | the product or null | name the functions a module must export
   for (const m of body.matchAll(/^\|\s*`([A-Za-z_$][\w$]*)\(/gm)) names.push(m[1]);
   for (const m of body.matchAll(/^###\s+`([A-Za-z_$][\w$]*)\(/gm)) names.push(m[1]);
+  // "Create folders": every path-like word in the code blocks is a folder that must exist
+  if (/\bfolders?\b|\bdirector(?:y|ies)\b/i.test(heading)) {
+    for (const blk of body.matchAll(/```[\w]*\n([\s\S]*?)```/g)) for (const w of blk[1].split(/\s+/)) if (/^[\w.-]+(?:\/[\w.-]+)*\/?$/.test(w) && w.length > 1 && !files.includes(w.replace(/\/$/, ""))) files.push(w.replace(/\/$/, ""));
+  }
   const exp: Record<string, string[]> = {};
   const jsFile = files.find((f) => /\.m?js$/.test(f));
   if (jsFile && names.length) exp[jsFile] = [...new Set(names)];

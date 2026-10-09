@@ -7,8 +7,20 @@ export declare function activity(rt: Runtime, sessionId?: string, n?: number): {
     text: string;
     tools: string[];
 }[];
-export declare function boardSummary(rt: Runtime): {
+export declare function boardSummary(rt: Runtime, boardRef?: string): {
     now: number;
+    board: {
+        id: string;
+        name: string;
+        archived: boolean;
+        active: boolean;
+        description: string;
+    };
+    boards: (import("./boards.js").BoardInfo & {
+        cards: number;
+        done: number;
+        active: boolean;
+    })[];
     enabled: boolean;
     workers: number;
     counts: {
@@ -21,16 +33,28 @@ export declare function boardSummary(rt: Runtime): {
         status: CardStatus;
         total: number;
         done: number;
+        running: number;
+        blocked: number;
+        review: number;
+        waiting: number;
+        ready: number;
     }[];
     cards: {
         id: string;
         key: string;
         type: import("./board.js").CardType;
+        kind: "tests" | "gate" | "story" | null;
+        section: string | null;
         title: string;
         status: CardStatus;
+        display: string;
+        waits_on: string[];
         parent: string | null;
         priority: number;
         attempts: number;
+        criteria: number;
+        cases: number;
+        summary: string;
         depends_on: string[];
         updated_at: number;
         created_at: number;
@@ -73,6 +97,13 @@ export declare function boardSummary(rt: Runtime): {
     }[];
 };
 export declare function cardDetail(rt: Runtime, ref: string): {
+    board_info: {
+        id: string;
+        name: string;
+        archived: boolean;
+        active: boolean;
+    } | null;
+    links_view: import("./boards.js").LinkView[];
     depends_on_keys: string[];
     active: boolean;
     activity: {
@@ -89,6 +120,18 @@ export declare function cardDetail(rt: Runtime, ref: string): {
     };
     report: string | null;
     children: {
+        key: string | undefined;
+        title: string;
+        status: CardStatus;
+        kind: "tests" | "gate" | "story" | null;
+    }[];
+    parent_card: {
+        key: string | undefined;
+        title: string;
+    } | null;
+    siblings: (string | undefined)[];
+    waits_on: string[];
+    dependents: {
         key: string | undefined;
         title: string;
         status: CardStatus;
@@ -116,6 +159,10 @@ export declare function cardDetail(rt: Runtime, ref: string): {
     spec?: string;
     cwd?: string;
     functional?: import("../tools/webtest.js").Step[];
+    board?: string;
+    refs?: import("./boards.js").CardRef[];
+    summary?: string;
+    test_cases?: string[];
     kind?: "tests" | "story" | "gate";
     section?: string;
     files?: string[];

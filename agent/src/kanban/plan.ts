@@ -13,6 +13,7 @@ import { basename, join, resolve } from "node:path";
 import { expandHome } from "../safety/paths.js";
 import type { Card, KanbanBoard } from "./board.js";
 import { sectionManifest } from "./verify.js";
+import { buildStory } from "./story.js";
 
 export interface Section { num: number; title: string; heading: string; level: number; body: string }
 
@@ -96,13 +97,14 @@ function copyDir(from: string, to: string, filter: (f: string) => boolean = () =
   return n;
 }
 
-export function importPlan(board: KanbanBoard, o: { planDir: string; projectDir?: string; testsDir?: string; keyPrefix?: string; split?: boolean }): string {
+export function importPlan(board: KanbanBoard, o: { planDir: string; projectDir?: string; testsDir?: string; keyPrefix?: string; split?: boolean; board?: string }): string {
   const planDir = resolve(expandHome(o.planDir));
   if (!existsSync(planDir)) return `plan folder not found: ${planDir}`;
   const phases = readdirSync(planDir).filter((f) => /^phase-\d+\.md$/.test(f)).sort();
   if (!phases.length) return `no phase-NN.md files in ${planDir}`;
   const project = o.projectDir ? resolve(expandHome(o.projectDir)) : undefined;
   const notes: string[] = [];
+  if (o.board) { const b = board.boards.get(o.board) ?? board.boards.create(o.board); board.boards.use(b.id); notes.push(`board: "${b.name}" (now active)`); }
   let testsProvided = false;
   if (project) {
     mkdirSync(project, { recursive: true });
@@ -116,6 +118,8 @@ export function importPlan(board: KanbanBoard, o: { planDir: string; projectDir?
   }
   const contextDocs = readdirSync(planDir).filter((f) => /^00-[\w-]+\.md$/.test(f)).map((f) => `docs/${f}`);
   const read = `Read first: ${contextDocs.join(", ")}`;
+  const made = new Map<string, string>();     // file -> the ticket that delivers it (so a story can say where to read an imported file)
+  for (const c of board.listAll()) for (const f of c.files ?? []) if (c.key) made.set(f, c.key);
   let prevTail: string | undefined;
   let epics = 0, stories = 0, replaced = 0, kept = 0;
   const all = () => board.list();
@@ -144,35 +148,43 @@ export function importPlan(board: KanbanBoard, o: { planDir: string; projectDir?
     const mk = (p: Parameters<KanbanBoard["create"]>[0]) => board.create({ ...p, parent: epic!.key, spec, cwd: project, key_prefix: o.keyPrefix, priority: base - order++ });
     let prev = prevTail;
 
-    // 2. one story per numbered section
-    const storyIds: string[] = [];
-    for (const sec of secs) {
+    // 2. one story per numbered section, written in plain words with everything a small model needs
+    const storyIds: string[] = [], storyInfo: { key: string; label: string; cases: string[] }[] = [];
+    secs.forEach((sec, ix) => {
       const man = sectionManifest(sec.heading, sec.body);
-      const label = clean(sec.heading).slice(0, 90);
-      const s = mk({ title: `Phase ${num} · ${sec.num}. ${label}`, type: "task", kind: "story", section: `${sec.num}. ${clean(sec.heading)}`,
-        depends_on: prev ? [prev] : [], files: man.files, exports: man.exports, acceptance: sectionAcceptance(sec, man),
-        body: `Phase ${num}: ${short}. ${read}, ${spec}.\nImplement ONLY section ${sec.num} of the spec (the other sections are separate cards).\n\n### ${sec.num}. ${sec.heading}\n\n${sec.body}` });
-      prev = s.id; storyIds.push(s.id); stories++;
-    }
+      const st = buildStory({ num, phaseShort: short, goal, spec, sec, manifest: man, contextDocs, made, total: secs.length, index: ix + 1 });
+      const s1 = mk({ title: st.title, type: "task", kind: "story", section: `${sec.num}. ${clean(sec.heading)}`, summary: st.summary, test_cases: st.testCases,
+        depends_on: prev ? [prev] : [], files: man.files, exports: man.exports, acceptance: st.acceptance, body: st.body });
+      for (const f of man.files) if (s1.key) made.set(f, s1.key);
+      prev = s1.id; storyIds.push(s1.id); storyInfo.push({ key: s1.key!, label: man.files[0] ?? clean(sec.heading), cases: st.testCases }); stories++;
+    });
 
     // 3. tests are written AFTER the stories are built (from the spec and from what was actually built), unless the project already has them
     const testFile = /(tests?\/[\w./-]+\.m?js)/.exec(testCmd ?? "")?.[1];
     const hasTests = testsProvided && !!project && !!testFile && existsSync(join(project, testFile));
     if (testCmd && testFile && !hasTests) {
-      const fn = `tests/functional/phase-${num}.functional.json`;
-      const t = mk({ title: `Phase ${num} · Write the tests for "${short}" (built, unit, navigate, functional, screenshots, regression)`, type: "task", kind: "tests", section: "tests",
-        depends_on: prev ? [prev] : [], test_cmd: `test -f ${testFile} && grep -q "test(" ${testFile}`,
+      const fn = `tests/functional/phase-${num}.functional.json`, MIN = 4;
+      const keys = storyInfo.map((x) => x.key);
+      // every story key must appear in the title of at least MIN tests: that is how "more test cases for every story" is enforced
+      const check = keys.length ? `test -f ${testFile} && grep -q "test(" ${testFile} && for k in ${keys.join(" ")}; do [ "$(grep -c "$k" ${testFile})" -ge ${MIN} ] || { echo "write at least ${MIN} tests for $k: put the key in each test title"; exit 1; }; done` : `test -f ${testFile} && grep -q "test(" ${testFile}`;
+      const perStory = storyInfo.map((x) => `### ${x.key} (${x.label})\n${x.cases.map((c, k) => `${k + 1}. ${c}`).join("\n")}`).join("\n\n");
+      const t = mk({ title: `Phase ${num} · Write the tests (${storyInfo.length} stories, at least ${MIN} tests each)`, type: "task", kind: "tests", section: "tests",
+        summary: `Write ${testFile} and ${fn}: at least ${MIN} tests for each of the ${storyInfo.length} stories of phase ${num}, plus browser steps with screenshots.`,
+        depends_on: prev ? [prev] : [], test_cmd: check,
+        test_cases: storyInfo.flatMap((x) => x.cases.slice(0, 6).map((c) => `${x.key}: ${c}`)),
         acceptance: [
-          `${testFile} exists and defines tests with test(...)`,
-          "BUILT: every file the spec names exists and every function/const it lists is exported with the exact name",
-          "UNIT: each exported function is called with the spec's examples and edge cases and the documented result is asserted",
-          "NAVIGATE: every page of this phase is opened and its local links and assets resolve",
+          `${testFile} exists and every story key (${keys.join(", ")}) appears in the titles of at least ${MIN} tests each`,
+          "BUILT: for every story, the files exist and the names are exported exactly as spelled in the story",
+          "UNIT: every function is called with a normal input AND with its edge cases (the story's TEST CASES list), and the result is checked",
+          "NAVIGATE: every page of this phase opens and its links and assets resolve",
           `FUNCTIONAL: ${fn} holds browser steps (goto, click, fill, expect_text …) that follow the spec's "Try it" / user flows`,
-          "SCREENSHOT: the functional steps take a screenshot of each page, so the result can be looked at",
-          "REGRESSION: the tests of earlier phases still pass (the gate re-runs them)",
-          "every test passes against what was built; a failing test means a bug to fix in the feature, not in the test",
-        ],
-        body: `The stories of this phase are built. Now write the tests, from the spec AND by looking at what was actually built. Source of truth: ${spec}. ${read}.\nFiles to write:\n- ${testFile}  (node:test: BUILT + UNIT + NAVIGATE checks; runnable with \`${testCmd}\`)\n- ${fn}  (JSON array of webtest steps for the FUNCTIONAL and SCREENSHOT checks; use {{base}} in goto urls)\nRun the tests; they must pass. If one fails, the feature has a bug: fix the feature, do not weaken the test. Commit as "<KEY>: tests for phase ${num}".` });
+          "SCREENSHOT: the browser steps take a screenshot of each page so the result can be looked at",
+          "REGRESSION: the tests of earlier phases still pass (the gate runs them again)",
+          "every test passes against what was built; a failing test means a bug to fix in the feature, not in the test"],
+        body: [`WHAT TO DO`, `- The ${storyInfo.length} stories of phase ${num} (${short}) are built. Now write the tests.`, "", "FILES TO WRITE", `- ${testFile}   (node:test; run it with: ${testCmd})`, `- ${fn}   (a JSON array of browser steps; use {{base}} in goto urls)`, "",
+          "HOW", `1. For EACH story below, write at least ${MIN} tests. Start every test title with the story key, like: test("${keys[0] ?? "PT-1"}: getProductById returns null for an unknown id", ...)`,
+          "2. Use the story's TEST CASES as your list. Write one test per line where you can.", "3. Read the real code first (and the spec " + spec + ") so each test checks what the code really exports.",
+          "4. Run the tests. They must pass. If one fails, the feature has a bug: fix the feature, do not weaken the test.", `5. Commit with the ticket key first: "<KEY>: tests for phase ${num}".`, "", "TEST CASES PER STORY", perStory].join("\n") });
       prev = t.id; stories++;
     }
 

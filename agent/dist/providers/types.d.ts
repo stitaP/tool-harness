@@ -18,6 +18,8 @@ export interface ChatRequest {
     stream?: boolean;
     /** model router: require this tier for the request (kanban workers and reviewers) */
     tier?: "fast" | "strong";
+    /** model router: use this tier unless the turn is going badly (then it escalates) */
+    prefer?: "fast" | "strong";
 }
 export interface ChatResponse {
     content: string;
@@ -46,7 +48,7 @@ export interface Provider {
     readonly contextWindow: number;
     chat(req: ChatRequest): Promise<ChatResponse>;
 }
-export type ErrorKind = "rate_limit" | "context_length" | "auth" | "server" | "network" | "bad_request" | "tools_unsupported" | "aborted" | "bad_tool_call";
+export type ErrorKind = "rate_limit" | "context_length" | "auth" | "server" | "network" | "bad_request" | "tools_unsupported" | "aborted" | "bad_tool_call" | "compute";
 export declare class ProviderError extends Error {
     readonly kind: ErrorKind;
     readonly status?: number | undefined;

@@ -21,7 +21,8 @@ import { listCommands, looksLikeCommand, runCommand, insights } from "../runtime
 import { barePathHint, expandReferences } from "../prompt/references.js";
 import { goalKey, loopKey, heartbeatKey } from "../loop/autonomy.js";
 import { handleChatCompletions, handleModels } from "./openai-api.js";
-import { boardSummary, cardDetail, evidenceFile } from "../kanban/dashboard.js";
+import { activity, boardSummary, cardDetail, evidenceFile } from "../kanban/dashboard.js";
+import { enrichBoard, describeEnrich } from "../kanban/enrich.js";
 import { log } from "../util/log.js";
 import { errMsg } from "../util/misc.js";
 
@@ -127,6 +128,32 @@ async function liveRate(baseUrl: string): Promise<any> {
     lastSlots = { at: now, tasks };
     return { slots: slots.length, busy, decoded, tps };
   } catch { return null; }
+}
+
+/** What the local model is doing right now, from its own log: reading the prompt (with %), writing (with tok/s) or idle. */
+export function modelProgress(home: string): { phase: "reading" | "writing" | "idle" | "unknown"; percent?: number; tokens?: number; tps?: number; model?: string } {
+  let best: { t: number; lines: string[]; name: string } | null = null;
+  for (const f of ["model.log", "model-fast.log"]) {
+    try {
+      const path = join(home, f), st = statSync(path);
+      if (!best || st.mtimeMs > best.t) {
+        const fd = readFileSync(path, "utf8"), tail = fd.slice(-16000).split("\n");
+        best = { t: st.mtimeMs, lines: tail, name: f === "model.log" ? "strong" : "fast" };
+      }
+    } catch { /* no log */ }
+  }
+  if (!best) return { phase: "unknown" };
+  let prog: { tokens: number; pct: number } | null = null, gen: { n: number; tps: number } | null = null, idle = false;
+  for (const l of [...best.lines].reverse()) {
+    if (/update_slots: all slots are idle|slot\s+release:/.test(l)) { idle = true; break; }
+    if (!prog && /prompt processing/.test(l)) { const m = /n_tokens\s*=\s*(\d+), progress\s*=\s*([0-9.]+)/.exec(l); if (m) prog = { tokens: +m[1], pct: +m[2] }; }
+    if (!gen && /tg\s*=/.test(l)) { const m = /n_gen\s*=\s*(\d+), tg\s*=\s*([0-9.]+)/.exec(l); if (m) gen = { n: +m[1], tps: +m[2] }; }
+    if (/launch_slot_/.test(l)) break;
+  }
+  if (idle && !prog && !gen) return { phase: "idle", model: best.name };
+  if (gen && (!prog || gen.n > 0)) return { phase: "writing", tokens: gen.n, tps: gen.tps, model: best.name };
+  if (prog) return { phase: "reading", percent: Math.round(prog.pct * 100), tokens: prog.tokens, model: best.name };
+  return { phase: "reading", model: best.name };   // task launched, first progress line not written yet
 }
 
 function safeEq(a: string, b: string): boolean {
@@ -237,6 +264,7 @@ export async function startServer(rt: Runtime, opts: { host?: string; port?: num
           store: rt.storeBridge.count, mcp: rt.mcp.summary(), policy: rt.cfg.policy ? { enforced: Object.keys(rt.cfg.policy.enforce ?? {}), message: rt.cfg.policy.message } : null,
         });
       }
+      if (p === "/api/model/progress" && req.method === "GET") return json(res, 200, modelProgress(rt.home));
       if (p === "/api/stats" && req.method === "GET") {
         const sid = url.searchParams.get("session") ?? "";
         // input counts the whole prompt each call; cached = the part the server reused from its prompt cache (no compute)
@@ -481,9 +509,52 @@ export async function startServer(rt: Runtime, opts: { host?: string; port?: num
       }
       if (p === "/api/rag/search" && req.method === "GET") return json(res, 200, { hits: rt.rag.search(url.searchParams.get("q") ?? "", 8) });
       if (p === "/api/kanban") return json(res, 200, rt.kanban.list());
-      if (p === "/api/kanban/board" && req.method === "GET") return json(res, 200, boardSummary(rt));
-      if (p === "/api/kanban/dispatch" && req.method === "POST") return json(res, 200, { dispatched: await rt.kanban.tick() });
-      if (p === "/api/kanban/resume" && req.method === "POST") { const r = rt.kanban.recover(); return json(res, 200, { requeued: r.length, dispatched: await rt.kanban.tick() }); }
+      if (p === "/api/kanban/board" && req.method === "GET") return json(res, 200, boardSummary(rt, url.searchParams.get("board") ?? undefined));
+      if (p === "/api/kanban/live" && req.method === "GET") {
+        const K = rt.kanban, max = rt.cfg.data.kanban.max_attempts ?? 5;
+        const cards = K.list();
+        const working = cards.filter((c) => (c.status === "running" || K.isActive(c.id)) && c.type !== "epic").map((c) => {
+          const act = activity(rt, c.session_id ?? undefined, 6);
+          const last = [...act].reverse().find((m) => m.tools.length || m.role === "tool");
+          return { key: c.key ?? c.id, title: c.title, attempts: c.attempts, max, active: K.isActive(c.id), session_id: c.session_id ?? null, last: last?.text ?? "", last_at: last?.at ?? 0 };
+        });
+        const count = (st: string) => cards.filter((c) => c.status === st && c.type !== "epic").length;
+        const recent = cards.flatMap((c) => (c.history ?? []).map((h) => ({ at: h.at, key: c.key ?? c.id, title: c.title, to: h.to, reason: h.reason ?? "", attempts: c.attempts, commit: c.commits?.at(-1)?.hash?.slice(0, 8) ?? "" }))).sort((a, b) => b.at - a.at).slice(0, 12);
+        return json(res, 200, { enabled: rt.cfg.data.kanban.enabled, paused: K.paused, recent, board: K.boards.activeId(), working, ready: K.ready().length, blocked: count("blocked"), done: count("done"), total: cards.filter((c) => c.type !== "epic").length, now: Date.now() });
+      }
+      if (p === "/api/kanban/dispatch" && req.method === "POST") { rt.kanban.setPaused(false); return json(res, 200, { dispatched: await rt.kanban.tick() }); }
+      if (p === "/api/kanban/stop" && req.method === "POST") return json(res, 200, { stopped: rt.kanban.stopAll() });
+      if (p === "/api/kanban/resume" && req.method === "POST") { rt.kanban.setPaused(false); const r = rt.kanban.recover(); return json(res, 200, { requeued: r.length, dispatched: await rt.kanban.tick() }); }
+      if (p === "/api/kanban/enrich" && req.method === "POST") {
+        const b = await body(req);
+        try { const r = await enrichBoard(rt, { board: b.board }); return json(res, 200, { ok: true, ...r, text: describeEnrich(r) }); } catch (e) { return json(res, 400, { error: errMsg(e) }); }
+      }
+      if (p === "/api/kanban/boards" && req.method === "GET") return json(res, 200, { active: rt.kanban.boards.activeId(), boards: rt.kanban.boards.list({ archived: "all" }) });
+      if (p === "/api/kanban/boards" && req.method === "POST") {
+        const b = await body(req); const B = rt.kanban.boards;
+        try {
+          switch (b.action) {
+            case "new": { const x = B.create(String(b.name ?? ""), b.description); if (b.use !== false) B.use(x.id); return json(res, 200, { ok: true, board: x }); }
+            case "use": return json(res, 200, { ok: true, board: B.use(String(b.board ?? "")) });
+            case "rename": return json(res, 200, { ok: true, board: B.rename(String(b.board ?? ""), String(b.name ?? "")) });
+            case "archive": return json(res, 200, { ok: true, board: B.archive(String(b.board ?? "")) });
+            case "unarchive": return json(res, 200, { ok: true, board: B.unarchive(String(b.board ?? "")) });
+            case "save": return json(res, 200, { ok: true, file: B.save(String(b.board ?? "")) });
+            case "clear": { const x = B.get(String(b.board ?? "")); if (!x || b.confirm !== x.name) return json(res, 400, { error: "type the board name to confirm" }); return json(res, 200, { ok: true, ...B.clear(x.id) }); }
+            case "delete": { const x = B.get(String(b.board ?? "")); if (!x || b.confirm !== x.name) return json(res, 400, { error: "type the board name to confirm" }); return json(res, 200, { ok: true, ...B.delete(x.id) }); }
+            case "move": return json(res, 200, { ok: true, moved: B.move(Array.isArray(b.keys) ? b.keys : [], String(b.to ?? "")) });
+            default: return json(res, 400, { error: "unknown action" });
+          }
+        } catch (e) { return json(res, 400, { error: errMsg(e) }); }
+      }
+      const klk = /^\/api\/kanban\/card\/([^/]+)\/(link|unlink)$/.exec(p);
+      if (klk && req.method === "POST") {
+        const b = await body(req);
+        try {
+          if (klk[2] === "link") { const r = rt.kanban.boards.link(decodeURIComponent(klk[1]), String(b.type ?? "relates to"), String(b.to ?? "")); return json(res, 200, { ok: true, link: r }); }
+          return json(res, 200, { ok: true, removed: rt.kanban.boards.unlink(decodeURIComponent(klk[1]), String(b.to ?? ""), b.type) });
+        } catch (e) { return json(res, 400, { error: errMsg(e) }); }
+      }
       const kev = /^\/api\/kanban\/evidence\/([^/]+)\/(.+)$/.exec(p);
       if (kev && req.method === "GET") {
         const f = evidenceFile(rt, decodeURIComponent(kev[1]), decodeURIComponent(kev[2]));

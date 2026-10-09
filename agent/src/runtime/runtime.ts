@@ -438,8 +438,9 @@ export class Runtime extends EventEmitter {
   waitIdle(sid: string): Promise<void> { return this.runners.get(sid)?.waitIdle() ?? Promise.resolve(); }
 
   /** Run a prompt in a fresh session with nobody watching; waits for goal continuations to finish. */
-  async runHeadless(o: { prompt: string; source: string; title?: string; approvalMode?: string; goal?: string; cwd?: string; tools?: string[]; tier?: "fast" | "strong" }): Promise<{ sessionId: string; final: string; error?: string; goal?: GoalState }> {
-    const s = this.createSession({ source: o.source, title: o.title ?? "", cwd: o.cwd ?? this.defaultCwd(), meta: { ...(o.tools ? { tool_names: o.tools, tool_names_explicit: true } : {}), ...(o.tier ? { router_tier: o.tier } : {}) } });
+  async runHeadless(o: { prompt: string; source: string; title?: string; approvalMode?: string; goal?: string; cwd?: string; tools?: string[]; tier?: "fast" | "strong"; prefer?: "fast" | "strong"; onSession?: (sessionId: string) => void }): Promise<{ sessionId: string; final: string; error?: string; goal?: GoalState }> {
+    const s = this.createSession({ source: o.source, title: o.title ?? "", cwd: o.cwd ?? this.defaultCwd(), meta: { ...(o.tools ? { tool_names: o.tools, tool_names_explicit: true } : {}), ...(o.tier ? { router_tier: o.tier } : {}), ...(o.prefer ? { router_prefer: o.prefer } : {}) } });
+    o.onSession?.(s.id);
     if (o.goal) this.db.setMeta(goalKey(s.id), { text: o.goal, status: "active", turns: 0, max_turns: this.cfg.data.goals.max_turns, created_at: Date.now() } satisfies GoalState);
     const first = await this.send(s.id, o.prompt, { source: o.source, approvalMode: o.approvalMode ?? "deny" });
     await this.waitIdle(s.id);

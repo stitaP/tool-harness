@@ -106,6 +106,16 @@ export function buildSystemPrompt(rt, opts) {
     const ctxFiles = findContextFiles(opts.cwd);
     for (const f of ctxFiles)
         parts.push(`## Project context: ${f.path}\n${f.content.trim()}`);
+    if (opts.source !== "kanban") {
+        try {
+            const open = rt.kanban.list().filter((c) => c.type !== "epic");
+            if (rt.cfg.data.kanban.enabled && open.length) {
+                const done = open.filter((c) => c.status === "done").length;
+                parts.push(`## The kanban board is the plan\nThis project has a kanban board: ${open.length} stories, ${done} done. When the user asks you to implement, build, continue or run the plan or phases:\n- Do NOT invent a new plan and do NOT write your own todo list. The plan is the stories on the board.\n- Do NOT implement stories by hand in this chat. Workers do that: each story gets its own session, tests, screenshots and git commits that start with the story key.\n- Do this: call the kanban tool with action=list, show the next stories (key and title) as the plan, then call kanban action=dispatch (or resume) so the workers start. Then say which stories started.\n- Afterwards use this chat only to report progress, answer questions, or add/update stories with kanban action=create/update/comment.`);
+            }
+        }
+        catch { /* board not available */ }
+    }
     if (opts.extra)
         parts.push(opts.extra);
     return parts.join("\n\n");

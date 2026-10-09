@@ -1,5 +1,6 @@
 /** `harness` command-line entry point. */
 import { importPlan } from "../kanban/plan.js";
+import { enrichBoard, describeEnrich } from "../kanban/enrich.js";
 import { existsSync, readFileSync, statSync, watch, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -21,8 +22,8 @@ import { bold, cyan, gray, green, magenta, red, toolLine } from "./ui.js";
 export function parseArgs(argv) {
     const flags = {};
     const cmd = [];
-    const valueFlags = { "-p": "profile", "--profile": "profile", "--cwd": "cwd", "-m": "model", "--model": "model", "--resume": "resume", "-r": "resume", "--port": "port", "--host": "host", "-q": "query", "--query": "query", "--format": "format", "--deliver": "deliver", "--out": "out", "--concurrency": "concurrency", "--days": "days", "--name": "name", "--skills": "skills", "--goal": "goal", "--base-url": "base-url", "--provider": "provider", "--context-window": "context-window" };
-    const BOOL = new Set(["--yolo", "--json", "-v", "--verbose", "-f", "--follow", "--errors", "--now", "--gateway", "--no-open", "-h", "--help", "--version"]);
+    const valueFlags = { "-p": "profile", "--profile": "profile", "--cwd": "cwd", "-m": "model", "--model": "model", "--resume": "resume", "-r": "resume", "--port": "port", "--host": "host", "-q": "query", "--query": "query", "--format": "format", "--deliver": "deliver", "--out": "out", "--concurrency": "concurrency", "--days": "days", "--name": "name", "--skills": "skills", "--goal": "goal", "--base-url": "base-url", "--provider": "provider", "--context-window": "context-window", "--project": "project", "--tests": "tests", "--key": "key", "--test": "test", "--type": "type", "--parent": "parent", "--reply": "reply", "--to": "to", "--board": "board", "--file": "file" };
+    const BOOL = new Set(["--enrich", "--yes", "--yolo", "--json", "-v", "--verbose", "-f", "--follow", "--errors", "--now", "--gateway", "--no-open", "-h", "--help", "--version"]);
     let queryFromRest = false;
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
@@ -42,7 +43,11 @@ export function parseArgs(argv) {
             flags[k] = v;
             continue;
         }
-        if (a === "--yolo")
+        if (a === "--enrich")
+            flags.enrich = true;
+        else if (a === "--yes")
+            flags.yes = true;
+        else if (a === "--yolo")
             flags.yolo = true;
         else if (a === "--json")
             flags.json = true;
@@ -96,7 +101,7 @@ ${bold("Setup")}
 
 ${bold("Automation")}
   harness cron list | add "<schedule>" "<prompt>" [--deliver telegram:<id>] | run <id> | pause <id> | resume <id> | rm <id> | tick
-  harness kanban list | board | report | show <key> | add "<title>" [--goal ..] [--test "<cmd>"] [--type epic|task|bug] | comment <key> "<text>" [--reply <id>] | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> --project <dir> [--tests <dir>] [--key PT]
+  harness kanban done <key> | enrich [board] | import … [--enrich] | boards | board new|use|rename|archive|unarchive|clear|delete|save|restore <name> [--yes] | move <keys> --to <board> | link <key> <type> <key> | list | board | report | show <key> | add "<title>" [--goal ..] [--test "<cmd>"] [--type epic|task|bug] | comment <key> "<text>" [--reply <id>] | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> --project <dir> [--tests <dir>] [--key PT]
   harness batch <prompts.jsonl> --out traj.jsonl [--concurrency 4]
 
 ${bold("Data")}
@@ -333,7 +338,14 @@ export async function main(argv) {
             const [sub = "list", a1, a2] = rest;
             const K = rt.kanban;
             try {
-                if (sub === "add")
+                if (sub === "done") {
+                    const c = K.get(a1);
+                    if (!c)
+                        throw new Error(`no card ${a1}`);
+                    const v = await K.complete(c.id, "user");
+                    console.log(`${K.fmt(v.card)} — ${v.detail}`);
+                }
+                else if (sub === "add")
                     console.log(K.create({ title: a1, body: f.goal ?? "", test_cmd: f.test, type: f.type, parent: f.parent, cwd: f.cwd }).key);
                 else if (sub === "run") {
                     K.recover();
@@ -351,7 +363,7 @@ export async function main(argv) {
                 }
                 else if (sub === "show")
                     console.log(K.show(a1));
-                else if (sub === "board")
+                else if (sub === "board" && !a1)
                     console.log(K.board());
                 else if (sub === "report")
                     console.log(K.report());
@@ -375,8 +387,52 @@ export async function main(argv) {
                     console.log(await K.regression(a1));
                 else if (sub === "sync")
                     console.log(`linked ${await K.syncCommits(a1)} commit(s)`);
-                else if (sub === "import")
-                    console.log(importPlan(K, { planDir: a1, projectDir: f.project, testsDir: f.tests, keyPrefix: f.key }));
+                else if (sub === "import") {
+                    console.log(importPlan(K, { planDir: a1, projectDir: f.project, testsDir: f.tests, keyPrefix: f.key, board: f.board }));
+                    if (f.enrich)
+                        console.log(describeEnrich(await enrichBoard(rt, { onProgress: (m) => console.log(gray("  " + m)) })));
+                }
+                else if (sub === "enrich")
+                    console.log(describeEnrich(await enrichBoard(rt, { board: a1 ?? f.board, onProgress: (m) => console.log(gray("  " + m)) })));
+                else if (sub === "boards")
+                    console.log(K.describeBoards());
+                else if (sub === "board") {
+                    const act = a1, nm = rest.slice(2).join(" ") || a2 || "";
+                    if (act === "new") {
+                        const b = K.boards.create(nm);
+                        K.boards.use(b.id);
+                        console.log(`board "${b.name}" created and active`);
+                    }
+                    else if (act === "use")
+                        console.log(`active board: "${K.boards.use(nm).name}"`);
+                    else if (act === "rename")
+                        console.log(`renamed to "${K.boards.rename(a2, rest.slice(3).join(" ")).name}"`);
+                    else if (act === "archive")
+                        console.log(`archived "${K.boards.archive(nm).name}"`);
+                    else if (act === "unarchive")
+                        console.log(`unarchived "${K.boards.unarchive(nm).name}"`);
+                    else if (act === "save")
+                        console.log(`saved to ${K.boards.save(nm || K.boards.active().name, f.file)}`);
+                    else if (act === "restore")
+                        console.log(`restored as "${K.boards.restore(a2, f.name).name}" (kanban board use "<name>" to open it)`);
+                    else if (act === "clear" || act === "delete") {
+                        const target = nm || K.boards.active().name;
+                        if (!f.yes)
+                            console.log(`this ${act === "clear" ? "removes every ticket from" : "deletes"} "${target}" (a snapshot is saved first). Add --yes to proceed.`);
+                        else {
+                            const x = act === "clear" ? K.boards.clear(target) : K.boards.delete(target);
+                            console.log(`removed ${x.removed} ticket(s); snapshot ${x.snapshot}`);
+                        }
+                    }
+                    else
+                        console.log("usage: kanban board new|use|rename|archive|unarchive|clear|delete|save|restore <name>");
+                }
+                else if (sub === "move")
+                    console.log(`moved ${K.boards.move(rest.slice(1), f.to)} ticket(s)`);
+                else if (sub === "link")
+                    console.log((() => { const r = K.boards.link(a1, rest.slice(2, -1).join(" ") || "relates to", rest[rest.length - 1]); return `${K.get(a1)?.key} ${r.type} ${r.key}${r.pending ? " (pending)" : ""}`; })());
+                else if (sub === "unlink")
+                    console.log(`removed ${K.boards.unlink(a1, a2)} link(s)`);
                 else
                     for (const k of K.list())
                         console.log(K.fmt(k));

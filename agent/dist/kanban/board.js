@@ -12,6 +12,8 @@ import { obj, str, enm, arr, int, bool } from "../tools/types.js";
 import { importPlan } from "./plan.js";
 import { expandHome } from "../safety/paths.js";
 import { verifyCard, writeVerifyTest, checkBuilt } from "./verify.js";
+import { Boards } from "./boards.js";
+import { enrichBoard, describeEnrich } from "./enrich.js";
 const HOOK_MARK = "# stitap-kanban-hook";
 const HOOK = `#!/bin/sh
 ${HOOK_MARK}
@@ -32,14 +34,24 @@ const tail = (s, n = 4000) => (s.length > n ? `…${s.slice(-n)}` : s);
 export class KanbanBoard {
     rt;
     active = new Set();
+    /** named boards, the active board, saving/restoring, and links between tickets on any board */
+    boards;
     constructor(rt) {
         this.rt = rt;
+        this.boards = new Boards(rt, this);
     }
     isActive(id) { return this.active.has(id); }
     get cfg() { return this.rt.cfg.data.kanban; }
-    list(status) {
-        return this.rt.db.listRecords("kanban").filter((c) => !status || c.status === status)
+    /** Tickets of one board (default: the active board), highest priority first. */
+    list(status, boardId) {
+        const id = boardId ?? this.boards.activeId();
+        return this.rt.db.listRecords("kanban").filter((c) => c.board === id && (!status || c.status === status))
             .sort((a, b) => b.priority - a.priority || a.created_at - b.created_at);
+    }
+    /** Tickets of every board. */
+    listAll(status) {
+        this.boards.activeId();
+        return this.rt.db.listRecords("kanban").filter((c) => !status || c.status === status).sort((a, b) => b.priority - a.priority || a.created_at - b.created_at);
     }
     /** Look a card up by id or by key (PT-12, case-insensitive). */
     get(ref) {
@@ -69,14 +81,15 @@ export class KanbanBoard {
         const now = Date.now();
         const status = p.status ?? (p.type === "epic" ? "backlog" : "ready");
         const parent = p.parent ? this.get(p.parent)?.key ?? p.parent : undefined;
-        const c = { id: shortId("k_"), key: this.nextKey(prefix), type: p.type ?? "task", title: p.title, body: p.body ?? "", status, priority: p.priority ?? 0,
+        const c = { id: shortId("k_"), board: p.board ?? this.boards.activeId(), key: this.nextKey(prefix), type: p.type ?? "task", title: p.title, body: p.body ?? "", status, priority: p.priority ?? 0,
             depends_on: (p.depends_on ?? []).map((d) => this.get(d)?.id ?? d), review: !!p.review, comments: [], created_at: now, updated_at: now, attempts: 0,
             ...(parent ? { parent } : {}), ...(p.links?.length ? { links: p.links } : {}), ...(p.acceptance?.length ? { acceptance: p.acceptance } : {}),
             ...(p.test_cmd ? { test_cmd: p.test_cmd } : {}), ...(p.spec ? { spec: p.spec } : {}), ...(p.cwd ? { cwd: p.cwd } : {}), ...(p.functional?.length ? { functional: p.functional } : {}),
-            ...(p.kind ? { kind: p.kind } : {}), ...(p.section ? { section: p.section } : {}), ...(p.files?.length ? { files: p.files } : {}), ...(p.exports && Object.keys(p.exports).length ? { exports: p.exports } : {}), ...(p.order !== undefined ? { order: p.order } : {}),
+            ...(p.kind ? { kind: p.kind } : {}), ...(p.section ? { section: p.section } : {}), ...(p.summary ? { summary: p.summary } : {}), ...(p.test_cases?.length ? { test_cases: p.test_cases } : {}), ...(p.files?.length ? { files: p.files } : {}), ...(p.exports && Object.keys(p.exports).length ? { exports: p.exports } : {}), ...(p.order !== undefined ? { order: p.order } : {}),
             history: [{ at: now, from: null, to: status, by: "user", reason: "created" }], commits: [] };
         this.save(c);
         this.rollup(c.parent);
+        this.boards.resolvePending(c);
         return c;
     }
     update(ref, patch, meta = {}) {
@@ -99,9 +112,24 @@ export class KanbanBoard {
     /** Delete a card that has not been worked (used when a plan is re-imported in more detail). */
     remove(ref) {
         const c = this.get(ref);
+        return c ? this.removeCard(c.id) : false;
+    }
+    /** Delete a card and clean up what pointed at it: dependencies and links on any board. */
+    removeCard(id) {
+        const c = this.rt.db.getRecord("kanban", id);
         if (!c)
             return false;
         this.rt.db.deleteRecord("kanban", c.id);
+        for (const o of this.rt.db.listRecords("kanban")) {
+            const dep = o.depends_on.includes(c.id), ref = (o.refs ?? []).some((r) => r.key === (c.key ?? "").toUpperCase()), lnk = (o.links ?? []).includes(c.key ?? "");
+            if (!dep && !ref && !lnk)
+                continue;
+            o.depends_on = o.depends_on.filter((d) => d !== c.id);
+            o.refs = (o.refs ?? []).filter((r) => r.key !== (c.key ?? "").toUpperCase());
+            if (o.links)
+                o.links = o.links.filter((l) => l !== c.key);
+            this.rt.db.putRecord("kanban", o.id, o);
+        }
         this.rt.emitEvent("*", { type: "kanban", card: { ...c, status: "removed" } });
         this.rollup(c.parent);
         return true;
@@ -225,7 +253,7 @@ export class KanbanBoard {
             const bad = checkBuilt(this.cwdOf(c), c.files, c.exports);
             if (bad.length) {
                 this.comment(c.id, `Not built yet:\n- ${bad.join("\n- ")}`, "system");
-                return { card: this.update(c.id, { status: c.attempts >= (this.cfg.max_attempts ?? 3) ? "blocked" : "ready" }, { by: "system", reason: "files or exports missing" }), passed: false, detail: `not built: ${bad.join("; ")}` };
+                return { card: this.update(c.id, { status: this.active.has(c.id) ? "running" : c.attempts >= (this.cfg.max_attempts ?? 5) ? "blocked" : "ready" }, { by: "system", reason: "files or exports missing" }), passed: false, detail: `not built: ${bad.join("; ")}` };
             }
         }
         if (!c.test_cmd)
@@ -242,13 +270,13 @@ export class KanbanBoard {
                 if (!v.ok) {
                     const bad = v.checks.filter((x) => !x.ok).map((x) => `✖ ${x.name}: ${x.detail}`).join("\n");
                     this.comment(c.id, `Verification failed (evidence: ${v.evidenceDir}):\n${tail(bad, 2500)}`, "system");
-                    return { card: this.update(c.id, { status: c.attempts >= (this.cfg.max_attempts ?? 3) ? "blocked" : "ready" }, { by: "system", reason: "verification failed" }), passed: false, detail: "verification failed" };
+                    return { card: this.update(c.id, { status: this.active.has(c.id) ? "running" : c.attempts >= (this.cfg.max_attempts ?? 5) ? "blocked" : "ready" }, { by: "system", reason: "verification failed" }), passed: false, detail: "verification failed" };
                 }
             }
             return { card: this.update(c.id, { status: c.review ? "review" : "done" }, { by, reason: this.cfg.verify !== false && this.wantsVerification(c) ? "tests and verification passed" : "tests passed" }), passed: true, detail: "tests passed" };
         }
         this.comment(c.id, `Tests failed (exit ${t.code}): \`${t.cmd}\`\n${tail(t.output, 1500)}`, "system");
-        return { card: this.update(c.id, { status: c.attempts >= (this.cfg.max_attempts ?? 3) ? "blocked" : "ready" }, { by: "system", reason: "tests failed" }), passed: false, detail: `tests failed (exit ${t.code})` };
+        return { card: this.update(c.id, { status: this.active.has(c.id) ? "running" : c.attempts >= (this.cfg.max_attempts ?? 5) ? "blocked" : "ready" }, { by: "system", reason: "tests failed" }), passed: false, detail: `tests failed (exit ${t.code})` };
     }
     /** Browser verification runs at the phase gate (and for hand-made cards with a spec), not after every story of a phase. */
     wantsVerification(c) { return c.kind === "gate" || (!c.kind && !!(c.spec || c.functional?.length)); }
@@ -288,14 +316,14 @@ export class KanbanBoard {
     }
     // ── dispatch ──────────────────────────────────────────────────
     ready() {
-        const all = this.list();
-        const done = new Set(all.filter((c) => c.status === "done").map((c) => c.id));
+        const all = this.list(); // only the active board is worked
+        const done = new Set(this.listAll("done").map((c) => c.id)); // ...but a dependency may be finished on any board
         return all.filter((c) => c.status === "ready" && c.type !== "epic" && !this.active.has(c.id) && c.depends_on.every((d) => done.has(d)));
     }
     /** Put cards that were left running by a crash or power cut back on the queue. */
     recover() {
         const out = [];
-        for (const c of this.list("running")) {
+        for (const c of this.listAll("running")) {
             if (this.active.has(c.id))
                 continue;
             const exhausted = c.attempts >= (this.cfg.max_attempts ?? 3);
@@ -304,14 +332,45 @@ export class KanbanBoard {
         }
         return out;
     }
+    /** "Stop" pressed by the user: no card is started until Resume/Dispatch. Survives a restart. */
+    get paused() { return !!this.rt.db.getMeta("kanban_paused"); }
+    setPaused(b) { this.rt.db.setMeta("kanban_paused", b); }
+    stopped = new Set();
+    /** Interrupt every running worker, put its card back on the queue (the attempt is not counted) and stop dispatching. */
+    stopAll() {
+        this.setPaused(true);
+        const keys = [];
+        for (const id of [...this.active]) {
+            const c = this.get(id);
+            if (!c)
+                continue;
+            this.stopped.add(id);
+            keys.push(c.key ?? c.id);
+            if (c.session_id)
+                this.rt.interrupt(c.session_id, true);
+        }
+        return keys;
+    }
     async tick() {
-        if (!this.cfg.enabled)
+        if (!this.cfg.enabled || this.paused)
             return 0;
         const slots = Math.max(0, this.cfg.workers - this.active.size);
         const cards = this.ready().slice(0, slots);
         for (const c of cards)
             void this.work(c.id);
         return cards.length;
+    }
+    /** Each attempt must try something different, and from the second one on it must look things up on the web. */
+    attemptPlan(n, max) {
+        const plans = [
+            "Follow the specification line by line. Write the files, then run the definition-of-done command.",
+            "Read the failure above (comments and previous result). Find the ROOT cause, do not patch the symptom. Use docs_lookup or web_search for any word or API you are unsure of, and read the result before you write code.",
+            "Use a DIFFERENT approach from attempts 1 and 2. Work in the smallest steps: write ONE file, run the check, then the next. Search the web (web_search, then browser_navigate on an official page) for an example of exactly this task and follow its pattern.",
+            "Search the web again, with different words than before (use the exact error text). Copy the structure of a working example from an official site (MDN, nodejs.org, w3.org, developer docs). Keep the code as plain as possible.",
+            "LAST attempt. Throw away what does not work and rewrite the failing file from zero in the simplest possible way. If you still cannot finish, add a comment (kanban action=comment) that says exactly what is missing and why, so a person can step in.",
+        ];
+        const i = Math.min(Math.max(n, 1), plans.length) - 1;
+        return `ATTEMPT ${n} of ${max}. ${plans[i]}${n > 1 ? "\nBefore coding, run at least one web lookup (docs_lookup or web_search) and note in your report which page you used." : ""}`;
     }
     buildPrompt(c) {
         const deps = c.depends_on.map((d) => this.get(d)).filter(Boolean).map((d) => `- ${d.key ?? d.id} ${d.title}: ${(d.result ?? "").slice(0, 600)}`).join("\n");
@@ -331,6 +390,7 @@ export class KanbanBoard {
             deps ? `Results of prerequisite cards:\n${deps}` : "",
             resumed ? `This is a resumed card (attempt ${c.attempts}). Do not start over: run "git log --oneline" and "git status", read the comments below and the previous result, and continue from where the work stopped.\nPrevious result:\n${c.result ?? "(none)"}${c.commits?.length ? `\nCommits so far:\n${c.commits.map((x) => `- ${x.hash.slice(0, 8)} ${x.message}`).join("\n")}` : ""}` : "",
             thread ? `Comments:\n${thread}` : "",
+            this.attemptPlan(c.attempts, this.cfg.max_attempts ?? 5),
             "Complete this card. Finish with a short report of what you did and the evidence (test output).",
         ];
         return parts.filter(Boolean).join("\n\n");
@@ -346,15 +406,22 @@ export class KanbanBoard {
         }
         this.active.add(c.id);
         c = this.update(c.id, { status: "running", attempts: c.attempts + 1 }, { by: "worker" });
+        this.comment(c.id, `Attempt ${c.attempts} of ${this.cfg.max_attempts ?? 5} started. ${this.attemptPlan(c.attempts, this.cfg.max_attempts ?? 5).replace(/^ATTEMPT \d+ of \d+\. /, "")}`, "system");
         try {
             await this.beginGit(c);
             c = this.need(c.id);
-            const r = await this.rt.runHeadless({ prompt: this.buildPrompt(c), source: "kanban", title: `kanban: ${c.key ?? ""} ${c.title}`.trim(), goal: `${c.title}\n${c.body}`, cwd: this.cwdOf(c), approvalMode: this.rt.cfg.data.cron.approval_mode, ...(this.cfg.worker_tier && this.cfg.worker_tier !== "auto" ? { tier: this.cfg.worker_tier } : {}) });
+            const r = await this.rt.runHeadless({ prompt: this.buildPrompt(c), source: "kanban", title: `kanban: ${c.key ?? ""} ${c.title}`.trim(), goal: `${c.title}\n${c.body}`, cwd: this.cwdOf(c), onSession: (sid) => { c = this.update(c.id, { session_id: sid }, { by: "worker" }); }, approvalMode: this.rt.cfg.data.cron.approval_mode, ...(this.cfg.worker_tier && this.cfg.worker_tier !== "auto" ? { tier: this.cfg.worker_tier } : {}), ...(c.kind && this.cfg.tier_by_kind?.[c.kind] ? { prefer: this.cfg.tier_by_kind[c.kind] } : {}) });
             c = this.update(c.id, { session_id: r.sessionId, result: r.final.slice(0, 8000) }, { by: "worker" });
             await this.endGit(c);
+            if (this.stopped.delete(c.id)) {
+                this.comment(c.id, `Stopped by the user during attempt ${c.attempts}. The attempt is not counted; Resume continues from the commits and notes on this card.`, "system");
+                c = this.update(c.id, { status: "ready", attempts: Math.max(0, c.attempts - 1) }, { by: "system", reason: "stopped by user" });
+                return c;
+            }
             const judged = r.goal?.status === "done";
             if (c.test_cmd || c.files?.length || (c.exports && Object.keys(c.exports).length)) {
                 // the tests and file checks, not the judge model, decide
+                this.active.delete(c.id); // the worker is finished: a failed check must queue the card again, not leave it "running"
                 const v = await this.complete(c.id, "worker");
                 if (!v.passed)
                     this.comment(c.id, `Worker finished (judge: ${judged ? "done" : r.goal?.last_reason ?? "not done"}) but ${v.detail}.`, "worker");
@@ -399,12 +466,17 @@ export class KanbanBoard {
             `\nResult:\n${c.result ?? "(none)"}`];
         return lines.filter((l, i) => l !== "" || i > 0).join("\n");
     }
+    /** One line per board: name, progress, active/archived. */
+    describeBoards() {
+        const l = this.boards.list({ archived: "all" });
+        return l.map((b) => `${b.active ? "▶" : " "} ${b.name}${b.archived ? " (archived)" : ""} — ${b.done}/${b.cards} tickets done${b.description ? ` — ${b.description}` : ""}`).join("\n") || "No boards.";
+    }
     board() {
         const order = ["running", "ready", "blocked", "review", "backlog", "done"];
         const all = this.list();
         if (!all.length)
-            return "Board is empty.";
-        return order.map((s) => { const l = all.filter((c) => c.status === s); return l.length ? `## ${s} (${l.length})\n${l.map((c) => `  ${this.fmt(c)}`).join("\n")}` : ""; }).filter(Boolean).join("\n");
+            return `Board "${this.boards.active().name}" is empty.`;
+        return `Board: ${this.boards.active().name}\n` + order.map((s) => { const l = all.filter((c) => c.status === s); return l.length ? `## ${s} (${l.length})\n${l.map((c) => `  ${this.fmt(c)}`).join("\n")}` : ""; }).filter(Boolean).join("\n");
     }
     report() {
         const all = this.list();
@@ -419,9 +491,9 @@ export class KanbanBoard {
 }
 export const kanbanTool = {
     name: "kanban", toolset: "kanban", tier: "standard",
-    description: "Project tracker (kanban tool call, not a shell command): plan, track and verify multi-task projects. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria, a test_cmd that must pass before done, threaded comments, status history and linked git commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, import (turn a plan folder of phase-NN.md specs into epics and tasks).",
+    description: "Project tracker (kanban tool call, not a shell command): plan, track and verify multi-task projects. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria, a test_cmd that must pass before done, threaded comments, status history and linked git commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, enrich (look up the technical words in the tickets on official sites and add short REFERENCE NOTES with links), import (turn a plan folder of phase-NN.md specs into epics and tasks: one story per spec section, written in plain steps with files, exact names and test cases). WRITING A TICKET BY HAND: one focus per ticket; plain short sentences; in the body list WHAT TO BUILD, FILES, NAMES, STEPS, what each part must do, and TEST CASES (a normal case and an edge case for every function); put the files in acceptance so they can be checked.",
     parameters: obj({
-        action: enm(["create", "list", "show", "update", "comment", "dispatch", "resume", "link_commit", "sync", "test", "verify", "gentests", "regression", "board", "report", "import"], "operation"),
+        action: enm(["create", "list", "show", "update", "comment", "dispatch", "resume", "link_commit", "sync", "test", "verify", "gentests", "regression", "board", "report", "import", "boards", "board_new", "board_use", "board_rename", "board_archive", "board_unarchive", "board_clear", "board_delete", "board_save", "board_restore", "move", "link", "unlink", "enrich"], "operation"),
         id: str("card id or key (PT-12)"),
         title: str("card title"),
         body: str("details / acceptance criteria"),
@@ -444,6 +516,14 @@ export const kanbanTool = {
         project: str("import: project folder the docs and tests are copied into and the cards run in"),
         tests: str("import: folder of reference tests to copy into <project>/tests"),
         key_prefix: str("import/create: key prefix, default from config"),
+        board: str("import: name of the board to fill (created if missing, then made active); board_*: the board concerned"),
+        name: str("board_new / board_restore: the board's name"),
+        new_name: str("board_rename: the new name"),
+        to: str("move: destination board; link/unlink: the ticket to link to (any board, may not exist yet)"),
+        link_type: str("link: relates to | blocks | is blocked by | duplicates | clones"),
+        keys: arr(str("ticket key"), "move: tickets to move (an epic takes its tickets along)"),
+        file: str("board_save / board_restore: a JSON file path (default: the harness home)"),
+        confirm: bool("board_clear / board_delete: must be true. A snapshot is saved first so it can be undone with board_restore"),
     }, ["action"]),
     async handler(a, ctx) {
         const K = ctx.rt.kanban;
@@ -468,10 +548,12 @@ export const kanbanTool = {
             }
             case "comment": return K.fmt(K.comment(a.id, String(a.text ?? ""), by, a.reply_to));
             case "dispatch": {
+                K.setPaused(false);
                 const n = await K.tick();
                 return `Dispatched ${n} card(s) to workers.`;
             }
             case "resume": {
+                K.setPaused(false);
                 const r = K.recover();
                 const n = await K.tick();
                 return `Re-queued ${r.length} interrupted card(s); dispatched ${n}.`;
@@ -490,8 +572,39 @@ export const kanbanTool = {
             case "import": {
                 if (!a.path)
                     return "import needs path (folder with phase-NN.md files)";
-                return importPlan(K, { planDir: String(a.path), projectDir: a.project, testsDir: a.tests, keyPrefix: a.key_prefix });
+                return importPlan(K, { planDir: String(a.path), projectDir: a.project, testsDir: a.tests, keyPrefix: a.key_prefix, board: a.board });
             }
+            case "enrich": return describeEnrich(await enrichBoard(ctx.rt, { board: a.board, signal: ctx.signal, onProgress: ctx.progress }));
+            case "boards": return K.describeBoards();
+            case "board_new": {
+                const b = K.boards.create(String(a.name ?? a.board ?? ""), a.body);
+                K.boards.use(b.id);
+                return `Created board "${b.name}" and made it active. Import or create tickets now.`;
+            }
+            case "board_use": return `Active board: "${K.boards.use(String(a.board ?? a.name ?? "")).name}"`;
+            case "board_rename": return `Renamed to "${K.boards.rename(String(a.board ?? ""), String(a.new_name ?? "")).name}"`;
+            case "board_archive": return `Archived "${K.boards.archive(String(a.board ?? "")).name}" (hidden, workers ignore it; its tickets stay linkable)`;
+            case "board_unarchive": return `Unarchived "${K.boards.unarchive(String(a.board ?? "")).name}"`;
+            case "board_save": return `Saved to ${K.boards.save(String(a.board ?? K.boards.active().name), a.file)}`;
+            case "board_restore": return `Restored as board "${K.boards.restore(String(a.file ?? ""), a.name).name}" (not active yet: board_use to open it)`;
+            case "board_clear": {
+                if (a.confirm !== true)
+                    return `This removes every ticket of "${a.board ?? K.boards.active().name}". A snapshot is saved first. Call again with confirm=true to proceed.`;
+                const r = K.boards.clear(String(a.board ?? K.boards.active().name));
+                return `Removed ${r.removed} ticket(s). Snapshot: ${r.snapshot} (board_restore file=… to undo).`;
+            }
+            case "board_delete": {
+                if (a.confirm !== true)
+                    return `This deletes the board "${a.board}" and its tickets (snapshot first). Call again with confirm=true.`;
+                const r = K.boards.delete(String(a.board ?? ""));
+                return `Deleted the board; removed ${r.removed} ticket(s). Snapshot: ${r.snapshot}`;
+            }
+            case "move": return `Moved ${K.boards.move(a.keys ?? (a.id ? [a.id] : []), String(a.to ?? ""))} ticket(s) to "${K.boards.get(String(a.to))?.name}".`;
+            case "link": {
+                const r = K.boards.link(String(a.id ?? ""), String(a.link_type ?? "relates to"), String(a.to ?? ""));
+                return `${K.get(a.id)?.key} ${r.type} ${r.key}${r.pending ? " (that ticket does not exist yet; the link activates when it is created)" : ""}`;
+            }
+            case "unlink": return `Removed ${K.boards.unlink(String(a.id ?? ""), String(a.to ?? ""), a.link_type)} link(s).`;
             default: return `unknown action ${a.action}`;
         }
     },

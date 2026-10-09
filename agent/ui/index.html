@@ -263,6 +263,59 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
 .rgdoc .n { word-break: break-all; } .rgdoc .row { display: flex; gap: 6px; margin-top: 6px; }
 .rgdoc.bad { border-color: var(--err); } .rgdoc .w { color: var(--warn); font-size: 11.5px; }
 .ragsrc { color: var(--accent); font-weight: 600; }
+
+.kbviews { display: inline-flex; padding: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2); }
+.kbviews button { border: 0; background: transparent; color: var(--muted); padding: 3px 12px; border-radius: 999px; font-size: 13px; }
+.kbviews button.on { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.kbsearch { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 9px; font: inherit; font-size: 13px; width: 230px; }
+.kbfilters { display: flex; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+.kbfilters .kbpill { cursor: pointer; user-select: none; } .kbfilters .kbpill.on { border-color: var(--accent); background: var(--panel-2); font-weight: 600; }
+.kbfilters .clear { font-size: 12px; color: var(--accent); cursor: pointer; margin-left: 6px; }
+.kbbody { overflow: auto; min-width: 0; min-height: 0; }
+.st-waiting { color: oklch(0.6 0.12 300); }
+.kbphase { margin: 10px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }
+.kbphase > .ph { display: flex; gap: 10px; align-items: center; padding: 9px 12px; cursor: pointer; }
+.kbphase > .ph:hover { background: var(--panel-2); border-radius: var(--radius-lg); }
+.kbphase .ph .t { font-weight: 650; flex: 1; min-width: 0; } .kbphase .ph .bar { width: 140px; flex: none; }
+.kbphase .ph .meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.kbphase .chev { width: 14px; color: var(--muted); transition: transform .12s; } .kbphase.open .chev { transform: rotate(90deg); }
+.kbphase .rows { display: none; border-top: 1px solid var(--border); } .kbphase.open .rows { display: block; }
+.kbrow { display: flex; gap: 8px; align-items: center; padding: 6px 12px 6px 30px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.kbrow:last-child { border-bottom: 0; } .kbrow:hover { background: var(--panel-2); } .kbrow.sel { background: var(--panel-2); box-shadow: inset 3px 0 var(--accent); }
+.kbrow .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: none; }
+.kbrow .k { color: var(--muted); font-size: 12px; width: 52px; flex: none; font-family: var(--mono); }
+.kbrow .tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kbrow .when { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.kbtable { width: 100%; border-collapse: collapse; font-size: 13px; } .kbtable th { text-align: left; font-size: 12px; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
+.kbtable td { padding: 6px 10px; border-bottom: 1px solid var(--border); } .kbtable tr.kbrow2 { cursor: pointer; } .kbtable tr.kbrow2:hover td, .kbtable tr.sel td { background: var(--panel-2); }
+.kbagent { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; display: inline-flex; gap: 6px; align-items: center; }
+.kbagent .dot { width: 9px; height: 9px; border-radius: 50%; background: #2e9e5b; animation: kbpulse 1.4s infinite; }
+.kbagent.warn .dot { background: #d29a22; animation: none; }
+.kbagent.off .dot { background: #8a8f98; animation: none; }
+.kbbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 7px 16px; font-size: 13px; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+.kbbar .dot { width: 9px; height: 9px; border-radius: 50%; background: #2e9e5b; animation: kbpulse 1.4s infinite; }
+.kbbar.idle .dot { background: #d29a22; animation: none; }
+.kbbar .grow { flex: 1; min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kbbar button { font-size: 12px; padding: 3px 9px; }
+@keyframes kbpulse { 50% { opacity: .35; } }
+.notice.working { background: var(--panel-2); border: 1px dashed var(--accent); color: var(--text); margin: 10px 0; }
+.kbsum { font-size: 13px; color: var(--muted); margin: 2px 0 6px; line-height: 1.4; } .kbcases { margin: 4px 0; padding-left: 20px; font-size: 12.5px; } .kbcases li { margin: 2px 0; }
+.kbcrumb { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .kbcrumb a { color: var(--accent); }
+.kbnav { display: flex; gap: 6px; align-items: center; margin: 8px 0; } .kbnav .pos { font-size: 12px; color: var(--muted); }
+.kbmore { margin: 4px 0 8px; font-size: 12px; color: var(--accent); cursor: pointer; text-align: center; }
+.kbempty { padding: 40px; text-align: center; color: var(--muted); }
+#kb .kbbody .kbcols { padding: 12px; align-items: flex-start; }
+
+.kbboard { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; font: inherit; font-size: 13px; font-weight: 650; max-width: 220px; }
+.kbmenu { position: absolute; top: 46px; left: 190px; z-index: 30; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 6px; min-width: 230px; }
+.kbmenu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--text); padding: 7px 10px; border-radius: var(--radius); font-size: 13px; }
+.kbmenu button:hover { background: var(--panel-2); } .kbmenu .danger { color: var(--err); } .kbmenu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+#kbBanner .kbban { margin: 8px 16px 0; padding: 7px 12px; border-radius: var(--radius); background: var(--panel-2); border: 1px solid var(--border); font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+#kbBanner .kbban.arch { border-color: var(--warn); }
+.kblink { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+.kblink .ty { color: var(--muted); font-size: 12px; min-width: 92px; } .kblink .bd { font-size: 11px; border: 1px solid var(--border); border-radius: 6px; padding: 0 5px; color: var(--muted); }
+.kblink .x { margin-left: auto; cursor: pointer; color: var(--muted); border: 0; background: transparent; }
+.kbform { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .kbform select, .kbform input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 7px; font: inherit; font-size: 12.5px; }
 </style>
 </head>
 <body>
@@ -323,6 +376,7 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
       <span class="pill" id="modelPill"></span>
       <button class="iconbtn" id="panelBtn" title="Toggle side panel">▤</button>
     </div>
+    <div class="kbbar" id="kbBar" hidden></div>
     <div id="log"><div class="inner" id="msgs"></div></div>
     <div class="composer-wrap"><div class="inner">
       <div class="thumbs" id="thumbs"></div>
@@ -365,13 +419,19 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
   <div class="fdrow"><button class="btn primary" id="fdUse">Use this folder</button><span class="err" id="fdErr"></span></div>
 </div></div></div>
 <div class="modal" id="modal"><div class="box"><div class="hd"><b id="modalTitle"></b><button class="btn primary" id="modalUse">Use in chat</button><button class="btn" id="modalClose">Close</button></div><div class="bd content" id="modalBody"></div></div></div>
-<div id="kb"><div class="kbhd"><b>Kanban</b><span id="kbHdCounts" class="kbcounts" style="margin:0"></span><span class="sp"></span>
-  <select id="kbEpic" title="Filter by phase"><option value="">All phases</option></select>
+<div id="kb"><div class="kbhd"><b>Kanban</b><span id="kbAgent" class="kbagent" title="Whether an agent is working on a story right now">…</span>
+  <div class="kbviews" id="kbViews" role="group" aria-label="View"><button data-v="phases" class="on">Phases</button><button data-v="board">Board</button><button data-v="list">List</button></div>
+  <select id="kbBoard" class="kbboard" title="Board" aria-label="Board"></select><button class="btn" id="kbBoardMenu" title="Board actions: new, rename, save, archive, clear">⋯</button>
+  <div id="kbMenu" class="kbmenu" hidden></div>
+  <input id="kbSearch" class="kbsearch" placeholder="Search key or title…  ( / )" aria-label="Search tickets">
+  <select id="kbEpic" title="Filter by phase" aria-label="Phase"><option value="">All phases</option></select><span class="sp"></span>
   <button class="btn" id="kbDispatch" title="Start workers on ready cards">Run workers</button>
+  <button class="btn" id="kbEnrich" title="Look up the technical words in the tickets on official sites (MDN, W3C, nodejs.org) and add short notes with links">Add web notes</button>
   <button class="btn" id="kbResume" title="Re-queue cards interrupted by a crash or restart, then dispatch">Resume interrupted</button>
   <button class="btn" id="kbClose">Close</button></div>
-  <div class="kbepics" id="kbEpics"></div>
-  <div class="kbmain"><div class="kbcols" id="kbCols"></div><div class="kbside" id="kbSideDetail"></div></div></div>
+  <div id="kbBanner"></div>
+  <div class="kbfilters" id="kbFilters"></div>
+  <div class="kbmain"><div class="kbbody" id="kbBody"></div><div class="kbside" id="kbSideDetail"></div></div></div>
 <div id="kbZoom"><img alt=""></div>
 <script>
 "use strict";
@@ -472,10 +532,39 @@ function statusLine(text) {
   const s = el("div", "status-line", `<span>·</span><span>${esc(text)}</span>`);
   agentBlock().appendChild(s); scroll();
 }
+// a visible "working" line while the model is busy: elapsed time and, from the model's own log, what it is doing right now
+let workEl = null, workT0 = 0, workTimer = null;
+function showWorking() {
+  if (workEl || !busy) return;
+  workEl = el("div", "notice working", "Working…"); workT0 = Date.now(); msgs.appendChild(workEl); scroll(true);
+  updateWorking(); workTimer = setInterval(updateWorking, 2000);
+}
+function hideWorking() { if (workTimer) clearInterval(workTimer); workTimer = null; if (workEl) workEl.remove(); workEl = null; }
+async function updateWorking() {
+  if (!workEl) return;
+  const sec = Math.round((Date.now() - workT0) / 1000), t = sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  let p = null; try { p = await api("/api/model/progress"); } catch (e) { /* the model log may not exist */ }
+  const who = p && p.model === "fast" ? "The small model" : "The model";
+  let txt = `⏳ Working for ${t}. `;
+  if (p && p.phase === "reading") txt += `${who} is reading the whole conversation before it answers${p.percent !== undefined ? `: ${p.percent}% done (${(p.tokens || 0).toLocaleString()} tokens)` : ""}. A long message or a long chat can take several minutes; nothing is wrong.`;
+  else if (p && p.phase === "writing") txt += `${who} is writing its answer: ${(p.tokens || 0).toLocaleString()} tokens so far${p.tps ? ` at ${p.tps.toFixed(1)} tokens/s` : ""}. (Its thinking is not shown until a step finishes.)`;
+  else txt += `Waiting for the model to start…`;
+  if (workEl) workEl.textContent = txt;
+}
 function setBusy(b) {
   busy = b;
-  const btn = $("sendBtn"); btn.textContent = b ? "Stop" : "Send"; btn.classList.toggle("stop", b);
+  if (b) showWorking(); else hideWorking();
+  refreshSend();
   renderSessions();
+}
+let kbBusy = false;
+function notice(text) { const n = el("div", "notice"); n.style.whiteSpace = "pre-wrap"; n.textContent = text; msgs.appendChild(n); scroll(); }
+function refreshSend() {
+  const btn = $("sendBtn"), on = busy || kbBusy;
+  btn.textContent = on ? "Stop" : "Send"; btn.classList.toggle("stop", on);
+  const inp = $("input");
+  if (kbBusy && !busy) { if (!inp.disabled) inp.dataset.ph = inp.placeholder; inp.disabled = true; inp.placeholder = "Kanban stories are being built. Press Stop to pause them and talk to me."; }
+  else if (inp.disabled) { inp.disabled = false; inp.placeholder = inp.dataset.ph || inp.placeholder; }
 }
 
 function renderTodos(todos) {
@@ -523,13 +612,13 @@ function onEvent(ev) {
   switch (ev.type) {
     case "user_message": addUser(ev.text, ev.internal); break;
     case "busy": setBusy(ev.busy); break;
-    case "token": streamText(ev.text); break;
+    case "token": hideWorking(); streamText(ev.text); break;
     case "assistant_step": { const live = curAgent && curAgent.querySelector(".content.live"); if (live) { live.classList.remove("live", "cursor"); curText = ""; } break; }
     case "discard_text": { const live = curAgent && curAgent.querySelector(".content.live"); if (live) live.remove(); curText = ""; break; }
-    case "tool_start": addTool(ev.id, ev.name, ev.args); break;
+    case "tool_start": hideWorking(); addTool(ev.id, ev.name, ev.args); break;
     case "tool_output": { const t = toolEls[ev.id]; if (t) { const pre = t.querySelector("pre"); pre.textContent += ev.text; if (!t.open && pre.textContent.length < 3000) t.open = true; pre.scrollTop = pre.scrollHeight; } break; }
-    case "tool_end": { let t = toolEls[ev.id]; if (!t) t = addTool(ev.id, ev.name, {}); t.querySelector(".st").className = "st " + (ev.ok ? "ok" : "err"); t.querySelector(".ms").textContent = ev.ms ? (ev.ms / 1000).toFixed(1) + "s" : ""; t.querySelector("pre").textContent = ev.result; t.open = false; scroll(); break; }
-    case "turn_end": finalizeText(ev.silent ? "" : ev.final); { const m = el("div", "meta-line", `${ev.iterations} step${ev.iterations === 1 ? "" : "s"} · ${ev.toolCalls} tool call${ev.toolCalls === 1 ? "" : "s"}${ev.usage && ev.usage.input ? ` · ${(ev.usage.input + ev.usage.output).toLocaleString()} tokens` : ""}${ev.plan ? ` · plan ${ev.plan.done}/${ev.plan.total} done` : ""}${ev.interrupted ? " · interrupted" : ""}`); agentBlock().appendChild(m); } curAgent = null; refreshSessions(); break;
+    case "tool_end": { if (busy) setTimeout(showWorking, 50); let t = toolEls[ev.id]; if (!t) t = addTool(ev.id, ev.name, {}); t.querySelector(".st").className = "st " + (ev.ok ? "ok" : "err"); t.querySelector(".ms").textContent = ev.ms ? (ev.ms / 1000).toFixed(1) + "s" : ""; t.querySelector("pre").textContent = ev.result; t.open = false; scroll(); break; }
+    case "turn_end": hideWorking(); finalizeText(ev.silent ? "" : ev.final); { const m = el("div", "meta-line", `${ev.iterations} step${ev.iterations === 1 ? "" : "s"} · ${ev.toolCalls} tool call${ev.toolCalls === 1 ? "" : "s"}${ev.usage && ev.usage.input ? ` · ${(ev.usage.input + ev.usage.output).toLocaleString()} tokens` : ""}${ev.plan ? ` · plan ${ev.plan.done}/${ev.plan.total} done` : ""}${ev.interrupted ? " · interrupted" : ""}`); agentBlock().appendChild(m); } curAgent = null; refreshSessions(); break;
     case "status": statusLine(ev.text); break;
     case "compressed": statusLine("Context " + ev.text); break;
     case "todo": renderTodos(ev.todos); break;
@@ -606,6 +695,65 @@ async function refreshStats() {
   finally { statsBusy = false; }
 }
 setInterval(refreshStats, 3000);
+// ── Kanban live bar: shows on the main screen whether a card is being worked on, and what it did last ──
+let kbLive = null, kbSeenAt = Date.now(), kbStepAt = {}, kbStepTxt = {};
+// status lines in the chat: one per card change (started, passed, failed, blocked, done) and a step line every 20 s per running card
+function kbFeed(d) {
+  if (!d.enabled) return;
+  const fresh = (d.recent || []).filter((r) => r.at > kbSeenAt).sort((a, b) => a.at - b.at);
+  for (const r of fresh) {
+    const icon = { done: "✔", running: "▶", blocked: "⛔", ready: "↻", review: "👀" }[r.to] || "•";
+    const why = r.reason ? ` (${r.reason})` : "";
+    const more = r.to === "done" && r.commit ? ` · commit ${r.commit}` : r.to === "running" ? ` · attempt ${r.attempts} of ${d.working[0]?.max ?? 5}` : "";
+    notice(`${icon} ${r.key} ${r.to}${why}${more}\n${r.title}`);
+  }
+  if (fresh.length) kbSeenAt = fresh[fresh.length - 1].at;
+  for (const w of d.working) {
+    if (!w.active || !w.last || kbStepTxt[w.key] === w.last || Date.now() - (kbStepAt[w.key] || 0) < 20000) continue;
+    kbStepAt[w.key] = Date.now(); kbStepTxt[w.key] = w.last;
+    notice(`… ${w.key} (attempt ${w.attempts}): ${w.last.slice(0, 140)}`);
+  }
+}
+function ago(ms) { const s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s < 60 ? `${s}s ago` : `${Math.round(s / 60)} min ago`; }
+function kbAgentRender(d) {
+  const a = $("kbAgent"); if (!a) return;
+  const w = d.working.find((x) => x.active), idle = d.working.find((x) => !x.active);
+  let cls = "kbagent off", txt;
+  if (!d.enabled) txt = "Workers are disabled";
+  else if (w && d.paused) { cls = "kbagent warn"; txt = `Stopping ${w.key}… (paused by you)`; }
+  else if (w) { cls = "kbagent"; txt = `Agent is working on ${w.key} · attempt ${w.attempts} of ${w.max}${w.last ? " · " + w.last.slice(0, 60) : ""}`; }
+  else if (d.paused) txt = "Paused by you · press Resume to continue";
+  else if (idle) { cls = "kbagent warn"; txt = `Agent is NOT working · ${idle.key} is marked running but nothing is on it · press Resume interrupted`; }
+  else if (d.ready) { cls = "kbagent warn"; txt = `Agent is idle · ${d.ready} ready — it starts one within 30 s, or press Run workers`; }
+  else txt = "Agent is idle · nothing ready to start";
+  a.className = cls; a.textContent = ""; a.appendChild(el("span", "dot")); const t = document.createElement("span"); t.textContent = txt; a.appendChild(t); a.title = txt;
+}
+async function kbLiveTick() {
+  const bar = $("kbBar");
+  try {
+    const d = await api("/api/kanban/live"); kbLive = d;
+    kbBusy = !!(d.enabled && d.working.some((w) => w.active)); refreshSend();
+    kbFeed(d); kbAgentRender(d);
+    if (!d.enabled || (!d.working.length && !d.ready && !d.paused)) { bar.hidden = true; return; }
+    bar.hidden = false; bar.textContent = "";
+    const w = d.working[0];
+    const dot = el("span", "dot"); bar.appendChild(dot);
+    if (w) {
+      bar.classList.toggle("idle", !w.active);
+      const head = w.active ? `Kanban is working on ${w.key}` : `${w.key} is marked running but no worker is on it`;
+      const act = w.active ? (w.last ? ` · last step: ${w.last.slice(0, 90)}${w.last_at ? " (" + ago(w.last_at) + ")" : ""}` : " · starting…") : " · press Resume to restart it";
+      const g = el("span", "grow"); g.textContent = `${head} — attempt ${w.attempts} of ${w.max}${act}`; bar.appendChild(g);
+      if (w.active && w.session_id) { const b = el("button", "btn", "Watch"); b.onclick = () => openSession(w.session_id); bar.appendChild(b); }
+    } else {
+      bar.classList.add("idle");
+      const g = el("span", "grow"); g.textContent = d.paused ? `Kanban is PAUSED (you pressed Stop). ${d.ready} card(s) ready. Press Resume to continue.` : `Kanban: ${d.ready} card(s) ready, no worker running yet`; bar.appendChild(g);
+    }
+    if (!w || !w.active) { const r = el("button", "btn", "Resume"); r.onclick = async () => { r.textContent = "…"; try { const x = await api("/api/kanban/resume", { method: "POST", body: "{}" }); r.textContent = `Re-queued ${x.requeued}, started ${x.dispatched}`; } catch (e) { r.textContent = "failed: " + e.message; } setTimeout(kbLiveTick, 1500); }; bar.appendChild(r); }
+    const o = el("button", "btn", `Board ${d.done}/${d.total}`); o.onclick = () => kbOpenOverlay(); bar.appendChild(o);
+  } catch { bar.hidden = true; const a = $("kbAgent"); if (a) { a.className = "kbagent off"; a.textContent = "Can't reach the agent server"; } }
+}
+setInterval(kbLiveTick, 3000); kbLiveTick();
+
 document.addEventListener("visibilitychange", refreshStats);
 
 
@@ -619,93 +767,237 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   if (b.dataset.pane === "rag") ragLoad();
 });
 
-// ── Kanban: sidebar summary + full board ──
-let kbData = null, kbSel = null, kbEpic = "", kbTimer = null;
-const KB_COLS = ["backlog", "ready", "running", "review", "blocked", "done"];
+// ── Kanban: sidebar summary + full board (phases / board / list), deep links ?kb=PT-12 ──
+let kbData = null, kbBoardId = "", kbShowArch = false, kbSel = null, kbEpic = "", kbQ = "", kbTimer = null, kbDetailData = null;
+let kbView = "phases"; try { kbView = localStorage.getItem("kbView") || "phases"; } catch (e) { /* no storage */ }
+const kbFilt = new Set(), kbOpenPh = new Set(), kbClosedPh = new Set(), kbMore = {};
+const KB_STATES = ["running", "review", "blocked", "ready", "waiting", "backlog", "done"];
+const KB_COLS = ["waiting", "ready", "running", "review", "blocked", "done"];
+const KB_HELP = { waiting: "ready, but waits for a ticket it depends on", ready: "can start now", running: "an agent is working on it", review: "built, waiting for review", blocked: "stuck: see the comments", backlog: "not scheduled", done: "finished and checked" };
 const kbAgo = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`; };
 const kbImg = (key, f) => `/api/kanban/evidence/${encodeURIComponent(key)}/${f.split("/").map(encodeURIComponent).join("/")}?token=${encodeURIComponent(TOKEN)}`;
+const kbShort = (t) => t.replace(/^Phase\s+\d+\s*·\s*/, "").replace(/^Implement\s+/, "");
+const kbKeyNum = (k) => Number(String(k).replace(/\D/g, "")) || 0;
+function kbPush(val, replace) {
+  try { const u = new URL(location.href); if (val) u.searchParams.set("kb", val); else u.searchParams.delete("kb"); const st = { kb: val || null }; replace ? history.replaceState(st, "", u) : history.pushState(st, "", u); } catch (e) { /* file:// etc. */ }
+}
 async function kbLoad() {
-  try { kbData = await api("/api/kanban/board"); $("kbErr").textContent = ""; } catch (e) { $("kbErr").textContent = e.message; return; }
+  try { kbData = await api("/api/kanban/board" + (kbBoardId ? `?board=${encodeURIComponent(kbBoardId)}` : "")); $("kbErr").textContent = ""; } catch (e) { $("kbErr").textContent = e.message; return; }
   kbSideRender();
   if ($("kb").classList.contains("on")) { kbRender(); if (kbSel) kbDetail(kbSel, true); }
+}
+function kbPills(d, clickable) {
+  return KB_STATES.filter((s) => s !== "backlog" || d.counts.backlog).map((s) => `<span class="kbpill ${clickable && kbFilt.has(s) ? "on" : ""}" data-s="${s}" title="${esc(KB_HELP[s])}"><span class="st-${s}">●</span> ${s} <b>${d.counts[s] || 0}</b></span>`).join("");
 }
 function kbSideRender() {
   const d = kbData, box = $("kbSide"); if (!d) return;
   if (!d.total) { box.innerHTML = '<div class="hint2" style="padding:8px">The board is empty. Ask the agent to run <b>kanban import</b> on a plan folder, or add cards with the kanban tool.</div>'; return; }
-  const pct = Math.round((d.counts.done / d.total) * 100);
-  let h = `<div class="kbcounts">${KB_COLS.map((s) => `<span class="kbpill"><span class="st-${s}">●</span> ${s} <b>${d.counts[s]}</b></span>`).join("")}</div>
-    <div class="kbbar"><i style="width:${pct}%"></i></div><div class="hint2" style="margin:4px 0 10px">${d.counts.done} of ${d.total} cards done (${pct}%) · ${d.workers} worker${d.workers === 1 ? "" : "s"}${d.enabled ? "" : " · workers disabled"}</div>`;
+  const pct = Math.round(((d.counts.done || 0) / d.total) * 100);
+  let h = `<div class="kbcounts" style="margin-bottom:6px"><select id="kbSideBoard" class="kbboard" style="width:100%;max-width:none" title="Board the workers serve">${d.boards.filter((b) => !b.archived).map((b) => `<option value="${esc(b.id)}" ${b.active ? "selected" : ""}>${b.active ? "▶ " : ""}${esc(b.name)} (${b.done}/${b.cards})</option>`).join("")}</select></div><div class="kbcounts">${kbPills(d, false)}</div>
+    <div class="kbbar"><i style="width:${pct}%"></i></div><div class="hint2" style="margin:4px 0 10px">${d.counts.done} of ${d.total} tickets done (${pct}%) · ${d.epics.length} phases · ${d.workers} worker${d.workers === 1 ? "" : "s"}${d.enabled ? "" : " · workers disabled"}</div>`;
+  const cur = d.epics.find((e) => e.done < e.total);
+  if (cur) h += `<div class="pitem click" data-e="${esc(cur.key)}"><div class="n">Current phase</div><div class="d">${esc(cur.title)}</div><div class="kbbar" style="margin-top:4px"><i style="width:${cur.total ? Math.round(cur.done / cur.total * 100) : 0}%"></i></div><div class="m">${cur.done}/${cur.total} done${cur.running ? ` · ${cur.running} running` : ""}${cur.blocked ? ` · ${cur.blocked} blocked` : ""}</div></div>`;
   h += `<b style="font-size:12px">Working now</b>`;
   h += d.working.length ? d.working.map((w) => `<div class="pitem click" data-k="${esc(w.key)}"><div class="n">${w.active ? '<span class="live"></span>' : ""}${esc(w.key)} <span class="m">attempt ${w.attempts}${w.active ? "" : " · no live worker"}</span></div><div class="d">${esc(w.title)}</div>
-      ${w.activity.slice(-2).map((a) => `<div class="d" style="-webkit-line-clamp:2">${a.tools.length ? "⚙ " + esc(a.tools.join(", ")) : esc(a.role)}: ${esc(a.text)}</div>`).join("")}</div>`).join("") : '<div class="hint2" style="padding:4px 0 8px">No card is running.</div>';
-  h += `<b style="font-size:12px">Recent changes</b>` + d.recent.slice(0, 8).map((r) => `<div class="pitem click" data-k="${esc(r.key)}"><div class="n">${esc(r.key)} <span class="m">${esc(r.from || "new")} → <span class="st-${esc(r.to)}">${esc(r.to)}</span></span></div><div class="d">${esc(r.title)}</div><div class="m">${esc(r.by)} · ${kbAgo(r.at)}${r.reason ? " · " + esc(r.reason) : ""}</div></div>`).join("");
+      ${w.activity.slice(-2).map((a) => `<div class="d" style="-webkit-line-clamp:2">${a.tools.length ? "⚙ " + esc(a.tools.join(", ")) : esc(a.role)}: ${esc(a.text)}</div>`).join("")}</div>`).join("") : '<div class="hint2" style="padding:4px 0 8px">No ticket is running.</div>';
+  h += `<b style="font-size:12px">Recent changes</b>` + d.recent.slice(0, 8).map((r) => `<div class="pitem click" data-k="${esc(r.key)}"><div class="n">${esc(r.key)} <span class="m">${esc(r.from || "new")} → <span class="st-${esc(r.to)}">${esc(r.to)}</span></span></div><div class="d">${esc(kbShort(r.title))}</div><div class="m">${esc(r.by)} · ${kbAgo(r.at)}${r.reason ? " · " + esc(r.reason) : ""}</div></div>`).join("");
   box.innerHTML = h;
-  box.querySelectorAll("[data-k]").forEach((x) => x.onclick = () => { kbOpen(); kbDetail(x.dataset.k); });
+  if ($("kbSideBoard")) $("kbSideBoard").onchange = async (e) => { try { await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "use", board: e.target.value }) }); kbBoardId = ""; kbEpic = ""; kbSel = null; await kbLoad(); } catch (x) { alert(x.message); } };
+  box.querySelectorAll("[data-k]").forEach((x) => x.onclick = () => kbGo(x.dataset.k));
+  box.querySelectorAll("[data-e]").forEach((x) => x.onclick = () => { kbEpic = x.dataset.e; kbOpenOverlay(); kbGo(x.dataset.e); });
 }
-function kbOpen() { $("kb").classList.add("on"); kbRender(); }
+function kbOpenOverlay(push) { $("kb").classList.add("on"); if (push !== false && !new URL(location.href).searchParams.get("kb")) kbPush("board"); kbRender(); }
+function kbCloseOverlay() { $("kb").classList.remove("on", "detail"); kbSel = null; kbPush(null); }
+/** open a ticket (a card or an epic) and put it in the URL so back/forward and links work */
+function kbGo(key, replace) { if (!$("kb").classList.contains("on")) { $("kb").classList.add("on"); } kbSel = key; kbPush(key, replace); kbRender(); kbDetail(key); }
+function kbMatch(c) {
+  if (kbQ && !(`${c.key} ${c.title} ${c.section || ""}`.toLowerCase().includes(kbQ))) return false;
+  if (kbFilt.size && !kbFilt.has(c.display)) return false;
+  return true;
+}
+function kbTags(c) {
+  return [c.kind === "tests" ? '<span class="tag">tests</span>' : c.kind === "gate" ? '<span class="tag">gate</span>' : "", c.type === "bug" ? '<span class="tag bad">bug</span>' : "",
+    c.test ? `<span class="tag ${c.test.code === 0 ? "ok" : "bad"}">tests ${c.test.code === 0 ? "pass" : "fail"}</span>` : "",
+    c.verification ? `<span class="tag ${c.verification.ok ? "ok" : "bad"}">verify ${c.verification.ok ? "ok" : "fail"}</span>` : "", c.commits ? `<span class="tag">${c.commits} commit${c.commits === 1 ? "" : "s"}</span>` : "",
+    c.cases ? `<span class="tag" title="test cases written for this ticket">${c.cases} cases</span>` : "", c.attempts > 1 ? `<span class="tag">try ${c.attempts}</span>` : "", c.display === "waiting" ? `<span class="tag">waits on ${esc(c.waits_on[0])}${c.waits_on.length > 1 ? " +" + (c.waits_on.length - 1) : ""}</span>` : ""].join("");
+}
 function kbRender() {
   const d = kbData; if (!d) return;
-  $("kbHdCounts").innerHTML = KB_COLS.map((s) => `<span class="kbpill"><span class="st-${s}">●</span> ${s} <b>${d.counts[s]}</b></span>`).join("");
-  const sel = $("kbEpic"), cur = kbEpic;
-  sel.innerHTML = '<option value="">All phases</option>' + d.epics.map((e) => `<option value="${esc(e.key)}">${esc(e.title)} (${e.done}/${e.total})</option>`).join(""); sel.value = cur;
-  $("kbEpics").innerHTML = d.epics.map((e) => `<div class="kbepic ${e.key === kbEpic ? "sel" : ""}" data-e="${esc(e.key)}"><b>${esc(e.title.replace(/^Phase\s*/i, "P"))}</b><div class="kbbar" style="margin-top:4px"><i style="width:${e.total ? Math.round(e.done / e.total * 100) : 0}%"></i></div></div>`).join("");
-  $("kbEpics").querySelectorAll("[data-e]").forEach((x) => x.onclick = () => { kbEpic = kbEpic === x.dataset.e ? "" : x.dataset.e; kbRender(); });
-  const cards = d.cards.filter((c) => c.type !== "epic" && (!kbEpic || c.parent === kbEpic));
-  $("kbCols").innerHTML = "";
-  for (const s of KB_COLS) {
-    const list = cards.filter((c) => c.status === s);
-    const col = el("div", "kbcol", `<h4><span class="st-${s}">${s}</span><span>${list.length}</span></h4><div class="cards"></div>`);
-    for (const c of list) {
-      const tags = [c.type === "bug" ? '<span class="tag bad">bug</span>' : "", c.test ? `<span class="tag ${c.test.code === 0 ? "ok" : "bad"}">tests ${c.test.code === 0 ? "pass" : "fail"}</span>` : c.has_test ? '<span class="tag">tests not run</span>' : "",
-        c.verification ? `<span class="tag ${c.verification.ok ? "ok" : "bad"}">verify ${c.verification.ok ? "ok" : "fail"}</span>` : "", c.commits ? `<span class="tag">${c.commits} commit${c.commits === 1 ? "" : "s"}</span>` : "", c.attempts > 1 ? `<span class="tag">try ${c.attempts}</span>` : ""].join("");
-      const card = el("div", "kbcard" + (c.key === kbSel ? " sel" : ""), `<div class="k">${c.active ? '<span class="live"></span>' : ""}${esc(c.key)}${c.parent ? " · " + esc(c.parent) : ""}${c.depends_on.length && c.status === "ready" ? " · waits on " + esc(c.depends_on.join(",")) : ""}</div><div class="t">${esc(c.title)}</div><div class="k">${tags}<span>${kbAgo(c.updated_at)}</span></div>`);
-      card.onclick = () => kbDetail(c.key);
-      col.querySelector(".cards").appendChild(card);
-    }
-    if (!list.length) col.querySelector(".cards").innerHTML = '<div class="hint2">—</div>';
-    $("kbCols").appendChild(col);
+  document.querySelectorAll("#kbViews button").forEach((b) => b.classList.toggle("on", b.dataset.v === kbView));
+  const bs = $("kbBoard"), live = d.boards.filter((b) => !b.archived), arch = d.boards.filter((b) => b.archived);
+  bs.innerHTML = live.map((b) => `<option value="${esc(b.id)}">${b.active ? "▶ " : ""}${esc(b.name)} (${b.done}/${b.cards})</option>`).join("") + (kbShowArch && arch.length ? `<optgroup label="Archived">${arch.map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${b.done}/${b.cards})</option>`).join("")}</optgroup>` : "");
+  bs.value = d.board.id;
+  $("kbBanner").innerHTML = d.board.archived ? `<div class="kbban arch">📦 <b>${esc(d.board.name)}</b> is archived: hidden, and the workers ignore it. Its tickets can still be linked. <button class="btn" id="kbUnarch">Unarchive</button></div>`
+    : !d.board.active ? `<div class="kbban">Viewing <b>${esc(d.board.name)}</b>. The workers serve <b>${esc((d.boards.find((b) => b.active) || {}).name || "?")}</b>. <button class="btn" id="kbMakeActive">Make this board active</button></div>` : "";
+  if ($("kbUnarch")) $("kbUnarch").onclick = () => kbBoardAct("unarchive", d.board.id);
+  if ($("kbMakeActive")) $("kbMakeActive").onclick = () => kbBoardAct("use", d.board.id);
+  const sel = $("kbEpic"); sel.innerHTML = '<option value="">All phases</option>' + d.epics.map((e) => `<option value="${esc(e.key)}">${esc(e.title)} (${e.done}/${e.total})</option>`).join(""); sel.value = kbEpic;
+  const f = $("kbFilters"); f.innerHTML = kbPills(d, true) + (kbFilt.size || kbQ || kbEpic ? '<span class="clear" id="kbClear">clear filters</span>' : "");
+  f.querySelectorAll(".kbpill").forEach((p) => p.onclick = () => { kbFilt.has(p.dataset.s) ? kbFilt.delete(p.dataset.s) : kbFilt.add(p.dataset.s); kbRender(); });
+  if ($("kbClear")) $("kbClear").onclick = () => { kbFilt.clear(); kbQ = ""; kbEpic = ""; $("kbSearch").value = ""; kbRender(); };
+  const body = $("kbBody"), keep = body.scrollTop; body.innerHTML = "";
+  const work = d.cards.filter((c) => c.type !== "epic");
+  const shown = work.filter((c) => kbMatch(c) && (!kbEpic || c.parent === kbEpic));
+  if (kbView === "board") kbBoard(body, shown); else if (kbView === "list") kbList(body, shown); else kbPhases(body, work);
+  body.scrollTop = keep;
+}
+function kbRow(c) {
+  const r = el("div", "kbrow" + (c.key === kbSel ? " sel" : ""), `<span class="dot st-${esc(c.display)}" title="${esc(c.display)}"></span><span class="k">${esc(c.key)}</span><span class="tt" title="${esc(c.summary || "")}">${c.active ? '<span class="live"></span>' : ""}${esc(kbShort(c.title))}</span>${kbTags(c)}<span class="when">${kbAgo(c.updated_at)}</span>`);
+  r.onclick = () => kbGo(c.key); return r;
+}
+function kbPhases(body, work) {
+  const d = kbData; const filtering = !!(kbQ || kbFilt.size);
+  const cur = d.epics.find((e) => e.done < e.total);
+  let shownAny = false;
+  for (const e of d.epics) {
+    if (kbEpic && e.key !== kbEpic) continue;
+    const kids = work.filter((c) => c.parent === e.key).sort((a, b) => b.priority - a.priority);
+    const match = kids.filter(kbMatch);
+    if (filtering && !match.length) continue;
+    shownAny = true;
+    const auto = filtering || e.running || e.blocked || e.review || (cur && cur.key === e.key);
+    const open = kbOpenPh.has(e.key) || (auto && !kbClosedPh.has(e.key)) || (kbSel && kids.some((k) => k.key === kbSel));
+    const pct = e.total ? Math.round(e.done / e.total * 100) : 0;
+    const ph = el("div", "kbphase" + (open ? " open" : ""), `<div class="ph"><span class="chev">▶</span><span class="t">${esc(e.title)}</span><span class="meta">${e.running ? `<span class="st-running">${e.running} running</span> · ` : ""}${e.blocked ? `<span class="st-blocked">${e.blocked} blocked</span> · ` : ""}${e.done}/${e.total} done</span><div class="kbbar bar"><i style="width:${pct}%"></i></div><button class="btn" data-open title="Open the phase ticket">↗</button></div><div class="rows"></div>`);
+    ph.querySelector(".ph").onclick = (ev) => { if (ev.target.closest("[data-open]")) { kbGo(e.key); return; } const o = ph.classList.toggle("open"); o ? (kbOpenPh.add(e.key), kbClosedPh.delete(e.key)) : (kbOpenPh.delete(e.key), kbClosedPh.add(e.key)); };
+    const rows = ph.querySelector(".rows"); for (const c of match) rows.appendChild(kbRow(c));
+    body.appendChild(ph);
   }
+  if (!shownAny) body.innerHTML = '<div class="kbempty">No tickets match.</div>';
+}
+function kbBoard(body, shown) {
+  const wrap = el("div", "kbcols");
+  for (const s of KB_COLS) {
+    const list = shown.filter((c) => c.display === s).sort((a, b) => b.priority - a.priority);
+    const cap = kbMore[s] || 30;
+    const col = el("div", "kbcol", `<h4><span class="st-${s}" title="${esc(KB_HELP[s])}">${s}</span><span>${list.length}</span></h4><div class="cards"></div>`);
+    const box = col.querySelector(".cards");
+    for (const c of list.slice(0, cap)) {
+      const card = el("div", "kbcard" + (c.key === kbSel ? " sel" : ""), `<div class="k">${c.active ? '<span class="live"></span>' : ""}${esc(c.key)}${c.parent ? " · " + esc(c.parent) : ""}</div><div class="t">${esc(kbShort(c.title))}</div><div class="k">${kbTags(c)}<span>${kbAgo(c.updated_at)}</span></div>`);
+      card.onclick = () => kbGo(c.key); box.appendChild(card);
+    }
+    if (list.length > cap) { const m = el("div", "kbmore", `show ${Math.min(30, list.length - cap)} more of ${list.length - cap}`); m.onclick = () => { kbMore[s] = cap + 30; kbRender(); }; box.appendChild(m); }
+    if (!list.length) box.innerHTML = '<div class="hint2">—</div>';
+    wrap.appendChild(col);
+  }
+  body.appendChild(wrap);
+}
+function kbList(body, shown) {
+  const d = kbData; const byKey = Object.fromEntries(d.epics.map((e) => [e.key, e]));
+  const rows = shown.slice().sort((a, b) => kbKeyNum(a.key) - kbKeyNum(b.key));
+  const t = el("table", "kbtable", `<thead><tr><th>Key</th><th>Ticket</th><th>Phase</th><th>Status</th><th>Tries</th><th>Checks</th><th>Updated</th></tr></thead><tbody></tbody>`);
+  for (const c of rows.slice(0, 400)) {
+    const tr = el("tr", "kbrow2" + (c.key === kbSel ? " sel" : ""), `<td><code>${esc(c.key)}</code></td><td>${esc(kbShort(c.title))}</td><td>${esc((byKey[c.parent] ? byKey[c.parent].title.replace(/^Phase\s+(\d+).*/, "P$1") : "") )}</td><td><span class="st-${esc(c.display)}">● ${esc(c.display)}</span></td><td>${c.attempts}</td><td>${kbTags(c)}</td><td>${kbAgo(c.updated_at)}</td>`);
+    tr.onclick = () => kbGo(c.key); t.querySelector("tbody").appendChild(tr);
+  }
+  body.appendChild(rows.length ? t : el("div", "kbempty", "No tickets match."));
 }
 async function kbDetail(key, quiet) {
-  kbSel = key; if (!quiet) kbRender();
-  const box = $("kbSideDetail"); $("kb").classList.add("detail");
+  kbSel = key; const box = $("kbSideDetail"); $("kb").classList.add("detail");
+  if (!quiet) kbRender();
   let c; try { c = await api(`/api/kanban/card/${encodeURIComponent(key)}`); } catch (e) { box.innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  if (kbSel !== key) return;   // the user moved on while this loaded
+  if (c.board_info && kbData && c.board_info.id !== kbData.board.id) { kbBoardId = c.board_info.id; await kbLoad(); return; }   // a ticket on another board: show that board
+  kbDetailData = c;
   const keepScroll = box.scrollTop;
   const hist = (c.history || []).slice().reverse().map((h) => `<div class="kbcm">${esc(h.from || "new")} → <b class="st-${esc(h.to)}">${esc(h.to)}</b> <small>${esc(h.by)} · ${kbAgo(h.at)}${h.reason ? " · " + esc(h.reason) : ""}</small></div>`).join("");
   const cms = (c.comments || []).map((m) => `<div class="kbcm ${m.reply_to ? "reply" : ""}"><b>${esc(m.by)}</b> <small>${kbAgo(m.at)}${m.id ? " · " + esc(m.id) : ""}</small><div>${esc(m.text).replace(/\n/g, "<br>")}</div></div>`).join("");
   const act = (c.activity || []).map((a) => `<div class="kbact ${esc(a.role)}">${a.tools.length ? "⚙ <b>" + esc(a.tools.join(", ")) + "</b> " : ""}${esc(a.text)}</div>`).join("");
-  box.innerHTML = `<div style="display:flex;gap:8px;align-items:start"><div style="flex:1"><div class="m">${esc(c.key)} · ${esc(c.type)}${c.parent ? " · " + esc(c.parent) : ""}${c.branch ? " · " + esc(c.branch) : ""}</div><h3>${esc(c.title)}</h3>
-      <span class="tag ${c.status === "done" ? "ok" : c.status === "blocked" ? "bad" : ""}">${esc(c.status)}</span> ${c.active ? '<span class="live"></span>worker running' : ""} <span class="m">attempts ${c.attempts}</span></div>
-      <button class="btn" id="kbDetClose">✕</button></div>
+  const sib = c.siblings || []; const ix = sib.indexOf(c.key);
+  const display = c.status === "ready" && (c.waits_on || []).length ? "waiting" : c.status;
+  const link = (k, t) => `<a href="?kb=${encodeURIComponent(k)}" data-k="${esc(k)}">${esc(k)}</a>${t ? " " + esc(kbShort(t)) : ""}`;
+  box.innerHTML = `<div class="kbcrumb">${c.parent_card ? `${link(c.parent_card.key, c.parent_card.title)} <span>›</span> ` : ""}<b>${esc(c.key)}</b></div>
+    <div style="display:flex;gap:8px;align-items:start"><div style="flex:1"><div class="m">${esc(c.type)}${c.kind ? " · " + esc(c.kind) : ""}${c.branch ? " · " + esc(c.branch) : ""}</div><h3>${esc(kbShort(c.title))}</h3>${c.summary ? `<div class="kbsum">${esc(c.summary)}</div>` : ""}
+      <span class="tag ${c.status === "done" ? "ok" : c.status === "blocked" ? "bad" : ""}" title="${esc(KB_HELP[display] || "")}">${esc(display)}</span> ${c.active ? '<span class="live"></span>worker running' : ""} <span class="m">attempts ${c.attempts}</span></div>
+      <button class="btn" id="kbDetClose" title="Close (Esc)">✕</button></div>
+    ${ix >= 0 ? `<div class="kbnav"><button class="btn" id="kbPrev" ${ix === 0 ? "disabled" : ""} title="Previous ticket in this phase (k)">← prev</button><span class="pos">${ix + 1} of ${sib.length} in phase</span><button class="btn" id="kbNext" ${ix === sib.length - 1 ? "disabled" : ""} title="Next ticket in this phase (j)">next →</button></div>` : ""}
     ${c.session_id ? `<div style="margin:8px 0"><button class="btn primary" id="kbWatch">Watch agent session</button></div>` : ""}
+    ${(c.waits_on || []).length ? `<div class="hint2" style="margin:6px 0">Waiting for: ${c.waits_on.map((k) => link(k)).join(", ")}</div>` : ""}
     ${act ? `<h5>What the agent is doing</h5>${act}` : ""}
-    ${c.acceptance && c.acceptance.length ? `<h5>Acceptance criteria</h5><ul style="margin:4px 0;padding-left:18px">${c.acceptance.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
+    ${c.acceptance && c.acceptance.length ? `<h5>Acceptance criteria (${c.acceptance.length})</h5><ul style="margin:4px 0;padding-left:18px">${c.acceptance.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
+    ${c.test_cases && c.test_cases.length ? `<h5>Test cases (${c.test_cases.length})</h5><details ${c.test_cases.length <= 14 ? "open" : ""}><summary class="hint2" style="cursor:pointer">${c.test_cases.length <= 14 ? "all of them" : "show all " + c.test_cases.length}</summary><ol class="kbcases">${c.test_cases.map((t) => `<li>${esc(t)}</li>`).join("")}</ol></details>` : ""}
+    ${c.files && c.files.length ? `<h5>Files this ticket delivers</h5>${c.files.map((f) => `<div class="kbcm"><code>${esc(f)}</code>${c.exports && c.exports[f] ? ` <small>exports ${esc(c.exports[f].join(", "))}</small>` : ""}</div>`).join("")}` : ""}
     ${c.test_cmd ? `<h5>Tests</h5><div><code>${esc(c.test_cmd)}</code></div>${c.test_result ? `<div class="${c.test_result.code === 0 ? "st-done" : "st-blocked"}">last run: exit ${c.test_result.code} · ${kbAgo(c.test_result.at)}</div><pre>${esc(c.test_result.output)}</pre>` : '<div class="hint2">not run yet</div>'}` : ""}
     ${c.evidence && c.evidence.shots.length ? `<h5>Screenshots (${c.evidence.shots.length})</h5><div class="kbshots">${c.evidence.shots.map((f) => `<div><img loading="lazy" src="${kbImg(c.key, f)}" data-full="${kbImg(c.key, f)}" title="${esc(f)}"><div class="m">${esc(f.split("/").pop())}</div></div>`).join("")}</div>` : ""}
     ${c.verification ? `<h5>Verification: <span class="${c.verification.ok ? "st-done" : "st-blocked"}">${c.verification.ok ? "PASS" : "FAIL"}</span> · ${kbAgo(c.verification.at)}</h5>${c.report ? `<pre>${esc(c.report)}</pre>` : ""}` : ""}
     <h5>Commits (${(c.commits || []).length})</h5>${(c.commits || []).map((m) => `<div class="kbcm"><code>${esc(m.hash.slice(0, 8))}</code> ${esc(m.message)}</div>`).join("") || '<div class="hint2">none yet</div>'}
-    ${c.children && c.children.length ? `<h5>Cards in this phase</h5>${c.children.map((k) => `<div class="kbcm"><a href="#" data-k="${esc(k.key)}">${esc(k.key)}</a> <span class="st-${esc(k.status)}">${esc(k.status)}</span> ${esc(k.title)}</div>`).join("")}` : ""}
-    ${c.depends_on_keys && c.depends_on_keys.length ? `<h5>Depends on</h5>${c.depends_on_keys.map((k) => `<a href="#" data-k="${esc(k)}">${esc(k)}</a>`).join(", ")}` : ""}
+    ${c.children && c.children.length ? `<h5>Tickets in this phase (${c.children.filter((k) => k.status === "done").length}/${c.children.length} done)</h5>${c.children.map((k) => `<div class="kbcm">${link(k.key)} <span class="st-${esc(k.status)}">${esc(k.status)}</span> ${esc(kbShort(k.title))}</div>`).join("")}` : ""}
+    ${c.depends_on_keys && c.depends_on_keys.length ? `<h5>Depends on</h5>${c.depends_on_keys.map((k) => link(k)).join(", ")}` : ""}
+    ${c.dependents && c.dependents.length ? `<h5>Unblocks</h5>${c.dependents.map((k) => `<div class="kbcm">${link(k.key)} ${esc(kbShort(k.title))}</div>`).join("")}` : ""}
     ${c.body ? `<h5>Description</h5><pre>${esc(c.body.slice(0, 3000))}</pre>` : ""}
+    <h5>Linked tickets (${(c.links_view || []).length})</h5>${(c.links_view || []).map((l) => `<div class="kblink"><span class="ty">${esc(l.type)}</span>${l.pending ? `<span>${esc(l.key)}</span> <span class="hint2">not created yet</span>` : `${link(l.key)} <span class="st-${esc(l.status)}">${esc(l.status)}</span> ${esc(kbShort(l.title))}`}${l.boardName && c.board_info && l.board !== c.board_info.id ? `<span class="bd" title="on another board">${esc(l.boardName)}</span>` : ""}${l.direction === "out" ? `<button class="x" data-unlink="${esc(l.key)}" data-t="${esc(l.type)}" title="Remove link">✕</button>` : ""}</div>`).join("") || '<div class="hint2">none. Link tickets from any board, or one that does not exist yet.</div>'}
+    <div class="kbform"><select id="kbLkType"><option>relates to</option><option>blocks</option><option>is blocked by</option><option>duplicates</option><option>clones</option></select><input id="kbLkTo" placeholder="ticket key, e.g. PT-12" size="14"><button class="btn" id="kbLkAdd">Link</button></div><span class="err" id="kbLkErr"></span>
+    ${c.board_info ? `<h5>Board</h5><div class="kbform" style="margin-top:0"><span>${esc(c.board_info.name)}${c.board_info.archived ? " (archived)" : ""}</span><select id="kbMvTo">${(kbData.boards || []).filter((b) => !b.archived && b.id !== c.board_info.id).map((b) => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join("")}</select><button class="btn" id="kbMv">Move${c.type === "epic" ? " phase + tickets" : ""} there</button></div>` : ""}
     <h5>History</h5>${hist || '<div class="hint2">none</div>'}
     <h5>Comments</h5>${cms || '<div class="hint2">none</div>'}
     <div style="margin-top:8px"><textarea id="kbCm" rows="2" style="width:100%;box-sizing:border-box" placeholder="Add a comment for the agent or reviewers"></textarea><button class="btn" id="kbCmAdd">Comment</button><span class="err" id="kbCmErr"></span></div>`;
   box.scrollTop = keepScroll;
-  $("kbDetClose").onclick = () => { kbSel = null; $("kb").classList.remove("detail"); kbRender(); };
+  $("kbDetClose").onclick = kbCloseDetail;
+  if ($("kbPrev")) $("kbPrev").onclick = () => kbGo(sib[ix - 1]);
+  if ($("kbNext")) $("kbNext").onclick = () => kbGo(sib[ix + 1]);
   if ($("kbWatch")) $("kbWatch").onclick = () => { $("kb").classList.remove("on"); openSession(c.session_id); };
-  box.querySelectorAll("a[data-k]").forEach((a) => a.onclick = (e) => { e.preventDefault(); kbDetail(a.dataset.k); });
+  box.querySelectorAll("a[data-k]").forEach((a) => a.onclick = (e) => { e.preventDefault(); kbGo(a.dataset.k); });
   box.querySelectorAll("img[data-full]").forEach((i) => i.onclick = () => { $("kbZoom").querySelector("img").src = i.dataset.full; $("kbZoom").classList.add("on"); });
+  $("kbLkAdd").onclick = async () => { const to = $("kbLkTo").value.trim(); if (!to) return; try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}/link`, { method: "POST", body: JSON.stringify({ type: $("kbLkType").value, to }) }); kbDetail(c.key); kbLoad(); } catch (e) { $("kbLkErr").textContent = e.message; } };
+  box.querySelectorAll("[data-unlink]").forEach((x) => x.onclick = async () => { try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}/unlink`, { method: "POST", body: JSON.stringify({ to: x.dataset.unlink, type: x.dataset.t }) }); kbDetail(c.key); } catch (e) { $("kbLkErr").textContent = e.message; } });
+  if ($("kbMv") && $("kbMvTo")) $("kbMv").onclick = async () => { try { await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "move", keys: [c.key], to: $("kbMvTo").value }) }); kbDetail(c.key); } catch (e) { $("kbLkErr").textContent = e.message; } };
   $("kbCmAdd").onclick = async () => { const t = $("kbCm").value.trim(); if (!t) return; try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}/comment`, { method: "POST", body: JSON.stringify({ text: t }) }); kbDetail(c.key); } catch (e) { $("kbCmErr").textContent = e.message; } };
 }
-$("kbOpen").onclick = () => { kbOpen(); kbLoad(); };
-$("kbClose").onclick = () => $("kb").classList.remove("on");
+async function kbBoardAct(action, board, extra) {
+  try { const r = await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action, board, ...(extra || {}) }) }); if (action === "use" || action === "new" || action === "archive" || action === "delete") kbBoardId = ""; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); return r; }
+  catch (e) { alert(e.message); }
+}
+function kbMenu() {
+  const m = $("kbMenu"); if (!m.hidden) { m.hidden = true; return; }
+  const b = kbData.board;
+  m.innerHTML = `<button data-a="new">＋ New board…</button><button data-a="rename">Rename “${esc(b.name)}”…</button><button data-a="save">Save snapshot to a file</button><hr>
+    ${b.archived ? '<button data-a="unarchive">Unarchive</button>' : '<button data-a="archive">Archive board</button>'}<button data-a="arch">${kbShowArch ? "Hide" : "Show"} archived boards</button><hr>
+    <button data-a="clear" class="danger">Clear all tickets…</button><button data-a="delete" class="danger">Delete board…</button>`;
+  m.hidden = false;
+  m.querySelectorAll("button").forEach((x) => x.onclick = async () => {
+    m.hidden = true; const a = x.dataset.a;
+    if (a === "new") { const n = prompt("Name of the new board (it becomes the active board):"); if (n) await kbBoardAct("new", "", { name: n }); }
+    else if (a === "rename") { const n = prompt("New name:", b.name); if (n && n !== b.name) await kbBoardAct("rename", b.id, { name: n }); }
+    else if (a === "save") { const r = await kbBoardAct("save", b.id); if (r && r.file) alert("Saved to " + r.file); }
+    else if (a === "archive") await kbBoardAct("archive", b.id);
+    else if (a === "unarchive") await kbBoardAct("unarchive", b.id);
+    else if (a === "arch") { kbShowArch = !kbShowArch; kbRender(); }
+    else if (a === "clear" || a === "delete") {
+      const n = prompt(`${a === "clear" ? `This removes ALL tickets from “${b.name}”` : `This deletes the board “${b.name}” and its tickets`}.\nA snapshot is saved first, so it can be restored.\nType the board name to confirm:`);
+      if (n === null) return; const r = await kbBoardAct(a, b.id, { confirm: n }); if (r && r.snapshot) alert(`Done. ${r.removed} ticket(s) removed.\nSnapshot (restore it with: kanban board restore <file>):\n${r.snapshot}`);
+    }
+  });
+}
+$("kbBoardMenu").onclick = (e) => { e.stopPropagation(); kbMenu(); };
+document.addEventListener("click", (e) => { if (!e.target.closest("#kbMenu")) $("kbMenu").hidden = true; });
+$("kbBoard").onchange = () => { kbBoardId = $("kbBoard").value; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); kbPush("board"); kbLoad(); };
+function kbCloseDetail() { kbSel = null; kbDetailData = null; $("kb").classList.remove("detail"); kbPush("board"); kbRender(); }
+$("kbOpen").onclick = () => { kbOpenOverlay(); kbLoad(); };
+$("kbClose").onclick = kbCloseOverlay;
 $("kbZoom").onclick = () => $("kbZoom").classList.remove("on");
 $("kbEpic").onchange = () => { kbEpic = $("kbEpic").value; kbRender(); };
+$("kbSearch").oninput = () => { kbQ = $("kbSearch").value.trim().toLowerCase(); kbRender(); };
+document.querySelectorAll("#kbViews button").forEach((b) => b.onclick = () => { kbView = b.dataset.v; try { localStorage.setItem("kbView", kbView); } catch (e) { /* ignore */ } kbRender(); });
 $("kbDispatch").onclick = async () => { try { const r = await api("/api/kanban/dispatch", { method: "POST", body: "{}" }); $("kbDispatch").textContent = `Started ${r.dispatched}`; setTimeout(() => $("kbDispatch").textContent = "Run workers", 2500); kbLoad(); } catch (e) { alert(e.message); } };
+$("kbEnrich").onclick = async () => { const b = $("kbEnrich"); b.disabled = true; b.textContent = "Looking up…"; try { const r = await api("/api/kanban/enrich", { method: "POST", body: JSON.stringify({ board: kbData && kbData.board.id }) }); b.textContent = r.skipped ? "Lookups are off" : `Added ${r.notes} notes`; if (r.failed && r.failed.length) alert(r.text); } catch (e) { b.textContent = "Add web notes"; alert(e.message); } b.disabled = false; setTimeout(() => b.textContent = "Add web notes", 4000); kbLoad(); };
 $("kbResume").onclick = async () => { try { const r = await api("/api/kanban/resume", { method: "POST", body: "{}" }); $("kbResume").textContent = `Re-queued ${r.requeued}`; setTimeout(() => $("kbResume").textContent = "Resume interrupted", 2500); kbLoad(); } catch (e) { alert(e.message); } };
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if ($("kbZoom").classList.contains("on")) $("kbZoom").classList.remove("on"); else if ($("kb").classList.contains("on")) $("kb").classList.remove("on"); } });
+document.addEventListener("keydown", (e) => {
+  const inField = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || "");
+  if (e.key === "Escape") { if ($("kbZoom").classList.contains("on")) $("kbZoom").classList.remove("on"); else if (inField && document.activeElement.id === "kbSearch") document.activeElement.blur(); else if ($("kb").classList.contains("detail")) kbCloseDetail(); else if ($("kb").classList.contains("on")) kbCloseOverlay(); return; }
+  if (!$("kb").classList.contains("on") || inField || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "/") { e.preventDefault(); $("kbSearch").focus(); }
+  else if ((e.key === "j" || e.key === "k") && kbDetailData) { const sib = kbDetailData.siblings || [], ix = sib.indexOf(kbDetailData.key), n = sib[ix + (e.key === "j" ? 1 : -1)]; if (n) kbGo(n); }
+});
+/** back/forward and shared links: ?kb=board opens the board, ?kb=PT-12 opens that ticket */
+function kbFromUrl() {
+  const v = new URL(location.href).searchParams.get("kb");
+  if (!v) { $("kb").classList.remove("on", "detail"); kbSel = null; return; }
+  const open = () => { $("kb").classList.add("on"); if (v === "board") { kbSel = null; $("kb").classList.remove("detail"); kbRender(); } else { kbSel = v; kbRender(); kbDetail(v); } };
+  kbData ? open() : kbLoad().then(open);
+}
+window.addEventListener("popstate", kbFromUrl);
 kbTimer = setInterval(() => { if (!document.hidden && ($("kb").classList.contains("on") || $("pane-kanban").classList.contains("on"))) kbLoad(); }, 4000);
-
+if (new URL(location.href).searchParams.get("kb")) setTimeout(kbFromUrl, 300);
 // ── RAG bot: shared documents + Agent / RAG Bot toggle ──
 let curMode = "agent", ragDocs = [];
 const ragSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`;
@@ -1159,6 +1451,7 @@ async function newSession() { const want = curMode; const r = await api("/api/se
 
 // ── composer ──
 async function send() {
+  if (kbBusy && !busy) return;
   const inp = $("input"); const text = inp.value.trim();
   if (!text && !images.length) return;
   if (!sid) await newSession();
@@ -1201,7 +1494,10 @@ $("input").addEventListener("keydown", (e) => {
   }
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
-$("sendBtn").onclick = () => (busy && !$("input").value.trim() ? stop() : send());
+$("sendBtn").onclick = async () => {
+  if (kbBusy && !busy) { try { const r = await api("/api/kanban/stop", { method: "POST", body: "{}" }); notice(`Stopped Kanban${r.stopped.length ? ": " + r.stopped.join(", ") + " went back to the queue" : ""}. Press Resume in the bar when you want it to continue.`); } catch (e) { alert(e.message); } kbLiveTick(); return; }
+  return busy && !$("input").value.trim() ? stop() : send();
+};
 $("newBtn").onclick = newSession;
 $("search").oninput = renderSessions;
 $("panelBtn").onclick = () => { $("app").classList.toggle("no-right"); refreshStats(); };

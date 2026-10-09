@@ -16,6 +16,8 @@ export interface ChatRequest {
   stream?: boolean;
   /** model router: require this tier for the request (kanban workers and reviewers) */
   tier?: "fast" | "strong";
+  /** model router: use this tier unless the turn is going badly (then it escalates) */
+  prefer?: "fast" | "strong";
 }
 
 export interface ChatResponse {
@@ -37,14 +39,14 @@ export interface Provider {
   chat(req: ChatRequest): Promise<ChatResponse>;
 }
 
-export type ErrorKind = "rate_limit" | "context_length" | "auth" | "server" | "network" | "bad_request" | "tools_unsupported" | "aborted" | "bad_tool_call";
+export type ErrorKind = "rate_limit" | "context_length" | "auth" | "server" | "network" | "bad_request" | "tools_unsupported" | "aborted" | "bad_tool_call" | "compute";
 
 export class ProviderError extends Error {
   constructor(message: string, readonly kind: ErrorKind, readonly status?: number, readonly retryAfterMs?: number) {
     super(message);
     this.name = "ProviderError";
   }
-  get retryable(): boolean { return this.kind === "rate_limit" || this.kind === "server" || this.kind === "network"; }
+  get retryable(): boolean { return this.kind === "rate_limit" || this.kind === "server" || this.kind === "network" || this.kind === "compute"; }
 }
 
 export function classifyHttpError(status: number, body: string, retryAfter?: string | null): ProviderError {
@@ -62,6 +64,9 @@ export function classifyHttpError(status: number, body: string, retryAfter?: str
   // llama.cpp / Ollama / LM Studio answer 503 while (re)loading weights: wait it out instead of failing the turn
   if (status === 503 && /loading model|model is loading|currently loading|still loading/i.test(b))
     return new ProviderError(`model server is still loading the model: ${b}`, "server", status, ra ?? 5000);
+  // llama.cpp / Metal: "Compute error." (failed decode, GPU out of memory, command-buffer timeout). A smaller prompt usually fixes it.
+  if (status >= 500 && /compute error|failed to (decode|process|evaluate)|ggml|metal|out of memory|kIOGPU|insufficient memory/i.test(b))
+    return new ProviderError(`the model server hit a compute error (GPU/memory): ${b}`, "compute", status);
   if (status >= 500) return new ProviderError(`server error ${status}: ${b}`, "server", status);
   return new ProviderError(`request failed ${status}: ${b}`, "bad_request", status);
 }

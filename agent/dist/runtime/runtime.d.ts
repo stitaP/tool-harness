@@ -155,6 +155,8 @@ export declare class Runtime extends EventEmitter {
         cwd?: string;
         tools?: string[];
         tier?: "fast" | "strong";
+        prefer?: "fast" | "strong";
+        onSession?: (sessionId: string) => void;
     }): Promise<{
         sessionId: string;
         final: string;

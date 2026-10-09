@@ -182,6 +182,8 @@ export declare const DEFAULT_CONFIG: {
         enforce_commit_keys: boolean;
         verify: boolean;
         worker_tier: "auto" | "fast" | "strong";
+        default_board: string;
+        tier_by_kind: Record<string, "fast" | "strong">;
     };
     lsp: {
         enabled: boolean;

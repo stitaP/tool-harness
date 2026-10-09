@@ -46,6 +46,11 @@ export interface RouterConfig {
   models: { fast?: RouterModel; strong?: RouterModel };
   /** keep BOTH models loaded at once, each on its own port, and route per request with no restarts (needs the memory for both) */
   resident?: boolean;
+  /** resident mode: the tier that does the work unless something says otherwise (default "fast", the old behaviour) */
+  default_tier?: Tier;
+  /** resident mode: tiers that stay on disk until a request needs them (e.g. ["fast"]); they are stopped again after idle_unload_min idle minutes */
+  on_demand?: Tier[];
+  idle_unload_min?: number;
 }
 
 export const ROUTER_DEFAULTS: RouterConfig = {
@@ -75,6 +80,10 @@ export interface RouteInput {
   hasStrong: boolean;
   /** a caller (kanban worker/reviewer) can require a tier for this request */
   pin?: Tier;
+  /** a caller's preferred tier: used unless the turn is going badly (failing tools, very long), then it escalates */
+  prefer?: Tier;
+  /** the tier that does the work when nothing else decides (resident mode with default_tier: "strong") */
+  defaultTier?: Tier;
 }
 export interface RouteDecision { tier: Tier; reason: string }
 
@@ -115,6 +124,16 @@ export function decide(inp: RouteInput): RouteDecision {
   const act = turnActivity(inp.messages);
   const { score, why } = scoreTask(act.lastUser);
   let want: RouteDecision;
+  if (inp.prefer || inp.defaultTier === "strong") {
+    // a fixed home tier instead of the keyword heuristics: the preferred tier works until the turn goes badly
+    const home: Tier = inp.prefer ?? "strong";
+    const bad = act.calls >= cfg.escalate_after ? `turn passed ${cfg.escalate_after} model calls` : act.errors >= 2 ? `${act.errors} failed tool calls this turn` : "";
+    if (home === "fast" && bad) want = { tier: "strong", reason: bad };
+    else want = { tier: home, reason: inp.prefer ? `${home} preferred for this kind of work` : "strong is the default model" };
+    if (want.tier === "strong" && !inp.strongAvailable) return { tier: "fast", reason: `${want.reason}, but the strong model is unavailable` };
+    if (want.tier === "strong" && inp.tokens > (inp.ctx.strong || 32768) * 0.85) return { tier: "fast", reason: `${want.reason}, but the conversation does not fit the strong model's window` };
+    return want;
+  }
   if (act.calls >= cfg.escalate_after) want = { tier: "strong", reason: `turn passed ${cfg.escalate_after} model calls` };
   else if (act.errors >= 2) want = { tier: "strong", reason: `${act.errors} failed tool calls this turn` };
   else if (act.goal) want = { tier: "strong", reason: "standing goal" };
@@ -245,7 +264,7 @@ export async function launchLlama(c: RouterConfig, m: RouterModel, port: number,
   const kv = m.kv ?? c.kv;
   const ctxArgs = m.context ? ["-c", String(m.context), "-ngl", "99"] : [];
   const args = ["-m", file, ...ctxArgs, "--fit", "on", "--fit-target", String(m.fit_margin_mb ?? 1024), "-np", "1", "-fa", "on",
-    "-ctk", kv, "-ctv", kv, "-t", String(c.threads), "--mlock", "--jinja", "--metrics", "--host", "127.0.0.1", "--port", String(port), "--alias", m.name, ...(m.extra_args ?? [])];
+    "-ctk", kv, "-ctv", kv, "-t", String(c.threads), "--mlock", "--jinja", "--metrics", "--host", "127.0.0.1", "--port", String(port), "--alias", m.name, ...(m.extra_args ?? []).map(String)];
   log.write(`\n=== ${new Date().toISOString()} router: starting ${m.name} on :${port} (${bin})\n`);
   const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
   child.stdout!.pipe(log, { end: false });
@@ -289,10 +308,36 @@ export class DuoServer {
   private lock: Promise<unknown> = Promise.resolve();
   private failed = new Map<Tier, number>();
   readonly errors: Partial<Record<Tier, string>> = {};
+  private lastUsed = new Map<Tier, number>();
+  private inflight = new Map<Tier, number>();
+  private reaper: ReturnType<typeof setInterval> | null = null;
 
   constructor(private cfg: () => RouterConfig, private logDir: string) {
     process.once("exit", () => this.kill());
     for (const s of ["SIGINT", "SIGTERM"] as const) process.once(s, () => { this.kill(); process.exit(0); });
+  }
+
+  /** a tier that stays on disk until a request needs it */
+  isOnDemand(tier: Tier): boolean { return !!this.cfg().on_demand?.includes(tier); }
+  /** a request on this tier started / finished (the idle timer never stops a model that is answering) */
+  begin(tier: Tier) { this.inflight.set(tier, (this.inflight.get(tier) ?? 0) + 1); this.lastUsed.set(tier, Date.now()); }
+  end(tier: Tier) { this.inflight.set(tier, Math.max(0, (this.inflight.get(tier) ?? 1) - 1)); this.lastUsed.set(tier, Date.now()); }
+  /** stop on-demand models that have been idle for idle_unload_min minutes, so the memory is free again */
+  private startReaper() {
+    if (this.reaper) return;
+    this.reaper = setInterval(() => {
+      const c = this.cfg(), limit = (c.idle_unload_min ?? 10) * 60_000;
+      if (limit <= 0) return;
+      for (const tier of ["fast", "strong"] as Tier[]) {
+        if (!this.isOnDemand(tier) || !this.isUp(tier) || (this.inflight.get(tier) ?? 0) > 0) continue;
+        if (Date.now() - (this.lastUsed.get(tier) ?? 0) < limit) continue;
+        const slot = this.slots.get(tier); if (!slot) continue;
+        this.slots.delete(tier); try { slot.child.kill("SIGTERM"); } catch { /* gone */ }
+        if (this.current === tier) this.current = [...this.slots.keys()][0] ?? null;
+        this.onStatus(`${c.models[tier]?.name ?? tier} was idle for ${c.idle_unload_min ?? 10} min: unloaded (it loads again when needed)`);
+      }
+    }, 30_000);
+    this.reaper.unref();
   }
 
   portOf(tier: Tier): number {
@@ -318,7 +363,7 @@ export class DuoServer {
   private async doEnsure(tier: Tier): Promise<void> {
     const c = this.cfg(), m = c.models[tier];
     if (!m) throw new Error(`router: no "${tier}" model configured`);
-    if (this.isUp(tier)) { this.current = tier; return; }
+    if (this.isUp(tier)) { this.current = tier; this.lastUsed.set(tier, Date.now()); return; }
     const port = this.portOf(tier);
     // adopt a server that is already answering on that port (a previous run, or one started by hand)
     try {
@@ -332,7 +377,7 @@ export class DuoServer {
         this.slots.set(tier, { child: ch, port, log });
         ch.on("exit", () => { if (this.slots.get(tier)?.child === ch) this.slots.delete(tier); });
       });
-      this.ctx[tier] = ctx; this.current = tier; this.loadedAt = Date.now(); delete this.errors[tier];
+      this.ctx[tier] = ctx; this.current = tier; this.loadedAt = Date.now(); this.lastUsed.set(tier, Date.now()); delete this.errors[tier]; this.startReaper();
       this.onStatus(`${m.name} ready on :${port} (${ctx.toLocaleString()}-token context)`);
       void child;
     } catch (e: any) {
@@ -346,6 +391,7 @@ export class DuoServer {
     const c = this.cfg();
     for (const tier of ["strong", "fast"] as Tier[]) {
       if (!c.models[tier]) continue;
+      if (this.isOnDemand(tier)) { this.onStatus(`${c.models[tier]!.name} (${tier}) stays on disk until it is needed`); continue; }
       try { await this.ensure(tier); } catch (e: any) { log.warn(`router (resident): ${tier} model did not start: ${e.message}`); this.onStatus(`${tier} model did not start: ${e.message}`); }
     }
   }
@@ -359,7 +405,7 @@ export class DuoServer {
       if (child.exitCode === null) { child.kill("SIGKILL"); await Promise.race([done, sleep(5000)]); }
     }));
   }
-  kill(): void { for (const { child } of this.slots.values()) { try { child.kill("SIGKILL"); } catch { /* gone */ } } this.slots.clear(); }
+  kill(): void { if (this.reaper) clearInterval(this.reaper); for (const { child } of this.slots.values()) { try { child.kill("SIGKILL"); } catch { /* gone */ } } this.slots.clear(); }
 }
 
 // ── provider ────────────────────────────────────────────────────────────────────────────
@@ -398,28 +444,34 @@ export class RouterProvider implements Provider {
     const duo = this.server instanceof DuoServer ? this.server : null;
     // aux calls (judge, titles, summaries) carry no tools: they run on a model that is already up (the fast one in resident mode)
     if (!req.tools?.length) {
-      if (duo) { const t: Tier = duo.isUp("fast") ? "fast" : "strong"; if (!duo.isUp(t)) await duo.ensure(t); return this.innerFor(t).chat(req); }
+      if (duo) {
+        // background calls never load a model that is on demand: use the fast one only if it is already up
+        const t: Tier = duo.isUp("fast") ? "fast" : duo.isUp("strong") || !c.models.fast ? "strong" : "fast";
+        if (!duo.isUp(t)) await duo.ensure(t);
+        duo.begin(t); try { return await this.innerFor(t).chat(req); } finally { duo.end(t); }
+      }
       if (this.server.current) return this.inner.chat(req);
     }
     const hasStrong = !!c.models.strong;
     const d = decide({
       messages: req.messages, tokens: estimate(req.messages, req.tools), mode: this.mode, current: this.server.current,
       dwellMs: duo ? Number.MAX_SAFE_INTEGER : this.server.current ? Date.now() - this.server.loadedAt : 0, cfg: c, ctx: this.server.ctx,
-      strongAvailable: hasStrong && this.server.strongAvailable(), hasStrong, pin: req.tier,
+      strongAvailable: hasStrong && this.server.strongAvailable(), hasStrong, pin: req.tier, prefer: req.prefer, defaultTier: duo ? c.default_tier : undefined,
     });
     this.last = d;
     if (duo) {
       // both models are resident: no restart, just talk to the right port (start it if it is not up yet)
       if (d.tier !== duo.current) this.onEvent?.(`router → ${d.tier} model: ${d.reason}`);
+      let use: Tier = d.tier;
       try { await duo.ensure(d.tier); }
       catch (e: any) {
         const other: Tier = d.tier === "fast" ? "strong" : "fast";
         log.warn(`router: ${d.tier} model unavailable: ${e.message}`);
         this.onEvent?.(`router: the ${d.tier} model is not available (${e.message}); using the ${other} model`);
-        await duo.ensure(other);
-        return this.innerFor(other).chat(req);
+        await duo.ensure(other); use = other;
       }
-      return this.innerFor(d.tier).chat(req);
+      duo.begin(use);
+      try { return await this.innerFor(use).chat(req); } finally { duo.end(use); }
     }
     if (d.tier !== this.server.current) {
       this.onEvent?.(`router → ${d.tier} model: ${d.reason}`);

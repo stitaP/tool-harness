@@ -4,6 +4,7 @@
  * session unless `--now` is passed (prompt-cache friendly).
  */
 import { importPlan } from "../kanban/plan.js";
+import { enrichBoard, describeEnrich } from "../kanban/enrich.js";
 import { expandDocs, filterRange } from "../loop/pipeline.js";
 import { existsSync } from "node:fs";
 import { compressSession, estimateMessages } from "../loop/compression.js";
@@ -453,10 +454,60 @@ const COMMANDS = [
                 return ok(C.remove(id) ? "Removed." : "Not found.");
             return ok('Usage: /cron [list | add "<schedule>" <task> | run <id> | pause <id> | resume <id> | remove <id>]');
         } },
-    { name: "kanban", group: "automation", usage: "/kanban [list | board | report | show <key> | add <title> | comment <key> <text> | reply <key> <comment-id> <text> | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> [projectDir] [testsDir]]", help: "Jira-style kanban board", handler: async (a, c) => {
+    { name: "kanban", group: "automation", usage: "/kanban [enrich | boards | board new|use|rename|archive|unarchive|clear|delete|save <name> | restore <file> | move <keys> to <board> | link <key> <type> <key> | unlink <key> <key> | list | board | report | show <key> | add <title> | comment <key> <text> | reply <key> <comment-id> <text> | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> [projectDir] [testsDir]]", help: "Jira-style kanban board", handler: async (a, c) => {
             const [sub = "list", ...rest] = splitArgs(a);
             const K = c.rt.kanban;
             try {
+                if (sub === "enrich")
+                    return ok(describeEnrich(await enrichBoard(c.rt, { board: rest[0] })));
+                if (sub === "boards")
+                    return ok(K.describeBoards());
+                if (sub === "board" && rest.length) {
+                    const [act, ...r] = rest;
+                    const nm = r.join(" ");
+                    if (act === "new") {
+                        const b = K.boards.create(nm);
+                        K.boards.use(b.id);
+                        return ok(`Board "${b.name}" created and active.`);
+                    }
+                    if (act === "use")
+                        return ok(`Active board: "${K.boards.use(nm).name}"`);
+                    if (act === "rename") {
+                        const [from, ...to] = r;
+                        return ok(`Renamed to "${K.boards.rename(from, to.join(" ")).name}"`);
+                    }
+                    if (act === "archive")
+                        return ok(`Archived "${K.boards.archive(nm).name}"`);
+                    if (act === "unarchive")
+                        return ok(`Unarchived "${K.boards.unarchive(nm).name}"`);
+                    if (act === "save")
+                        return ok(`Saved to ${K.boards.save(nm || K.boards.active().name)}`);
+                    if (act === "restore")
+                        return ok(`Restored as "${K.boards.restore(r[0], r.slice(1).join(" ") || undefined).name}" (use it with /kanban board use <name>)`);
+                    if (act === "clear" || act === "delete") {
+                        const yes = r.includes("--yes");
+                        const target = r.filter((x) => x !== "--yes").join(" ") || K.boards.active().name;
+                        if (!yes)
+                            return ok(`This ${act === "clear" ? "removes every ticket from" : "deletes"} "${target}". A snapshot is saved first. Repeat with --yes: /kanban board ${act} ${target} --yes`);
+                        const x = act === "clear" ? K.boards.clear(target) : K.boards.delete(target);
+                        return ok(`Removed ${x.removed} ticket(s). Snapshot: ${x.snapshot} (restore with /kanban board restore <file>)`);
+                    }
+                    return ok("Usage: /kanban board new|use|rename|archive|unarchive|clear|delete|save|restore <name>");
+                }
+                if (sub === "move") {
+                    const i = rest.lastIndexOf("to");
+                    if (i < 1)
+                        return ok("Usage: /kanban move PT-1 PT-2 to <board>");
+                    return ok(`Moved ${K.boards.move(rest.slice(0, i), rest.slice(i + 1).join(" "))} ticket(s).`);
+                }
+                if (sub === "link") {
+                    const [a, ...m] = rest;
+                    const b = m.pop() ?? "";
+                    const r = K.boards.link(a, m.join(" ") || "relates to", b);
+                    return ok(`${K.get(a)?.key} ${r.type} ${r.key}${r.pending ? " (pending: that ticket does not exist yet)" : ""}`);
+                }
+                if (sub === "unlink")
+                    return ok(`Removed ${K.boards.unlink(rest[0], rest[1])} link(s).`);
                 if (sub === "add") {
                     const k = K.create({ title: rest.join(" ") });
                     return ok(`Added ${k.key} (${k.id})`);
