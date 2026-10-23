@@ -230,7 +230,7 @@ export class Boards {
     const from = this.K.get(fromRef); if (!from) throw new Error(`no ticket ${fromRef}`);
     const target = this.K.get(toRef);
     const key = (target?.key ?? toRef).trim().toUpperCase();
-    if (!/^[A-Z][A-Z0-9]*-\d+$/.test(key)) throw new Error(`"${toRef}" is not a ticket key (like PT-12)`);
+    if (!/^[A-Z][A-Z0-9]*-\d+$|^[A-Z]{1,6}\d{2,}$/.test(key)) throw new Error(`"${toRef}" is not a ticket key (like PT-12 or US0101)`);
     if (from.key?.toUpperCase() === key) throw new Error("a ticket cannot be linked to itself");
     from.refs = from.refs ?? [];
     let ref = from.refs.find((r) => r.key === key && r.type === type);

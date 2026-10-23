@@ -64,6 +64,8 @@ export interface Card {
     order?: number;
     /** the ticket writes the tests its test_cmd runs (tickets made from a design), so they need not exist before it starts */
     writes_tests?: boolean;
+    /** problems the automatic story check could not fix: a person should look before approving */
+    review_flags?: string[];
     verification?: {
         at: number;
         ok: boolean;
@@ -104,6 +106,10 @@ export type NewCard = {
     exports?: Record<string, string[]>;
     order?: number;
     writes_tests?: boolean;
+    review_flags?: string[];
+    /** an explicit key; or "feature": number it as the next main feature (MF010), its children follow (US0101) */
+    key?: string;
+    numbering?: "feature";
 };
 export declare class KanbanBoard {
     private rt;
@@ -121,6 +127,13 @@ export declare class KanbanBoard {
     get(ref: string): Card | null;
     private need;
     private save;
+    private get numbering();
+    /** The next main-feature key: MF001, MF002 … numbered across every board. */
+    featureKey(): string;
+    /** The feature number of a main-feature key (MF010 → "010"), or null when the key is not one. */
+    featureNumber(key?: string): string | null;
+    /** The next child key under a main feature: MF010 → US0101, US0102 … (bugs: BG0101 …). */
+    childKey(featureKey: string, type?: CardType): string;
     private nextKey;
     create(p: NewCard): Card;
     update(ref: string, patch: Partial<Card>, meta?: {

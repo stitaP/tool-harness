@@ -36,7 +36,7 @@ function slim(rt: Runtime, c: Card, byId: Map<string, Card>) {
     display: c.status === "ready" && waiting.length ? "waiting" : c.status, waits_on: waiting,
     parent: c.parent ?? null, priority: c.priority, attempts: c.attempts, criteria: c.acceptance?.length ?? 0, cases: c.test_cases?.length ?? 0, summary: c.summary ?? "",
     depends_on: c.depends_on.map((d) => byId.get(d)?.key ?? d), updated_at: c.updated_at, created_at: c.created_at, session_id: c.session_id ?? null,
-    active: rt.kanban.isActive(c.id), commits: c.commits?.length ?? 0, comments: c.comments.length,
+    active: rt.kanban.isActive(c.id), commits: c.commits?.length ?? 0, comments: c.comments.length, review_flags: c.review_flags ?? [],
     test: c.test_result ? { code: c.test_result.code, at: c.test_result.at } : null, has_test: !!c.test_cmd,
     verification: c.verification ? { ok: c.verification.ok, at: c.verification.at, shots: c.verification.shots } : null,
   };

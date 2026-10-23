@@ -35,14 +35,22 @@ function fakeChat(log) {
     if (/This is part \d+ of/.test(u)) j = { summary: "part summary", goals: ["offline notes"], components: [{ name: "store", purpose: "keeps notes" }], requirements: [/Search/.test(u) ? "search is case-insensitive" : "notes survive reload"], constraints: [], technologies: ["IndexedDB"], unknowns: ["IndexedDB transaction API"] };
     else if (/Plan the BUILD/.test(u)) j = { title: "Pocket Notes", summary: "Offline note app.", stack: ["JavaScript", "IndexedDB", "node:test"], test_strategy: "node --test", epics: [{ id: "E1", title: "Storage", goal: "notes persist", sections: [0, 1] }, { id: "E2", title: "Search", goal: "find notes", sections: [2] }] };
     else if (/research questions/.test(u)) j = { questions: [{ q: "How do IndexedDB transactions work?", why: "storage", query: "IndexedDB transaction readwrite" }, { q: "Unanswerable thing?", why: "x", query: "nothing-will-match" }] };
-    else if (/Research question:/.test(u)) j = { answer: "Open a readwrite transaction on the object store.", facts: ["db.transaction(store, 'readwrite') [SOURCE 1]"], used_sources: [1] };
+    else if (/Research question:/.test(u)) j = /transaction-spec-pdf/.test(u) || !/"complete"/.test(u)
+      ? { answer: "Open a readwrite transaction on the object store; the spec PDF gives the lifetime rules.", facts: ["db.transaction(store, 'readwrite') [SOURCE 1]"], used_sources: [1, 2], complete: true }
+      : { answer: "Partly: transactions exist.", facts: [], used_sources: [1], complete: false, next_query: "IndexedDB transaction lifetime spec pdf" };
+    else if (/GitHub repository search queries/.test(u)) j = { queries: ["offline notes indexeddb"] };
+    else if (/Judge whether the open-source repo/.test(u)) j = /good-notes/.test(u) ? { verdict: "fork", fit: "Same stack, does storage.", covers: ["notes survive reload"], gaps: ["search"], risks: [], how_to_use: "Copy its db.js as js/store.js." } : { verdict: "skip", fit: "Unrelated.", covers: [], gaps: [], risks: [], how_to_use: "" };
+    else if (/strict tech lead/.test(u)) j = { issues: [{ id: "E2-S1", problems: ["search order is not tested"] }] };
+    else if (/Rewrite each story below/.test(u)) j = { stories: JSON.parse(u.slice(u.indexOf("STORIES AND THEIR PROBLEMS:") + 28)).filter((b) => b.story.id !== "E1-S2").map((b) => ({ ...b.story,
+      steps: b.story.steps.length >= 2 ? b.story.steps : [...b.story.steps, "run the check"], acceptance: ["a saved note is listed again after a reload"], test_cases: ["save 'a', reload: 'a' is listed", "two notes come back newest first"] })) };
+    else if (/no story covers/.test(u)) j = { stories: [{ id: "E1-G1", epic: "E1", title: "Delete a note", what: "delete", why: "cleanup", depends_on: ["E1-S1"], files: ["js/store.js"], steps: ["add deleteNote", "test it"], acceptance: ["a deleted note is gone after reload"], test_cases: ["delete 'a': list is empty"], check_cmd: "node --test tests/store.test.js", references: [], undo: "", size: "S" }] };
     else if (/The design cites this source/.test(u)) j = { topic: "IndexedDB API", answer: "IndexedDB stores structured data in the browser.", facts: ["asynchronous API"] };
     else if (/EPIC E1/.test(u)) j = { stories: [
       { id: "E1-S1", title: "Create the notes store", what: "IndexedDB store", why: "persist", depends_on: [], files: ["js/store.js"], steps: ["write js/store.js"], acceptance: ["notes survive reload"], test_cases: ["save then load returns the note"], check_cmd: "node --test tests/store.test.js", references: ["https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API"], undo: "delete js/store.js", size: "S" },
       { id: "E1-S2", title: "Load notes on start", what: "load", why: "reload", depends_on: ["E1-S1", "E9-S9", "E1-S3"], files: [], steps: ["call load"], acceptance: [], test_cases: [], check_cmd: "n/a", references: [], undo: "", size: "M" },
       { id: "E1-S2", title: "Duplicate id story", what: "dup", why: "", depends_on: ["E1-S2"], files: [], steps: [], acceptance: ["x"], test_cases: [], check_cmd: "", references: [], undo: "", size: "S" }] };
     else if (/EPIC E2/.test(u)) j = { stories: [{ id: "E2-S1", title: "Search notes", what: "search", why: "find", depends_on: ["E1-S1"], files: ["js/search.js"], steps: ["write search"], acceptance: ["case-insensitive"], test_cases: ["'Milk' finds 'milk'"], check_cmd: "node --test tests/search.test.js", references: [], undo: "", size: "S" }] };
-    else if (/Check the story list/.test(u)) j = { gaps: ["No story covers deleting notes."] };
+    else if (/Check the story list/.test(u)) j = { gaps: /Delete a note/.test(u) ? [] : ["No story covers deleting notes."] };
     else j = {};
     return { content: JSON.stringify(j) };
   };
@@ -50,9 +58,17 @@ function fakeChat(log) {
 const fakeDeps = (log = []) => ({
   chat: fakeChat(log),
   search: async (q) => (/nothing-will-match/.test(q) ? { hits: [], source: "", errors: ["duckduckgo: no results", "wikipedia: no results"] }
+    : /spec pdf/.test(q) ? { hits: [{ title: "IndexedDB 3.0 spec", url: "https://w3c.example/IndexedDB-3.pdf", snippet: "" }], source: "duckduckgo-lite", errors: ["duckduckgo: captcha"] }
     : { hits: [{ title: "Video", url: "https://www.youtube.com/watch?v=1", snippet: "" }, { title: "Blog", url: "https://someblog.example/idb", snippet: "" }, { title: "IDBTransaction - MDN", url: "https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction", snippet: "" }], source: "duckduckgo", errors: [] }),
-  extract: async (url) => `# Page\nSource: ${url}\n\nSome documentation text about transactions.`,
+  extract: async (url) => (/\.pdf$/.test(url) ? `# PDF: ${url}\nSource: ${url}\n\ntransaction-spec-pdf: a transaction ends when no requests are pending.` : `# Page\nSource: ${url}\n\nSome documentation text about transactions.`),
   contextWindow: 32000,
+  probe: async (url) => !/dead\.example/.test(url),
+  github: async () => [
+    { full_name: "a/good-notes", url: "https://github.com/a/good-notes", clone_url: "https://github.com/a/good-notes.git", description: "", stars: 50, license: "MIT", size_kb: 300, pushed_at: "2026-09-01T00:00:00Z", language: "JavaScript" },
+    { full_name: "b/no-license", url: "https://github.com/b/no-license", clone_url: "https://github.com/b/no-license.git", description: "", stars: 900, license: "", size_kb: 10, pushed_at: "2026-01-01T00:00:00Z", language: "JavaScript" },
+    { full_name: "c/other", url: "https://github.com/c/other", clone_url: "https://github.com/c/other.git", description: "", stars: 20, license: "GPL-3.0", size_kb: 100, pushed_at: "2025-01-01T00:00:00Z", language: "Go" }],
+  clone: async (_u, dest) => { mkdirSync(dest, { recursive: true }); writeFileSync(join(dest, "README.md"), `# ${dest.split("/").pop()}\nOffline notes.`); writeFileSync(join(dest, "package.json"), "{}"); },
+  which: (cmd) => cmd !== "cargo",
 });
 
 test("design: chunking keeps headings, respects the size, and splits huge blocks", async () => {
@@ -83,7 +99,7 @@ test("design: reads Markdown, HTML and folders", async () => {
 });
 
 test("design: page picking, cited links, plan normalising and key prefixes", async () => {
-  const { pickPages, citedUrls, normalizePlan, keyPrefixFor } = await D();
+  const { pickPages, pickPdfs, citedUrls, normalizePlan } = await D();
   const picked = pickPages([{ title: "v", url: "https://youtube.com/watch?v=1" }, { title: "b", url: "https://blog.example/x" }, { title: "m", url: "https://developer.mozilla.org/en-US/docs/Web/API/fetch" }], 2);
   assert.deepEqual(picked.map((h) => h.title), ["m", "b"]);
   assert.deepEqual(citedUrls("see https://a.org/x. and (https://b.org/y) and https://a.org/x and https://c.org/pic.png"), ["https://a.org/x", "https://b.org/y"]);
@@ -93,9 +109,7 @@ test("design: page picking, cited links, plan normalising and key prefixes", asy
   assert.deepEqual(n[1].depends_on, ["A"]);          // forward (C) and unknown (Z) dependencies are dropped
   assert.deepEqual(n[2].depends_on, ["B"]);
   assert.equal(n[1].acceptance.length, 1);           // filled in
-  assert.equal(keyPrefixFor("The Agentic Phone", new Set(["PT"])), "TAP");
-  assert.equal(keyPrefixFor("Pocket Notes", new Set(["PN"])), "PN2");
-  assert.equal(keyPrefixFor("x", new Set()), "XDS".slice(0, 2) === "XD" ? "XD" : "X");
+  assert.deepEqual(pickPdfs([{ title: "a", url: "https://x.org/a.pdf" }, { title: "b", url: "https://x.org/b.html" }, { title: "c", url: "https://x.org/c.PDF?dl=1" }], 5).map((h) => h.title), ["a", "c"]);
 });
 
 test("design → board: researched draft tickets that only run after approval", async () => {
@@ -108,12 +122,18 @@ test("design → board: researched draft tickets that only run after approval", 
     const log = [], progress = [];
     const before = K.boards.activeId();
     const r = await designToBoard(t.rt, { source: src, project: proj, onProgress: (p) => progress.push(p) }, fakeDeps(log));
-    assert.equal(r.stories, 4); assert.equal(r.epics, 2);
-    assert.deepEqual(r.gaps, ["No story covers deleting notes."]);
+    assert.equal(r.stories, 5); assert.equal(r.epics, 2);       // 4 planned + 1 written for the uncovered requirement
+    assert.deepEqual(r.gaps, []);                                // the gap story closed it
+    assert.deepEqual(r.pdfs, ["https://w3c.example/IndexedDB-3.pdf"]);
+    assert.deepEqual(r.priorArt.map((a) => [a.repo, a.verdict]), [["a/good-notes", "fork"], ["c/other", "skip"]]);   // no-license repo never downloaded
+    assert.ok(existsSync(join(r.dir, "prior-art", "a__good-notes", "README.md")));
+    assert.match(readFileSync(join(r.dir, "prior-art.md"), "utf8"), /GPL-3\.0 is copyleft/);
     // research: the cited MDN page plus one answered question; the unanswerable one is recorded as not answered
     const research = readFileSync(join(r.dir, "research.md"), "utf8");
     assert.match(research, /IDBTransaction - MDN\]\(https:\/\/developer\.mozilla\.org/);
     assert.match(research, /Not answered: no results/);
+    assert.match(research, /`IndexedDB transaction readwrite` → `IndexedDB transaction lifetime spec pdf` \(via duckduckgo, duckduckgo-lite\)/);   // a second round
+    assert.match(research, /PDFs read: https:\/\/w3c\.example\/IndexedDB-3\.pdf/);
     assert.equal(r.findings, 2);
     assert.ok(existsSync(join(r.dir, "source.md")) && existsSync(join(r.dir, "plan.json")) && existsSync(join(r.dir, "report.md")));
     // the board is a draft, not active, and nothing can be dispatched
@@ -122,7 +142,10 @@ test("design → board: researched draft tickets that only run after approval", 
     assert.equal(K.boards.activeId(), before);
     const cards = K.list(undefined, r.board.id);
     assert.ok(cards.every((c) => c.status === "backlog"));
-    assert.ok(cards.every((c) => c.key.startsWith("PN-")));
+    const features = cards.filter((c) => c.type === "epic").map((c) => c.key).sort();
+    assert.deepEqual(features, ["MF001", "MF002"]);
+    assert.ok(cards.filter((c) => c.parent === "MF001").every((c) => /^US001\d$/.test(c.key)));
+    assert.ok(cards.filter((c) => c.parent === "MF002").every((c) => /^US002\d$/.test(c.key)));
     const s1 = cards.find((c) => c.title === "Create the notes store");
     assert.equal(s1.test_cmd, "node --test tests/store.test.js");
     assert.deepEqual(s1.files, ["js/store.js"]);
@@ -136,22 +159,31 @@ test("design → board: researched draft tickets that only run after approval", 
     assert.equal(v.passed, false); assert.match(v.detail, /tests failed/); assert.doesNotMatch(v.detail, /missing/);
     K.update(s1.key, { status: "backlog" });
     const s2 = cards.find((c) => c.title === "Load notes on start");
+    assert.equal(s2.key, "US0012");
+    // the check could not fix it (the model did not rewrite it): flagged for the reviewer, with a comment
+    assert.ok(s2.review_flags.some((f) => /fewer than 2 concrete steps/.test(f)));
+    assert.match(s2.comments.at(-1).text, /Needs review/);
+    const del = cards.find((c) => c.title === "Delete a note");
+    assert.equal(del.parent, "MF001"); assert.equal(del.key, "US0014");
+    assert.equal(r.fixed >= 1, true);
     assert.deepEqual(s2.depends_on, [s1.id]);           // E9-S9 (unknown) and E1-S3 (unknown) dropped
     assert.equal(s2.test_cmd, undefined);                // "n/a" is not a command
     assert.equal(s2.writes_tests, undefined);
     const search = cards.find((c) => c.title === "Search notes");
     assert.deepEqual(search.depends_on, [s1.id]);        // across epics
+    assert.equal(search.review_flags, undefined);        // rewritten by the fix pass: two test cases now
+    assert.equal(search.test_cases.length, 2);
     assert.equal(cards.find((c) => c.type === "epic" && /Storage/.test(c.title)).status, "backlog");
-    assert.match(cards.find((c) => c.type === "epic" && /Storage/.test(c.title)).comments.map((x) => x.text).join(), /deleting notes/);
+    assert.match(cards.find((c) => c.type === "epic" && /Storage/.test(c.title)).body, /a\/good-notes \(fork, MIT\)/);
     assert.ok(progress.some((p) => p.stage === "research") && progress.at(-1).stage === "done");
     // approving one ticket, then the rest
     let a = K.boards.approve(r.board.id, { keys: [s1.key] });
     assert.deepEqual(a.approved, [s1.key]); assert.equal(a.board.draft, true);
     assert.equal(K.boards.activeId(), r.board.id);
     assert.deepEqual(K.ready().map((c) => c.key), [s1.key]);
-    assert.throws(() => K.boards.approve(r.board.id, { keys: ["PN-999"] }), /not a ticket/);
+    assert.throws(() => K.boards.approve(r.board.id, { keys: ["US9999"] }), /not a ticket/);
     a = K.boards.approve(r.board.id);
-    assert.equal(a.approved.length, 3); assert.equal(a.board.draft, false);
+    assert.equal(a.approved.length, 4); assert.equal(a.board.draft, false);
     assert.equal(K.get(s2.key).status, "ready");
   } finally { await t.close(); }
 });
@@ -177,11 +209,11 @@ test("kanban tool: design runs in the background; approve needs a board", async 
     assert.throws(() => startDesignJob(t.rt, { source: src, project: join(t.work, "p3") }, fakeDeps()), /already going/);
     for (let i = 0; i < 100 && designJob(t.rt, job.id).status === "running"; i++) await new Promise((r) => setTimeout(r, 20));
     const j = designJob(t.rt, job.id);
-    assert.equal(j.status, "done"); assert.equal(j.result.stories, 4);
+    assert.equal(j.status, "done"); assert.equal(j.result.stories, 5);
     const { kanbanTool } = await import(dist("kanban/board.js"));
     const ctx = { rt: t.rt, cwd: t.work, session: { source: "web" } };
-    assert.match(await kanbanTool.handler({ action: "design_status", id: job.id }, ctx), /Board "Pocket Notes" \(draft\): 4 stories/);
-    assert.match(await kanbanTool.handler({ action: "approve", board: "Pocket Notes" }, ctx), /Approved 4 ticket\(s\)/);
+    assert.match(await kanbanTool.handler({ action: "design_status", id: job.id }, ctx), /Board "Pocket Notes" \(draft\): 5 stories in 2 main features/);
+    assert.match(await kanbanTool.handler({ action: "approve", board: "Pocket Notes" }, ctx), /Approved 5 ticket\(s\)/);
   } finally { await t.close(); }
 });
 
@@ -216,4 +248,62 @@ test("HTTP: review edits, single and board approval, design job validation", asy
     assert.equal(bad.status, 400); assert.match((await bad.json()).error, /project is required/);
     assert.equal((await (await fetch(`${srv.url}/api/kanban/design`, { headers: H })).json()).job === undefined, false);
   } finally { await srv.close(); await t.close(); }
+});
+
+test("numbering: MF010 is the 10th main feature, its stories are US0101, US0102 …, bugs BG0101; keys stay unique", async () => {
+  const t = await setup();
+  try {
+    const K = t.rt.kanban;
+    let f;
+    for (let i = 1; i <= 10; i++) f = K.create({ title: `Feature ${i}`, type: "epic", numbering: "feature" });
+    assert.equal(f.key, "MF010");
+    const a = K.create({ title: "Design the tables", parent: "MF010" });
+    const b = K.create({ title: "Write migrations", parent: "MF010" });
+    const bug = K.create({ title: "Index missing", type: "bug", parent: "MF010" });
+    assert.deepEqual([a.key, b.key, bug.key], ["US0101", "US0102", "BG0101"]);
+    assert.equal(K.create({ title: "First of feature 1", parent: "MF001" }).key, "US0011");
+    for (let i = 3; i <= 10; i++) K.create({ title: `s${i}`, parent: "MF010" });
+    assert.equal(K.create({ title: "eleventh", parent: "MF010" }).key, "US01011");   // feature digits are fixed, so this still reads as feature 010, story 11
+    assert.equal(K.create({ title: "plain" }).key.startsWith("PT-"), true);          // tickets outside features keep the project key
+    assert.throws(() => K.create({ title: "dup", key: "US0101" }), /already used/);
+    assert.equal(K.featureNumber("MF010"), "010"); assert.equal(K.featureNumber("PT-3"), null);
+    assert.ok(K.boards.link(a.key, "relates to", "US0102"));                           // new keys are valid link targets
+  } finally { await t.close(); }
+});
+
+test("commit hook: the key must be followed by a separator (US0101 does not accept US01010: …)", async () => {
+  const t = await setup();
+  try {
+    const { execFileSync } = await import("node:child_process");
+    const git = (...a) => execFileSync("git", a, { cwd: t.work, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "-q", "-b", "main"); git("config", "user.email", "t@example.com"); git("config", "user.name", "T");
+    writeFileSync(join(t.work, "a.txt"), "1"); git("add", "."); git("commit", "-qm", "init");
+    const K = t.rt.kanban;
+    K.create({ title: "F", type: "epic", numbering: "feature" });
+    const c = K.create({ title: "story", parent: "MF001", cwd: t.work });
+    await K.beginGit(c);
+    writeFileSync(join(t.work, "a.txt"), "2"); git("add", ".");
+    assert.throws(() => git("commit", "-qm", `${c.key}0: wrong ticket`), /must start with the active card key/);
+    git("commit", "-qm", `${c.key}: right ticket`);
+    await K.endGit(c);
+  } finally { await t.close(); }
+});
+
+test("story check: rules a reviewer applies, and prior-art selection", async () => {
+  const { checkStory, pickRepos, repoSnapshot } = await D();
+  const base = { id: "E1-S1", epic: "E1", title: "Add search", what: "search", why: "", depends_on: [], files: ["js/search.js"], steps: ["write it", "test it"], acceptance: ["'milk' finds 'Milk'"], test_cases: ["'milk' → 1 hit", "'' → all notes"], check_cmd: "node --test tests/search.test.js", references: [], undo: "", size: "M" };
+  assert.deepEqual(checkStory(base), []);
+  const p = checkStory({ ...base, steps: ["x"], acceptance: ["search works properly"], test_cases: [], check_cmd: "cargo test", files: ["/etc/x", "../y"], size: "L" }, (c) => c !== "cargo");
+  for (const re of [/fewer than 2/, /not checkable/, /0 test case/, /needs "cargo"/, /\/etc\/x" must be relative/, /\.\.\/y" must be relative/, /too big/]) assert.ok(p.some((x) => re.test(x)), `missing ${re}`);
+  assert.match(checkStory({ ...base, check_cmd: "rm -rf build && npm test" }).join(), /destructive/);
+  assert.match(checkStory({ ...base, check_cmd: "" }).join(), /no check command/);
+  assert.deepEqual(checkStory({ ...base, acceptance: ["responds fast: under 200 ms for 1000 notes"] }), []);   // a number makes "fast" checkable
+  const R = (n, lic, stars, kb = 10, archived = false) => ({ full_name: n, url: "", clone_url: "", description: "", stars, license: lic, size_kb: kb, pushed_at: "", language: "", archived });
+  assert.deepEqual(pickRepos([R("a", "MIT", 5), R("b", "", 999), R("c", "NOASSERTION", 50), R("d", "Apache-2.0", 70), R("e", "MIT", 80, 999_999), R("f", "MIT", 90, 10, true), R("A", "MIT", 5)], 3, 200).map((r) => r.full_name), ["d", "a"]);
+  const dir = mkdtempSync(join(tmpdir(), "repo-"));
+  mkdirSync(join(dir, "src")); mkdirSync(join(dir, "node_modules")); mkdirSync(join(dir, ".git"));
+  writeFileSync(join(dir, "README.md"), "# Repo\nDoes notes."); writeFileSync(join(dir, "package.json"), '{"name":"r"}'); writeFileSync(join(dir, "src", "db.js"), "x"); writeFileSync(join(dir, "node_modules", "junk.js"), "x");
+  const snap = repoSnapshot(dir);
+  assert.match(snap, /FILES \(3\): README\.md, package\.json, src\/db\.js/);
+  assert.match(snap, /MANIFEST package\.json:\n\{"name":"r"\}/); assert.match(snap, /README:\n# Repo/);
 });

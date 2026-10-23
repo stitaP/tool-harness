@@ -65,6 +65,7 @@ export declare function boardSummary(rt: Runtime, boardRef?: string): {
         active: boolean;
         commits: number;
         comments: number;
+        review_flags: string[];
         test: {
             code: number;
             at: number;
@@ -172,6 +173,7 @@ export declare function cardDetail(rt: Runtime, ref: string): {
     exports?: Record<string, string[]>;
     order?: number;
     writes_tests?: boolean;
+    review_flags?: string[];
     verification?: {
         at: number;
         ok: boolean;

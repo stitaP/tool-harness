@@ -66,7 +66,8 @@ export const DEFAULT_CONFIG = {
     store_bridge: { enabled: true, path: "" },
     hooks: {},
     kanban: { workers: 1, enabled: true, guard_chat_writes: true, project_key: "PT", cwd: "", max_attempts: 5, test_timeout_s: 600, enforce_commit_keys: true, verify: true, worker_tier: "auto", default_board: "Main", tier_by_kind: { tests: "fast", gate: "fast" },
-        design: { max_searches: 12, max_cited: 6, pages_per_question: 2, stories_per_epic: 8, search_delay_ms: 2500 } }, // tier_by_kind: which router tier a kind of ticket prefers (the small model for testing work); design: design document → draft board (kanban design)
+        numbering: { feature_prefix: "MF", story_prefix: "US", bug_prefix: "BG", feature_digits: 3, story_digits: 1 }, // design boards: MF010 = 10th main feature, US0101 = its first story
+        design: { max_searches: 12, max_cited: 6, pages_per_question: 2, pdfs_per_question: 1, research_rounds: 2, max_pdf_mb: 40, prior_art: true, max_repos: 3, max_repo_mb: 200, check_references: true, stories_per_epic: 8, search_delay_ms: 2500 } }, // tier_by_kind: which router tier a kind of ticket prefers (the small model for testing work); design: design document → draft board (kanban design)
     lsp: { enabled: true, servers: {} }, // lsp tool: extra/override language servers
     router: ROUTER_DEFAULTS, // starts/stops llama-server and picks a fast or strong model per request
 };

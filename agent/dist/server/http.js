@@ -717,7 +717,7 @@ export async function startServer(rt, opts = {}) {
                         return json(res, 400, { error: "source is required: a design file, folder or http(s) URL" });
                     if (!b.project)
                         return json(res, 400, { error: "project is required: the folder the work happens in" });
-                    const job = startDesignJob(rt, { source: String(b.source), project: String(b.project), board: b.board || undefined, keyPrefix: b.key || undefined, research: b.research !== false,
+                    const job = startDesignJob(rt, { source: String(b.source), project: String(b.project), board: b.board || undefined, research: b.research !== false, priorArt: b.prior_art === false ? false : undefined,
                         maxSearches: b.searches !== undefined && b.searches !== "" ? Number(b.searches) : undefined, storiesPerEpic: b.stories !== undefined && b.stories !== "" ? Number(b.stories) : undefined });
                     return json(res, 200, { ok: true, job });
                 }
@@ -834,6 +834,8 @@ export async function startServer(rt, opts = {}) {
                         patch.test_cases = list(b.test_cases);
                     if (b.files !== undefined)
                         patch.files = list(b.files);
+                    if (b.review_flags !== undefined)
+                        patch.review_flags = list(b.review_flags);
                     if (typeof b.test_cmd === "string")
                         patch.test_cmd = b.test_cmd.trim() || undefined;
                     if (b.depends_on !== undefined)

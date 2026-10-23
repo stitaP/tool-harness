@@ -22,7 +22,7 @@ ${HOOK_MARK}
 f="$(git rev-parse --git-dir)/stitap-card"
 [ -f "$f" ] || exit 0
 key=$(cat "$f")
-head -n 1 "$1" | grep -q "^$key" || { echo "stitaP: commit message must start with the active card key $key" >&2; exit 1; }
+head -n 1 "$1" | grep -qE "^$key([^A-Za-z0-9]|$)" || { echo "stitaP: commit message must start with the active card key $key" >&2; exit 1; }
 `;
 function run(cmd, args, cwd, timeoutMs = 20_000) {
     return new Promise((res) => {
@@ -67,6 +67,38 @@ export class KanbanBoard {
     need(ref) { const c = this.get(ref); if (!c)
         throw new Error(`no card ${ref}`); return c; }
     save(c) { c.updated_at = Date.now(); this.rt.db.putRecord("kanban", c.id, c); this.rt.emitEvent("*", { type: "kanban", card: c }); }
+    get numbering() { return this.cfg.numbering; } // defaults in config.ts: MF / US / BG, 3 feature digits, 1 story digit
+    /** The next main-feature key: MF001, MF002 … numbered across every board. */
+    featureKey() {
+        const n = this.numbering, re = new RegExp(`^${n.feature_prefix}(\\d{${n.feature_digits}})$`);
+        let max = 0;
+        for (const c of this.rt.db.listRecords("kanban")) {
+            const m = c.key?.match(re);
+            if (m)
+                max = Math.max(max, Number(m[1]));
+        }
+        return `${n.feature_prefix}${String(max + 1).padStart(n.feature_digits, "0")}`;
+    }
+    /** The feature number of a main-feature key (MF010 → "010"), or null when the key is not one. */
+    featureNumber(key) {
+        const n = this.numbering;
+        return new RegExp(`^${n.feature_prefix}(\\d{${n.feature_digits}})$`).exec(key ?? "")?.[1] ?? null;
+    }
+    /** The next child key under a main feature: MF010 → US0101, US0102 … (bugs: BG0101 …). */
+    childKey(featureKey, type = "task") {
+        const n = this.numbering, num = this.featureNumber(featureKey);
+        if (!num)
+            throw new Error(`${featureKey} is not a main-feature key (like ${n.feature_prefix}${"1".padStart(n.feature_digits, "0")})`);
+        const prefix = type === "bug" ? n.bug_prefix : n.story_prefix;
+        const re = new RegExp(`^${prefix}${num}(\\d+)$`);
+        let max = 0;
+        for (const c of this.rt.db.listRecords("kanban")) {
+            const m = c.key?.match(re);
+            if (m)
+                max = Math.max(max, Number(m[1]));
+        }
+        return `${prefix}${num}${String(max + 1).padStart(n.story_digits, "0")}`;
+    }
     nextKey(prefix) {
         const re = new RegExp(`^${prefix}-(\\d+)$`);
         let max = 0;
@@ -82,11 +114,14 @@ export class KanbanBoard {
         const now = Date.now();
         const status = p.status ?? (p.type === "epic" ? "backlog" : "ready");
         const parent = p.parent ? this.get(p.parent)?.key ?? p.parent : undefined;
-        const c = { id: shortId("k_"), board: p.board ?? this.boards.activeId(), key: this.nextKey(prefix), type: p.type ?? "task", title: p.title, body: p.body ?? "", status, priority: p.priority ?? 0,
+        if (p.key && this.get(p.key))
+            throw new Error(`ticket key ${p.key} is already used`);
+        const key = p.key?.toUpperCase() ?? (p.numbering === "feature" && p.type === "epic" ? this.featureKey() : parent && this.featureNumber(parent) && p.type !== "epic" ? this.childKey(parent, p.type) : this.nextKey(prefix));
+        const c = { id: shortId("k_"), board: p.board ?? this.boards.activeId(), key, type: p.type ?? "task", title: p.title, body: p.body ?? "", status, priority: p.priority ?? 0,
             depends_on: (p.depends_on ?? []).map((d) => this.get(d)?.id ?? d), review: !!p.review, comments: [], created_at: now, updated_at: now, attempts: 0,
             ...(parent ? { parent } : {}), ...(p.links?.length ? { links: p.links } : {}), ...(p.acceptance?.length ? { acceptance: p.acceptance } : {}),
             ...(p.test_cmd ? { test_cmd: p.test_cmd } : {}), ...(p.spec ? { spec: p.spec } : {}), ...(p.cwd ? { cwd: p.cwd } : {}), ...(p.functional?.length ? { functional: p.functional } : {}),
-            ...(p.kind ? { kind: p.kind } : {}), ...(p.writes_tests ? { writes_tests: true } : {}), ...(p.section ? { section: p.section } : {}), ...(p.summary ? { summary: p.summary } : {}), ...(p.test_cases?.length ? { test_cases: p.test_cases } : {}), ...(p.files?.length ? { files: p.files } : {}), ...(p.exports && Object.keys(p.exports).length ? { exports: p.exports } : {}), ...(p.order !== undefined ? { order: p.order } : {}),
+            ...(p.kind ? { kind: p.kind } : {}), ...(p.writes_tests ? { writes_tests: true } : {}), ...(p.review_flags?.length ? { review_flags: p.review_flags } : {}), ...(p.section ? { section: p.section } : {}), ...(p.summary ? { summary: p.summary } : {}), ...(p.test_cases?.length ? { test_cases: p.test_cases } : {}), ...(p.files?.length ? { files: p.files } : {}), ...(p.exports && Object.keys(p.exports).length ? { exports: p.exports } : {}), ...(p.order !== undefined ? { order: p.order } : {}),
             history: [{ at: now, from: null, to: status, by: "user", reason: "created" }], commits: [] };
         this.save(c);
         this.rollup(c.parent);
@@ -541,7 +576,7 @@ export class KanbanBoard {
 }
 export const kanbanTool = {
     name: "kanban", toolset: "kanban", tier: "standard",
-    description: "Project tracker (kanban tool call, not a shell command): plan, track and verify multi-task projects. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria, a test_cmd that must pass before done, threaded comments, status history and linked git commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, enrich (look up the technical words in the tickets on official sites and add short REFERENCE NOTES with links), import (turn a plan folder of phase-NN.md specs into epics and tasks: one story per spec section, written in plain steps with files, exact names and test cases). WRITING A TICKET BY HAND: one focus per ticket; plain short sentences; in the body list WHAT TO BUILD, FILES, NAMES, STEPS, what each part must do, and TEST CASES (a normal case and an edge case for every function); put the files in acceptance so they can be checked. DESIGN TO BOARD: design (path = a design document: file, folder or URL; project = folder the work happens in; optional board, key_prefix) reads the document, researches it on the web and builds a DRAFT board whose tickets wait in backlog; it runs in the background, follow it with design_status, stop it with design_stop. approve (board, optional keys) moves reviewed draft tickets to ready and makes the board active. Only approve when the user has asked you to run the stories.",
+    description: "Project tracker (kanban tool call, not a shell command): plan, track and verify multi-task projects. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria, a test_cmd that must pass before done, threaded comments, status history and linked git commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, enrich (look up the technical words in the tickets on official sites and add short REFERENCE NOTES with links), import (turn a plan folder of phase-NN.md specs into epics and tasks: one story per spec section, written in plain steps with files, exact names and test cases). WRITING A TICKET BY HAND: one focus per ticket; plain short sentences; in the body list WHAT TO BUILD, FILES, NAMES, STEPS, what each part must do, and TEST CASES (a normal case and an edge case for every function); put the files in acceptance so they can be checked. DESIGN TO BOARD: design (path = a design document: file, folder or URL; project = folder the work happens in; optional board) reads the document, researches it on the web (pages, PDFs, follow-up searches), downloads and judges free GitHub repos that already do the same, and builds a DRAFT board (main features MF010, their stories US0101 …, each story checked and flagged when it needs a person) whose tickets wait in backlog; it runs in the background, follow it with design_status, stop it with design_stop. approve (board, optional keys) moves reviewed draft tickets to ready and makes the board active. Only approve when the user has asked you to run the stories.",
     parameters: obj({
         action: enm(["create", "list", "show", "update", "comment", "dispatch", "resume", "link_commit", "sync", "test", "verify", "gentests", "regression", "board", "report", "import", "boards", "board_new", "board_use", "board_rename", "board_archive", "board_unarchive", "board_clear", "board_delete", "board_save", "board_restore", "move", "link", "unlink", "enrich", "design", "design_status", "design_stop", "approve"], "operation"),
         id: str("card id or key (PT-12)"),
@@ -628,7 +663,7 @@ export const kanbanTool = {
                 if (!a.path)
                     return "design needs path (the design document: a file, a folder or an http(s) URL) and project (the folder the work happens in)";
                 const project = String(a.project ?? ctx.cwd);
-                const job = startDesignJob(ctx.rt, { source: String(a.path), project, board: a.board, keyPrefix: a.key_prefix });
+                const job = startDesignJob(ctx.rt, { source: String(a.path), project, board: a.board });
                 return `Started design run ${job.id}: reading ${job.source}, researching it on the web and planning stories for ${project}. It takes a while; check it with kanban action=design_status. The board it makes is a DRAFT: nothing runs until the user reviews and approves it.`;
             }
             case "design_status": return describeJob(designJob(ctx.rt, a.id));

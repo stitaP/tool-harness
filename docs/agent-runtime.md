@@ -205,28 +205,44 @@ Give the agent any design (Markdown, text, HTML, PDF, Word/RTF/ODT, a web page, 
 build for you to review:
 
 ```bash
-harness kanban design ~/specs/design.md --project ~/work/app [--board "App v1"] [--key AP] [--searches 12] [--stories 8] [--no-research]
-harness kanban approve "App v1" [AP-3 AP-4]     # after review: tickets → ready, board becomes active
-harness kanban run                              # or press "Run workers" in the UI
+harness kanban design ~/specs/design.md --project ~/work/app [--board "App v1"] [--searches 12] [--stories 8] [--no-research] [--no-prior-art]
+harness kanban approve "App v1" [US0101 US0102]   # after review: tickets → ready, board becomes active
+harness kanban run                                 # or press "Run workers" in the UI
 ```
 
 1. **Read**: the document is split by headings into parts that fit the model's context; each part's goals, components,
-   requirements, constraints, technologies and open questions are noted.
+   requirements, constraints, technologies and open questions are noted. PDFs are read with `pdftotext` when installed,
+   otherwise with macOS PDFKit; Word/RTF/ODT with the built-in office readers.
 2. **Research**: the sources the design cites are read first; then the technologies and open questions become web
    searches (the configured `web.search_provider`, falling back to DuckDuckGo lite and Wikipedia when one is blocked).
-   Official documentation is read before blogs; every finding keeps its source URL.
-3. **Plan**: epics in build order, then 2–8 one-day stories per epic in a fixed card shape (context capsule, steps,
-   how to check it works, test cases, how to undo, references). A last pass lists requirements no story covers; those
-   gaps are posted on the first epic.
-4. **Board**: a new board marked *draft*; every ticket waits in backlog, so no worker starts anything. In the UI
-   (board menu → "New board from a design document…") open a ticket to read, edit or approve it, or approve the whole
-   board. Only approved tickets run, and the normal done checks apply (dependencies done, real content, committed under
-   the key, check command passing).
+   Official documentation is read before blogs, relevant PDFs are downloaded (kept in `sources/`) and read, and while
+   the model says an answer is incomplete it searches again with new words (`research_rounds`, default 2). Every
+   finding keeps its source URL.
+3. **Prior art**: GitHub is searched for projects that already do the same thing. Only free-licensed (MIT, Apache,
+   BSD, GPL …; repos without a license are never used), unarchived repos under `max_repo_mb` are shallow-cloned into
+   `prior-art/`. Nothing in them is run (no hooks, no LFS, no install). The model judges each one: fork, library,
+   reference or skip; copyleft licenses are flagged. The stories then build on the useful ones. `GITHUB_TOKEN` in
+   `.env` raises GitHub's search limit.
+4. **Plan**: epics in build order, then 2–8 one-day stories per epic in a fixed card shape (context capsule, steps,
+   how to check it works, test cases, how to undo, references).
+5. **Check**: every story is checked by rules (at least 2 steps, acceptance a tester can verify, enough test cases, a
+   check command whose tool is installed and that is not destructive, relative file paths, one-day size), every
+   reference link is opened (dead ones are dropped), and the model reviews each epic like a tech lead. Failing stories
+   are rewritten once; requirements no story covers get new stories; whatever is still wrong is flagged on the ticket
+   ("⚑ needs review", with a comment) for you to decide.
+6. **Board**: a new board marked *draft*; every ticket waits in backlog, so no worker starts anything. Each epic is a
+   main feature numbered across all boards (`MF010` = the 10th feature) and its stories follow it (`US0101`,
+   `US0102` …; bugs `BG0101`). Prefixes and digits are set in `kanban.numbering`. In the UI (board menu → "New board
+   from a design document…") open a ticket to read, edit, resolve its flags or approve it, or approve the whole board.
+   Only approved tickets run, and the normal done checks apply (dependencies done, real content, committed under the
+   key, check command passing).
 
 Everything a run produced stays in `<project>/.stitap/design/<name>-<date>/`: `source.md` (the spec the tickets point
-at; workers may not edit it), `outline.json`, `research.md`, `plan.json` and `report.md`. In chat, the agent uses
+at; workers may not edit it), `outline.json`, `research.md`, `sources/` (PDFs), `prior-art/` and `prior-art.md`,
+`plan.json` and `report.md`. In chat, the agent uses
 `kanban action=design` / `design_status` / `approve`, and approves only when you ask. Settings: `kanban.design`
-(`max_searches`, `max_cited`, `pages_per_question`, `stories_per_epic`, `search_delay_ms`). Planning quality follows the
+(`max_searches`, `max_cited`, `pages_per_question`, `pdfs_per_question`, `research_rounds`, `max_pdf_mb`, `prior_art`,
+`max_repos`, `max_repo_mb`, `check_references`, `stories_per_epic`, `search_delay_ms`). Planning quality follows the
 model: route it to the strong tier when the router is on.
 
 ## 5. Integrations

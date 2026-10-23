@@ -185,10 +185,24 @@ export declare const DEFAULT_CONFIG: {
         worker_tier: "auto" | "fast" | "strong";
         default_board: string;
         tier_by_kind: Record<string, "fast" | "strong">;
+        numbering: {
+            feature_prefix: string;
+            story_prefix: string;
+            bug_prefix: string;
+            feature_digits: number;
+            story_digits: number;
+        };
         design: {
             max_searches: number;
             max_cited: number;
             pages_per_question: number;
+            pdfs_per_question: number;
+            research_rounds: number;
+            max_pdf_mb: number;
+            prior_art: boolean;
+            max_repos: number;
+            max_repo_mb: number;
+            check_references: boolean;
             stories_per_epic: number;
             search_delay_ms: number;
         };

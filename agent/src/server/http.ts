@@ -535,7 +535,7 @@ export async function startServer(rt: Runtime, opts: { host?: string; port?: num
         try {
           if (!b.source) return json(res, 400, { error: "source is required: a design file, folder or http(s) URL" });
           if (!b.project) return json(res, 400, { error: "project is required: the folder the work happens in" });
-          const job = startDesignJob(rt, { source: String(b.source), project: String(b.project), board: b.board || undefined, keyPrefix: b.key || undefined, research: b.research !== false,
+          const job = startDesignJob(rt, { source: String(b.source), project: String(b.project), board: b.board || undefined, research: b.research !== false, priorArt: b.prior_art === false ? false : undefined,
             maxSearches: b.searches !== undefined && b.searches !== "" ? Number(b.searches) : undefined, storiesPerEpic: b.stories !== undefined && b.stories !== "" ? Number(b.stories) : undefined });
           return json(res, 200, { ok: true, job });
         } catch (e) { return json(res, 400, { error: errMsg(e) }); }
@@ -598,6 +598,7 @@ export async function startServer(rt: Runtime, opts: { host?: string; port?: num
           if (b.acceptance !== undefined) patch.acceptance = list(b.acceptance);
           if (b.test_cases !== undefined) patch.test_cases = list(b.test_cases);
           if (b.files !== undefined) patch.files = list(b.files);
+          if (b.review_flags !== undefined) patch.review_flags = list(b.review_flags);
           if (typeof b.test_cmd === "string") patch.test_cmd = b.test_cmd.trim() || undefined;
           if (b.depends_on !== undefined) patch.depends_on = list(b.depends_on).map((k: string) => { const d = K.get(k); if (!d) throw new Error(`no ticket ${k}`); if (d.id === c.id) throw new Error("a ticket cannot depend on itself"); return d.id; });
           if (b.status === "backlog" || b.status === "ready") { if (c.type === "epic") return json(res, 400, { error: "an epic's status follows its tickets" }); patch.status = b.status; }
