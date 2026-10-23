@@ -62,6 +62,8 @@ export interface Card {
     files?: string[];
     exports?: Record<string, string[]>;
     order?: number;
+    /** the ticket writes the tests its test_cmd runs (tickets made from a design), so they need not exist before it starts */
+    writes_tests?: boolean;
     verification?: {
         at: number;
         ok: boolean;
@@ -101,6 +103,7 @@ export type NewCard = {
     files?: string[];
     exports?: Record<string, string[]>;
     order?: number;
+    writes_tests?: boolean;
 };
 export declare class KanbanBoard {
     private rt;
@@ -141,6 +144,8 @@ export declare class KanbanBoard {
     /** Find commits whose message starts with the card key and link them. Returns the number of new links. */
     syncCommits(ref: string): Promise<number>;
     beginGit(c: Card): Promise<void>;
+    /** Null when the card's work is in git under its key; otherwise what is missing. Cards outside a git repo are not checked. */
+    private uncommitted;
     endGit(c: Card): Promise<void>;
     private missingTestFiles;
     /** Run the card's test command. The result is stored on the card. */
@@ -171,6 +176,8 @@ export declare class KanbanBoard {
     tick(): Promise<number>;
     /** Each attempt must try something different, and from the second one on it must look things up on the web. */
     attemptPlan(n: number, max: number): string;
+    /** A spec too long to read in one go (a whole design book): the worker searches it instead. */
+    private specIsLarge;
     private buildPrompt;
     work(ref: string): Promise<Card>;
     fmt(c: Card): string;

@@ -175,6 +175,7 @@ export declare const DEFAULT_CONFIG: {
     kanban: {
         workers: number;
         enabled: boolean;
+        guard_chat_writes: boolean;
         project_key: string;
         cwd: string;
         max_attempts: number;
@@ -184,6 +185,13 @@ export declare const DEFAULT_CONFIG: {
         worker_tier: "auto" | "fast" | "strong";
         default_board: string;
         tier_by_kind: Record<string, "fast" | "strong">;
+        design: {
+            max_searches: number;
+            max_cited: number;
+            pages_per_question: number;
+            stories_per_epic: number;
+            search_delay_ms: number;
+        };
     };
     lsp: {
         enabled: boolean;

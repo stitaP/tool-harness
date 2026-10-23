@@ -93,7 +93,8 @@ export const DEFAULT_CONFIG = {
   plugins: { enabled: true },
   store_bridge: { enabled: true, path: "" },
   hooks: {} as Record<string, string[]>,
-  kanban: { workers: 1, enabled: true, project_key: "PT", cwd: "", max_attempts: 5, test_timeout_s: 600, enforce_commit_keys: true, verify: true, worker_tier: "auto" as "auto" | "fast" | "strong", default_board: "Main", tier_by_kind: { tests: "fast", gate: "fast" } as Record<string, "fast" | "strong"> }, // tier_by_kind: which router tier a kind of ticket prefers (the small model for testing work),
+  kanban: { workers: 1, enabled: true, guard_chat_writes: true, project_key: "PT", cwd: "", max_attempts: 5, test_timeout_s: 600, enforce_commit_keys: true, verify: true, worker_tier: "auto" as "auto" | "fast" | "strong", default_board: "Main", tier_by_kind: { tests: "fast", gate: "fast" } as Record<string, "fast" | "strong">,
+    design: { max_searches: 12, max_cited: 6, pages_per_question: 2, stories_per_epic: 8, search_delay_ms: 2500 } }, // tier_by_kind: which router tier a kind of ticket prefers (the small model for testing work); design: design document → draft board (kanban design)
   lsp: { enabled: true, servers: {} as Record<string, { command: string; args?: string[]; exts: string[]; roots?: string[]; languageId?: string }> }, // lsp tool: extra/override language servers
   router: ROUTER_DEFAULTS as RouterConfig, // starts/stops llama-server and picks a fast or strong model per request
 };

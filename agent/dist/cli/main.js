@@ -1,6 +1,7 @@
 /** `harness` command-line entry point. */
 import { importPlan } from "../kanban/plan.js";
 import { enrichBoard, describeEnrich } from "../kanban/enrich.js";
+import { designToBoard } from "../kanban/design.js";
 import { existsSync, readFileSync, statSync, watch, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -22,8 +23,8 @@ import { bold, cyan, gray, green, magenta, red, toolLine } from "./ui.js";
 export function parseArgs(argv) {
     const flags = {};
     const cmd = [];
-    const valueFlags = { "-p": "profile", "--profile": "profile", "--cwd": "cwd", "-m": "model", "--model": "model", "--resume": "resume", "-r": "resume", "--port": "port", "--host": "host", "-q": "query", "--query": "query", "--format": "format", "--deliver": "deliver", "--out": "out", "--concurrency": "concurrency", "--days": "days", "--name": "name", "--skills": "skills", "--goal": "goal", "--base-url": "base-url", "--provider": "provider", "--context-window": "context-window", "--project": "project", "--tests": "tests", "--key": "key", "--test": "test", "--type": "type", "--parent": "parent", "--reply": "reply", "--to": "to", "--board": "board", "--file": "file" };
-    const BOOL = new Set(["--enrich", "--yes", "--yolo", "--json", "-v", "--verbose", "-f", "--follow", "--errors", "--now", "--gateway", "--no-open", "-h", "--help", "--version"]);
+    const valueFlags = { "--searches": "searches", "--stories": "stories", "-p": "profile", "--profile": "profile", "--cwd": "cwd", "-m": "model", "--model": "model", "--resume": "resume", "-r": "resume", "--port": "port", "--host": "host", "-q": "query", "--query": "query", "--format": "format", "--deliver": "deliver", "--out": "out", "--concurrency": "concurrency", "--days": "days", "--name": "name", "--skills": "skills", "--goal": "goal", "--base-url": "base-url", "--provider": "provider", "--context-window": "context-window", "--project": "project", "--tests": "tests", "--key": "key", "--test": "test", "--type": "type", "--parent": "parent", "--reply": "reply", "--to": "to", "--board": "board", "--file": "file" };
+    const BOOL = new Set(["--no-research", "--enrich", "--yes", "--yolo", "--json", "-v", "--verbose", "-f", "--follow", "--errors", "--now", "--gateway", "--no-open", "-h", "--help", "--version"]);
     let queryFromRest = false;
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
@@ -63,6 +64,8 @@ export function parseArgs(argv) {
             flags.gateway = true;
         else if (a === "--no-open")
             flags.noOpen = true;
+        else if (a === "--no-research")
+            flags.noResearch = true;
         else if (a === "-h" || a === "--help")
             flags.help = true;
         else if (a === "--version")
@@ -101,6 +104,8 @@ ${bold("Setup")}
 
 ${bold("Automation")}
   harness cron list | add "<schedule>" "<prompt>" [--deliver telegram:<id>] | run <id> | pause <id> | resume <id> | rm <id> | tick
+  harness kanban design <doc|folder|url> --project <dir> [--board n] [--key AP] [--searches 12] [--no-research]   draft board from a design, for review
+  harness kanban approve <board> [keys…]   reviewed draft tickets → ready
   harness kanban done <key> | enrich [board] | import … [--enrich] | boards | board new|use|rename|archive|unarchive|clear|delete|save|restore <name> [--yes] | move <keys> --to <board> | link <key> <type> <key> | list | board | report | show <key> | add "<title>" [--goal ..] [--test "<cmd>"] [--type epic|task|bug] | comment <key> "<text>" [--reply <id>] | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> --project <dir> [--tests <dir>] [--key PT]
   harness batch <prompts.jsonl> --out traj.jsonl [--concurrency 4]
 
@@ -391,6 +396,17 @@ export async function main(argv) {
                     console.log(importPlan(K, { planDir: a1, projectDir: f.project, testsDir: f.tests, keyPrefix: f.key, board: f.board }));
                     if (f.enrich)
                         console.log(describeEnrich(await enrichBoard(rt, { onProgress: (m) => console.log(gray("  " + m)) })));
+                }
+                else if (sub === "design") {
+                    if (!a1)
+                        throw new Error("usage: kanban design <file|folder|url> --project <dir> [--board name] [--key AP] [--searches 12] [--stories 8] [--no-research]");
+                    const r = await designToBoard(rt, { source: a1, project: f.project ?? process.cwd(), board: f.board, keyPrefix: f.key, research: !f.noResearch, maxSearches: f.searches !== undefined ? Number(f.searches) : undefined, storiesPerEpic: f.stories !== undefined ? Number(f.stories) : undefined,
+                        onProgress: (p) => console.log(gray(`  [${p.stage}] ${p.message}`)) });
+                    console.log(`draft board "${r.board.name}": ${r.stories} stories in ${r.epics} epics, ${r.findings} research findings\nreport: ${r.report}${r.gaps.length ? `\nreview found ${r.gaps.length} gap(s) — read the report` : ""}\nreview the tickets, then: kanban approve "${r.board.name}"`);
+                }
+                else if (sub === "approve") {
+                    const r = K.boards.approve(a1 ?? K.boards.active().name, { keys: rest.slice(2) });
+                    console.log(`approved ${r.approved.length} ticket(s) on "${r.board.name}"${r.approved.length ? "; it is the active board (kanban run / dispatch to start)" : ""}`);
                 }
                 else if (sub === "enrich")
                     console.log(describeEnrich(await enrichBoard(rt, { board: a1 ?? f.board, onProgress: (m) => console.log(gray("  " + m)) })));

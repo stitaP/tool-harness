@@ -19,6 +19,8 @@ export interface VerifyReport {
     shots: string[];
     markdown: string;
 }
+/** Files that exist but hold nothing real: empty, or only comments and whitespace (the placeholders a scaffold leaves). Folders are skipped. */
+export declare function stubFiles(cwd: string, files?: string[]): string[];
 /** Files, exports and pages a phase spec promises. */
 export declare function parseManifest(md: string): Manifest;
 export declare function exportsName(src: string, name: string): boolean;

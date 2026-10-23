@@ -46,9 +46,37 @@ function proseItems(body: string): string[] {
     if (/^```/.test(raw)) { fence = !fence; continue; }
     if (fence || /^\s*\|/.test(raw) || /^\s*#/.test(raw) || !raw.trim() || /^\s*---+\s*$/.test(raw)) continue;
     const t = plain(raw.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").replace(/^>\s*/, ""));
-    if (t.length > 3) out.push(cut(t, 240));
+    if (t.length <= 3) continue;
+    // a wrapped sentence continues on the next line: after a trailing comma, or when the next line starts in lower case
+    // and is not a list item ("… not in `STAFF_ROLES`" / "show \"…\" and do NOT save"): keep them together
+    const prev = out[out.length - 1];
+    const wrapped = prev && (/,$/.test(prev) || (/^[a-z]/.test(t) && !/^\s*(?:[-*+]|\d+[.)])\s/.test(raw) && !/[.!?:]$/.test(prev)));
+    if (wrapped) out[out.length - 1] = cut(`${prev} ${t}`, 400);
+    else out.push(cut(t, 240));
   }
-  return [...new Set(out)];
+  // a line that ends in ":" introduces a code block or list that is shown under EXAMPLES, so say so
+  return [...new Set(out.map((x) => (/:$/.test(x) ? `${x} (the example is under EXAMPLES FROM THE SPEC below)` : x)))];
+}
+
+/** Official documentation to read for the languages and APIs a piece of work uses. */
+export function researchFor(files: string[], text: string, kind: "story" | "tests" = "story"): string[] {
+  const has = (re: RegExp) => files.some((f) => re.test(f));
+  const docs: string[] = [];
+  if (kind === "tests" || has(/\.m?js$/)) docs.push("JavaScript: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference  (Node ES modules: https://nodejs.org/api/esm.html)");
+  if (kind === "tests") docs.push("Test runner: https://nodejs.org/api/test.html  (assertions: https://nodejs.org/api/assert.html)");
+  if (has(/\.css$/)) docs.push("CSS: https://developer.mozilla.org/en-US/docs/Web/CSS/Reference");
+  if (has(/\.html?$/) || kind === "tests") docs.push("HTML and accessibility: https://developer.mozilla.org/en-US/docs/Web/HTML/Reference  (ARIA: https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA)");
+  if (/localStorage|sessionStorage|storage/i.test(text)) docs.push("Web Storage: https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API");
+  if (has(/\.json$/)) docs.push("JSON: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON");
+  const apis = [...new Set((text.match(/\b(?:Intl\.\w+|URLSearchParams|Math\.\w+|Array\.\w+|Object\.\w+|Number\.\w+|String\.prototype\.\w+|JSON\.\w+|Date|querySelector(?:All)?|IntersectionObserver|fetch)\b/g) ?? []))].slice(0, 6);
+  const L = ["RESEARCH FIRST (spend at most 3 lookups, then start work)",
+    "- Read the official page for each language below. Use docs_lookup, or browser_navigate then browser_snapshot. Do not rely on memory for exact behaviour.",
+    ...docs.map((d) => `- ${d}`)];
+  if (apis.length) L.push(`- APIs this work names, look up each one on MDN before using it: ${apis.join(", ")}`);
+  L.push("- If an official page does not answer your question, run ONE web_search with the exact function or error message, and prefer results from developer.mozilla.org, nodejs.org or the library's own docs.",
+    "- When a command or test fails, read the FIRST error line and look that exact message up before changing code. Change one thing at a time and re-run.",
+    "- Write what you learned as ONE comment on this ticket: the page you used and the fact you took from it.");
+  return L;
 }
 function importsOf(body: string, file?: string): string[] {
   if (!file) return [];
@@ -148,17 +176,18 @@ export function buildStory(i: StoryInput): Story {
   L.push("", "WHY", `- The goal of phase ${i.num}: ${i.goal ? cut(plain(i.goal).replace(/^./, (c) => c.toLowerCase()), 260) : "see the spec."}`, "- Other files will use your work, so every name must be exactly as written.");
   L.push("", "YOUR FOCUS", `- Do only this story. Do not start the next one. Do not change files that belong to other stories.`);
   L.push("", "READ THESE FIRST", ...res.map((r, k) => `${k + 1}. ${r}`));
+  L.push("", ...researchFor(files, sec.body, "story"));
   if (files.length) L.push("", "FILES YOU MUST LEAVE IN PLACE", ...files.map((f) => `- ${f}`));
   if (names.length) L.push("", "NAMES YOU MUST EXPORT (spell them exactly)", ...Object.entries(man.exports).flatMap(([f, ns]) => ns.map((n) => `- ${n}   (in ${f})`)));
   L.push("", "STEPS",
-    `1. Read the files in "READ THESE FIRST".`,
+    `1. Read the files in "READ THESE FIRST", then do the "RESEARCH FIRST" lookups.`,
     `2. ${files.length ? `Create or update: ${files.join(", ")}.` : "Make the change the spec describes."}`,
     `3. Work down the list "WHAT EACH PART MUST DO" one line at a time. Tick each line off when it is done.`,
     `4. Compare with the "TEST CASES" list below. Try each one. Fix anything that fails.`,
     `5. Commit with the ticket key first, for example "<KEY>: ${files[0] ? `add ${posix.basename(files[0])}` : "done"}".`,
     `6. If something is unclear, write a comment on this ticket. Do not guess.`);
   if (must.length) L.push("", "WHAT EACH PART MUST DO", ...must.map((m, k) => `${k + 1}. ${m}`));
-  if (blocks.length) { L.push("", "EXAMPLES FROM THE SPEC (copy the shape exactly)"); for (const b of blocks.slice(0, 3)) L.push("```" + b.lang, ...b.text.split("\n").slice(0, 40), "```"); }
+  if (blocks.length) { L.push("", "EXAMPLES FROM THE SPEC (copy the shape exactly)"); for (const b of blocks.slice(0, 6)) L.push("```" + b.lang, ...b.text.split("\n").slice(0, 60), "```"); }
   L.push("", "RULES",
     "- Use only what the spec says. Do not add extra features or extra files.",
     "- Keep every name, path and spelling exactly as written.",

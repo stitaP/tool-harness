@@ -4,16 +4,17 @@
  * to worker sessions in goal mode; interrupted cards (power cut, crash) are put back on the queue by recover().
  */
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { shortId, errMsg } from "../util/misc.js";
 import { log } from "../util/log.js";
 import { obj, str, enm, arr, int, bool } from "../tools/types.js";
 import { importPlan } from "./plan.js";
 import { expandHome } from "../safety/paths.js";
-import { verifyCard, writeVerifyTest, checkBuilt } from "./verify.js";
+import { verifyCard, writeVerifyTest, checkBuilt, stubFiles } from "./verify.js";
 import { Boards } from "./boards.js";
 import { enrichBoard, describeEnrich } from "./enrich.js";
+import { startDesignJob, designJob, stopDesignJob, describeJob } from "./design.js";
 const HOOK_MARK = "# stitap-kanban-hook";
 const HOOK = `#!/bin/sh
 ${HOOK_MARK}
@@ -85,7 +86,7 @@ export class KanbanBoard {
             depends_on: (p.depends_on ?? []).map((d) => this.get(d)?.id ?? d), review: !!p.review, comments: [], created_at: now, updated_at: now, attempts: 0,
             ...(parent ? { parent } : {}), ...(p.links?.length ? { links: p.links } : {}), ...(p.acceptance?.length ? { acceptance: p.acceptance } : {}),
             ...(p.test_cmd ? { test_cmd: p.test_cmd } : {}), ...(p.spec ? { spec: p.spec } : {}), ...(p.cwd ? { cwd: p.cwd } : {}), ...(p.functional?.length ? { functional: p.functional } : {}),
-            ...(p.kind ? { kind: p.kind } : {}), ...(p.section ? { section: p.section } : {}), ...(p.summary ? { summary: p.summary } : {}), ...(p.test_cases?.length ? { test_cases: p.test_cases } : {}), ...(p.files?.length ? { files: p.files } : {}), ...(p.exports && Object.keys(p.exports).length ? { exports: p.exports } : {}), ...(p.order !== undefined ? { order: p.order } : {}),
+            ...(p.kind ? { kind: p.kind } : {}), ...(p.writes_tests ? { writes_tests: true } : {}), ...(p.section ? { section: p.section } : {}), ...(p.summary ? { summary: p.summary } : {}), ...(p.test_cases?.length ? { test_cases: p.test_cases } : {}), ...(p.files?.length ? { files: p.files } : {}), ...(p.exports && Object.keys(p.exports).length ? { exports: p.exports } : {}), ...(p.order !== undefined ? { order: p.order } : {}),
             history: [{ at: now, from: null, to: status, by: "user", reason: "created" }], commits: [] };
         this.save(c);
         this.rollup(c.parent);
@@ -145,7 +146,7 @@ export class KanbanBoard {
         if (!kids.length)
             return;
         const st = kids.every((k) => k.status === "done") ? "done" : kids.some((k) => k.status === "blocked") ? "blocked"
-            : kids.some((k) => k.status === "running" || k.status === "review" || k.status === "done") ? "running" : "ready";
+            : kids.some((k) => k.status === "running" || k.status === "review" || k.status === "done") ? "running" : kids.every((k) => k.status === "backlog") ? "backlog" : "ready"; // all drafts: the epic is a draft too
         if (st !== epic.status) {
             epic.history = [...(epic.history ?? []), { at: Date.now(), from: epic.status, to: st, by: "system", reason: "child cards changed" }];
             epic.status = st;
@@ -219,6 +220,25 @@ export class KanbanBoard {
             }
         }
     }
+    /** Null when the card's work is in git under its key; otherwise what is missing. Cards outside a git repo are not checked. */
+    async uncommitted(c) {
+        if (!this.cfg.enforce_commit_keys || !c.key || c.type === "epic")
+            return null;
+        const cwd = this.cwdOf(c);
+        if (!(await this.gitDir(cwd)))
+            return null;
+        await this.syncCommits(c.id).catch(() => 0);
+        const problems = [];
+        if (!this.need(c.id).commits?.length)
+            problems.push(`no commit message starts with ${c.key}. Commit the work as "${c.key}: …". If the files were already complete before this ticket, record that with: git commit --allow-empty -m "${c.key}: already done by <KEY>"`);
+        if (c.files?.length) {
+            const r = await run("git", ["status", "--porcelain", "--", ...c.files], cwd);
+            const dirty = r.code === 0 ? r.out.split("\n").filter(Boolean).map((l) => l.replace(/^\s*\S+\s+/, "")) : [];
+            if (dirty.length)
+                problems.push(`not committed (new or modified): ${dirty.join(", ")}`);
+        }
+        return problems.length ? `Work not committed:\n- ${problems.join("\n- ")}` : null;
+    }
     async endGit(c) {
         const gd = await this.gitDir(this.cwdOf(c));
         if (gd) {
@@ -231,7 +251,7 @@ export class KanbanBoard {
     }
     // ── tests ─────────────────────────────────────────────────────
     missingTestFiles(c) {
-        if (!c.test_cmd || c.kind === "tests")
+        if (!c.test_cmd || c.kind === "tests" || c.writes_tests)
             return []; // the card that WRITES the tests may not need them to exist yet
         const cwd = this.cwdOf(c);
         return [...c.test_cmd.matchAll(/(?:^|\s)((?:\.\/)?tests?\/[\w./-]+\.(?:m?js|ts))\b/g)].map((m) => m[1]).filter((p) => !existsSync(join(cwd, p)));
@@ -248,14 +268,34 @@ export class KanbanBoard {
     }
     /** Move a card to done only if its tests pass. */
     async complete(ref, by = "agent") {
-        const c = this.need(ref);
+        let c = this.need(ref);
+        const retry = () => (this.active.has(c.id) ? "running" : c.attempts >= (this.cfg.max_attempts ?? 5) ? "blocked" : "ready");
+        // the board order is the plan: a ticket is not done before the tickets it depends on
+        const done = new Set(this.listAll("done").map((x) => x.id));
+        const waiting = c.depends_on.filter((d) => !done.has(d)).map((d) => this.get(d)?.key ?? d);
+        if (waiting.length) {
+            this.comment(c.id, `Cannot be done yet: it depends on ${waiting.join(", ")}, which ${waiting.length === 1 ? "is" : "are"} not done.`, "system");
+            return { card: c.status === "done" || c.status === "running" && !this.active.has(c.id) ? this.update(c.id, { status: "ready" }, { by: "system", reason: "dependencies not done" }) : c, passed: false, detail: `waiting on ${waiting.join(", ")}` };
+        }
+        // a worker whose session ended in an error did not finish, whatever is on disk
+        if (by === "worker" && /^\s*Error\b/.test(c.result ?? "")) {
+            this.comment(c.id, `The worker session ended with an error, so the work is not counted: ${(c.result ?? "").slice(0, 300)}`, "system");
+            return { card: this.update(c.id, { status: retry() }, { by: "system", reason: "worker error" }), passed: false, detail: "worker session ended with an error" };
+        }
         if (c.files?.length || (c.exports && Object.keys(c.exports).length)) {
-            const bad = checkBuilt(this.cwdOf(c), c.files, c.exports);
+            const bad = [...checkBuilt(this.cwdOf(c), c.files, c.exports), ...stubFiles(this.cwdOf(c), c.files)];
             if (bad.length) {
                 this.comment(c.id, `Not built yet:\n- ${bad.join("\n- ")}`, "system");
-                return { card: this.update(c.id, { status: this.active.has(c.id) ? "running" : c.attempts >= (this.cfg.max_attempts ?? 5) ? "blocked" : "ready" }, { by: "system", reason: "files or exports missing" }), passed: false, detail: `not built: ${bad.join("; ")}` };
+                return { card: this.update(c.id, { status: retry() }, { by: "system", reason: "files or exports missing" }), passed: false, detail: `not built: ${bad.join("; ")}` };
             }
         }
+        // the work must be in git under the ticket key: committed, nothing of it left untracked or modified
+        const unsaved = await this.uncommitted(c);
+        if (unsaved) {
+            this.comment(c.id, unsaved, "system");
+            return { card: this.update(c.id, { status: retry() }, { by: "system", reason: "work not committed" }), passed: false, detail: unsaved };
+        }
+        c = this.need(c.id);
         if (!c.test_cmd)
             return { card: this.update(c.id, { status: c.review ? "review" : "done" }, { by, reason: c.files?.length ? "files and exports present" : undefined }), passed: true, detail: c.files?.length ? "files and exports present" : "no test_cmd" };
         const missing = this.missingTestFiles(c);
@@ -372,6 +412,15 @@ export class KanbanBoard {
         const i = Math.min(Math.max(n, 1), plans.length) - 1;
         return `ATTEMPT ${n} of ${max}. ${plans[i]}${n > 1 ? "\nBefore coding, run at least one web lookup (docs_lookup or web_search) and note in your report which page you used." : ""}`;
     }
+    /** A spec too long to read in one go (a whole design book): the worker searches it instead. */
+    specIsLarge(c) {
+        try {
+            return !!c.spec && statSync(join(this.cwdOf(c), c.spec)).size > 60_000;
+        }
+        catch {
+            return false;
+        }
+    }
     buildPrompt(c) {
         const deps = c.depends_on.map((d) => this.get(d)).filter(Boolean).map((d) => `- ${d.key ?? d.id} ${d.title}: ${(d.result ?? "").slice(0, 600)}`).join("\n");
         const parent = c.parent ? this.get(c.parent) : null;
@@ -381,12 +430,13 @@ export class KanbanBoard {
             `Kanban card ${c.key ?? c.id} (${c.type ?? "task"}): ${c.title}`,
             parent ? `Epic: ${parent.key} ${parent.title}` : "",
             c.body,
-            c.spec ? `Specification file: ${c.spec} (read it fully before writing code; follow its file names, export names and structure exactly).` : "",
+            c.spec ? (this.specIsLarge(c) ? `Specification file: ${c.spec}. It is long: do not read all of it. Search it (search_files or grep) for the names and headings this card mentions, read those parts, and follow its file names, names and choices exactly.` : `Specification file: ${c.spec} (read it fully before writing code; follow its file names, export names and structure exactly).`) : "",
             c.section ? `Your part of the spec: section "${c.section}". Do ONLY this section; other sections are separate cards.` : "",
             c.files?.length ? `Files this card must leave in place: ${c.files.join(", ")}${c.exports && Object.keys(c.exports).length ? `. Required exports: ${Object.entries(c.exports).map(([f, n]) => `${f} → ${n.join(", ")}`).join("; ")}` : ""}.` : "",
             c.acceptance?.length ? `Acceptance criteria:\n${c.acceptance.map((a) => `- ${a}`).join("\n")}` : "",
-            c.test_cmd ? `Definition of done: \`${c.test_cmd}\` must exit 0. Run it yourself and fix your code until it does. The tests are provided: never write, edit or delete files under tests/.` : "",
-            c.key ? `Git: commit your work as you go; every commit message must start with "${c.key}" (for example "${c.key}: add cart view").` : "",
+            c.test_cmd ? (c.writes_tests ? `Definition of done: \`${c.test_cmd}\` must exit 0. This card writes those tests itself: make them check the acceptance criteria and test cases above with real assertions (no placeholders), then make the code pass them. Never weaken a test to make it pass, and never edit tests that belong to other cards.` : `Definition of done: \`${c.test_cmd}\` must exit 0. Run it yourself and fix your code until it does. The tests are provided: never write, edit or delete files under tests/.`) : "",
+            c.key ? `Git: commit your work as you go; every commit message must start with "${c.key}" (for example "${c.key}: add cart view"). The card is NOT done while its files are uncommitted or no commit carries ${c.key}. If the work was already complete before this card, say so in a commit: git commit --allow-empty -m "${c.key}: already done by <KEY>".` : "",
+            c.spec ? `The specification is read-only for you. If it is wrong or unclear, comment on this card; never edit ${c.spec} or other docs/phase-*.md files.` : "",
             deps ? `Results of prerequisite cards:\n${deps}` : "",
             resumed ? `This is a resumed card (attempt ${c.attempts}). Do not start over: run "git log --oneline" and "git status", read the comments below and the previous result, and continue from where the work stopped.\nPrevious result:\n${c.result ?? "(none)"}${c.commits?.length ? `\nCommits so far:\n${c.commits.map((x) => `- ${x.hash.slice(0, 8)} ${x.message}`).join("\n")}` : ""}` : "",
             thread ? `Comments:\n${thread}` : "",
@@ -491,9 +541,9 @@ export class KanbanBoard {
 }
 export const kanbanTool = {
     name: "kanban", toolset: "kanban", tier: "standard",
-    description: "Project tracker (kanban tool call, not a shell command): plan, track and verify multi-task projects. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria, a test_cmd that must pass before done, threaded comments, status history and linked git commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, enrich (look up the technical words in the tickets on official sites and add short REFERENCE NOTES with links), import (turn a plan folder of phase-NN.md specs into epics and tasks: one story per spec section, written in plain steps with files, exact names and test cases). WRITING A TICKET BY HAND: one focus per ticket; plain short sentences; in the body list WHAT TO BUILD, FILES, NAMES, STEPS, what each part must do, and TEST CASES (a normal case and an edge case for every function); put the files in acceptance so they can be checked.",
+    description: "Project tracker (kanban tool call, not a shell command): plan, track and verify multi-task projects. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria, a test_cmd that must pass before done, threaded comments, status history and linked git commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, enrich (look up the technical words in the tickets on official sites and add short REFERENCE NOTES with links), import (turn a plan folder of phase-NN.md specs into epics and tasks: one story per spec section, written in plain steps with files, exact names and test cases). WRITING A TICKET BY HAND: one focus per ticket; plain short sentences; in the body list WHAT TO BUILD, FILES, NAMES, STEPS, what each part must do, and TEST CASES (a normal case and an edge case for every function); put the files in acceptance so they can be checked. DESIGN TO BOARD: design (path = a design document: file, folder or URL; project = folder the work happens in; optional board, key_prefix) reads the document, researches it on the web and builds a DRAFT board whose tickets wait in backlog; it runs in the background, follow it with design_status, stop it with design_stop. approve (board, optional keys) moves reviewed draft tickets to ready and makes the board active. Only approve when the user has asked you to run the stories.",
     parameters: obj({
-        action: enm(["create", "list", "show", "update", "comment", "dispatch", "resume", "link_commit", "sync", "test", "verify", "gentests", "regression", "board", "report", "import", "boards", "board_new", "board_use", "board_rename", "board_archive", "board_unarchive", "board_clear", "board_delete", "board_save", "board_restore", "move", "link", "unlink", "enrich"], "operation"),
+        action: enm(["create", "list", "show", "update", "comment", "dispatch", "resume", "link_commit", "sync", "test", "verify", "gentests", "regression", "board", "report", "import", "boards", "board_new", "board_use", "board_rename", "board_archive", "board_unarchive", "board_clear", "board_delete", "board_save", "board_restore", "move", "link", "unlink", "enrich", "design", "design_status", "design_stop", "approve"], "operation"),
         id: str("card id or key (PT-12)"),
         title: str("card title"),
         body: str("details / acceptance criteria"),
@@ -573,6 +623,19 @@ export const kanbanTool = {
                 if (!a.path)
                     return "import needs path (folder with phase-NN.md files)";
                 return importPlan(K, { planDir: String(a.path), projectDir: a.project, testsDir: a.tests, keyPrefix: a.key_prefix, board: a.board });
+            }
+            case "design": {
+                if (!a.path)
+                    return "design needs path (the design document: a file, a folder or an http(s) URL) and project (the folder the work happens in)";
+                const project = String(a.project ?? ctx.cwd);
+                const job = startDesignJob(ctx.rt, { source: String(a.path), project, board: a.board, keyPrefix: a.key_prefix });
+                return `Started design run ${job.id}: reading ${job.source}, researching it on the web and planning stories for ${project}. It takes a while; check it with kanban action=design_status. The board it makes is a DRAFT: nothing runs until the user reviews and approves it.`;
+            }
+            case "design_status": return describeJob(designJob(ctx.rt, a.id));
+            case "design_stop": return stopDesignJob(a.id) ? "Stopping the design run." : "No design run is going.";
+            case "approve": {
+                const r = K.boards.approve(String(a.board ?? K.boards.active().name), { keys: a.keys });
+                return r.approved.length ? `Approved ${r.approved.length} ticket(s) on "${r.board.name}" (${r.approved.slice(0, 12).join(", ")}${r.approved.length > 12 ? " …" : ""}); it is the active board now. Use kanban action=dispatch to start the workers.` : `Nothing to approve on "${r.board.name}" (no backlog tickets${a.keys?.length ? " with those keys" : ""}).`;
             }
             case "enrich": return describeEnrich(await enrichBoard(ctx.rt, { board: a.board, signal: ctx.signal, onProgress: ctx.progress }));
             case "boards": return K.describeBoards();

@@ -84,6 +84,40 @@ export class Boards {
         this.rt.db.putRecord("kanban_board", b.id, b);
         return b;
     }
+    /** Mark a board as a draft made from a design (or clear the mark). */
+    setDraft(ref, d) {
+        const b = this.need(ref);
+        const n = { ...b, draft: d.draft, ...(d.design ? { design: d.design } : {}), ...(d.project ? { project: d.project } : {}) };
+        this.rt.db.putRecord("kanban_board", n.id, n);
+        return n;
+    }
+    /**
+     * The reviewer's go-ahead: backlog tickets of the board (all, or only `keys`) move to "ready", the board stops being a draft
+     * once every ticket is approved, and it becomes the active board so the workers serve it. Epics stay as they are (they roll up).
+     */
+    approve(ref, o = {}) {
+        const b = this.need(ref);
+        if (b.archived)
+            throw new Error(`"${b.name}" is archived: unarchive it first`);
+        const want = o.keys?.length ? new Set(o.keys.map((k) => k.toUpperCase())) : null;
+        const approved = [];
+        for (const c of this.cards().filter((x) => x.board === b.id && x.type !== "epic" && x.status === "backlog")) {
+            if (want && !want.has((c.key ?? "").toUpperCase()))
+                continue;
+            this.K.update(c.id, { status: "ready" }, { by: "user", reason: "approved after review" });
+            approved.push(c.key ?? c.id);
+        }
+        if (want)
+            for (const k of want)
+                if (!approved.includes(k) && !this.cards().some((c) => c.board === b.id && (c.key ?? "").toUpperCase() === k))
+                    throw new Error(`${k} is not a ticket on "${b.name}"`);
+        const left = this.cards().some((x) => x.board === b.id && x.type !== "epic" && x.status === "backlog");
+        const n = { ...b, draft: left ? b.draft : false, ...(approved.length ? { approved_at: Date.now() } : {}) };
+        this.rt.db.putRecord("kanban_board", n.id, n);
+        if (o.use !== false && approved.length)
+            this.use(n.id);
+        return { board: n, approved };
+    }
     /** Make a board the active one: what the UI shows, what import fills and what the workers serve. */
     use(ref) {
         const b = this.need(ref);

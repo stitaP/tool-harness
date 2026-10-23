@@ -400,3 +400,22 @@ test("inline tool calls: Qwen-Coder XML (<function=…><parameter=…>), with an
   // the JSON form still works
   assert.equal(extractInlineToolCalls('<tool_call>{"name":"terminal","arguments":{"command":"ls"}}</tool_call>', names, tools).calls.length, 1);
 });
+
+test("file guards: dropped-slash paths, placeholder tests, and chat writes while the board has open stories", async () => {
+  const { badPathError, vacuousTestError, boardOwnsError } = await import(dist("tools/files.js"));
+  assert.match(badPathError("Users/prasu/proj/a.js", "/proj/Users/prasu/proj/a.js"), /leading "\/" dropped/);
+  assert.equal(badPathError("/Users/prasu/proj/a.js", "/Users/prasu/proj/a.js"), null);
+  assert.equal(badPathError("css/a.css", "/proj/css/a.css"), null);
+  assert.match(vacuousTestError("tests/phase-01.test.js", "test('x', () => { assert.ok(true); });"), /placeholder test/);
+  assert.match(vacuousTestError("tests/a.test.js", "test.skip('x', () => {});"), /placeholder test/);
+  assert.match(vacuousTestError("tests/a.test.js", "test('x', () => { foo(); });"), /no assertion/);
+  assert.equal(vacuousTestError("tests/a.test.js", "test('x', () => { assert.equal(add(1,2), 3); });"), null);
+  assert.equal(vacuousTestError("css/a.css", "assert.ok(true)"), null);
+  const mk = (source, open, guard) => ({ session: { source }, rt: { cfg: { data: { kanban: { enabled: true, guard_chat_writes: guard } } }, kanban: { list: () => open, cwdOf: () => "/proj" } } });
+  const open = [{ type: "task", status: "ready" }];
+  assert.match(boardOwnsError(mk("web", open, true), "/proj/a.js"), /board is the plan/);
+  assert.equal(boardOwnsError(mk("kanban", open, true), "/proj/a.js"), null);
+  assert.equal(boardOwnsError(mk("web", open, true), "/elsewhere/a.js"), null);
+  assert.equal(boardOwnsError(mk("web", [], true), "/proj/a.js"), null);
+  assert.equal(boardOwnsError(mk("web", open, false), "/proj/a.js"), null);
+});

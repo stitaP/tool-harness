@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, extname, join, relative } from "node:path";
+import { dirname, extname, isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { blockedReason, protectedReason, resolvePath } from "../safety/paths.js";
 import { type Tool, type ToolContext, obj, str, int, bool, enm, arr } from "./types.js";
@@ -15,6 +15,49 @@ function guard(ctx: ToolContext, p: string, write: boolean): string {
   const why = blockedReason(abs, ctx.rt.cfg.data.security.blocked_paths, write) ?? (write ? protectedReason(abs, ctx.rt.cfg.data.security.protected_paths) : null);
   if (why) throw new Error(why);
   return abs;
+}
+
+
+/** A leading "/" dropped from an absolute path ("Users/me/proj/x.js") would create a nested copy of the whole path inside the project. */
+export function badPathError(raw: string, abs: string): string | null {
+  const p = String(raw ?? "").replace(/^\.\//, "");
+  if (isAbsolute(p) || !/^(Users|home|private|var|tmp|opt|etc|usr|Volumes)\//.test(p)) return null;
+  if (existsSync(abs)) return null;   // the project really has such a folder
+  return `the path "${raw}" looks like an absolute path with its leading "/" dropped; writing it would create a nested "${p.split("/")[0]}/" folder inside the project. Use "/${p}" or a path relative to the project (for example the part after the project folder name).`;
+}
+
+const TEST_FILE = /(^|\/)(tests?|__tests__)\/|\.(test|spec)\.[cm]?[jt]sx?$/;
+/** A test that cannot fail is not a test: the story would be marked done on nothing. */
+export function vacuousTestError(rel: string, text: string): string | null {
+  if (!TEST_FILE.test(rel) || !/\.[cm]?[jt]sx?$/.test(rel)) return null;
+  const trivial = /\bassert(?:\.ok)?\(\s*(true|1|"[^"]*"|'[^']*')\s*[,)]|\bassert\.(?:equal|strictEqual|deepEqual)\(\s*(true|1)\s*,\s*\2\s*[,)]|\bexpect\(\s*true\s*\)\.(?:toBe|toEqual)\(\s*true\s*\)|\.(?:skip|todo)\(/;
+  if (trivial.test(text)) return `${rel} contains a placeholder test (assert.ok(true), expect(true).toBe(true), test.skip or test.todo). Write real tests that call the code under test and check its actual results; a test that cannot fail does not count.`;
+  if (/\b(test|it)\s*\(/.test(text) && !/\b(assert|expect|should)\b/.test(text) && text.length > 0 && !/^\s*$/.test(text)) return `${rel} defines tests but has no assertion (assert / expect). Add checks of the real behaviour.`;
+  return null;
+}
+
+/** While the kanban board has open stories, the chat does not build the project by hand: the workers do, with tests and commits. */
+export function boardOwnsError(ctx: ToolContext, abs: string): string | null {
+  const src = ctx.session.source;
+  if (["kanban", "subagent", "cron", "pipeline", "api", "webhook"].includes(src)) return null;
+  const k = ctx.rt.cfg.data.kanban;
+  if (!k.enabled || k.guard_chat_writes === false) return null;
+  let open: any[];
+  try { open = ctx.rt.kanban.list().filter((c: any) => c.type !== "epic" && c.status !== "done"); } catch { return null; }
+  if (!open.length) return null;
+  const root = ctx.rt.kanban.cwdOf(open[0]);
+  if (!root || !(abs === root || abs.startsWith(root.replace(/\/$/, "") + "/"))) return null;
+  return `the kanban board has ${open.length} open story(ies) for this project, so the board is the plan: do not write project files from chat. Run \`kanban action=list\` and then \`kanban action=dispatch\` (or resume) so a worker builds the next story with tests and a commit. To change what a story asks for, edit the story with kanban action=update. (Set kanban.guard_chat_writes=false to allow chat edits.)`;
+}
+
+const SPEC_DOC = /(^|\/)docs\/(?:phase-\d+|00-[\w-]+)\.md$/;
+/** A kanban worker builds what the spec says; it never rewrites the spec to match what it built. */
+export function specOwnsError(ctx: ToolContext, abs: string): string | null {
+  if (!["kanban", "subagent"].includes(ctx.session.source)) return null;
+  let specs: string[] = [];
+  try { specs = ctx.rt.kanban.listAll().filter((c: any) => c.spec).map((c: any) => join(ctx.rt.kanban.cwdOf(c), c.spec)); } catch { /* no board */ }
+  if (!SPEC_DOC.test(abs) && !specs.includes(abs)) return null;
+  return `${relative(ctx.cwd, abs) || abs} is the specification. Workers do not edit it: build the code to match it. If the spec is wrong or unclear, add a comment on your ticket (kanban action=comment) saying what and why, and leave the spec unchanged.`;
 }
 
 const PLACEHOLDER = /\[REDACTED[^\]]*\]/g;
@@ -95,6 +138,8 @@ export const writeFileTool: Tool = {
   parameters: obj({ path: str("File path"), content: str("File content (the whole file, or the next part when append=true)"), append: { type: "boolean", description: "Add content to the end of the file instead of replacing it" }, replace_whole: { type: "boolean", description: "Confirm replacing most of an existing file (only after being told to)" } }, ["path", "content"]),
   async handler(a, ctx) {
     const abs = guard(ctx, a.path, true);
+    const guardMsg = badPathError(a.path, abs) ?? specOwnsError(ctx, abs) ?? boardOwnsError(ctx, abs);
+    if (guardMsg) throw new Error(guardMsg);
     {
       const before = existsSync(abs) && statSync(abs).isFile() ? readFileSync(abs, "utf8") : "";
       const content = String(a.content ?? "");
@@ -102,6 +147,8 @@ export const writeFileTool: Tool = {
       const bad = placeholderError(before, append ? before + content : content) ??
         (append || a.replace_whole === true && ctx.session.source !== "pipeline" ? null : shrinkError(before, content, relative(ctx.cwd, abs) || abs, ctx.session.source !== "pipeline"));
       if (bad) throw new Error(bad);
+      const vac = vacuousTestError(relative(ctx.cwd, abs), append ? before + content : content);
+      if (vac) throw new Error(vac);
     }
     if (SENSITIVE_WRITE.test(abs) && existsSync(abs)) {
       const ok = await ctx.requestApproval({ tool: "write_file", command: `write ${abs}`, reason: "overwriting a sensitive configuration file" });
@@ -181,6 +228,8 @@ export const patchTool: Tool = {
   }, ["path"]),
   async handler(a, ctx) {
     const abs = guard(ctx, a.path, true);
+    const guardMsg = badPathError(a.path, abs) ?? specOwnsError(ctx, abs) ?? boardOwnsError(ctx, abs);
+    if (guardMsg) return `error: ${guardMsg}`;
     if (!existsSync(abs)) return `error: file not found: ${abs} (use write_file to create it)`;
     const edits = Array.isArray(a.edits) && a.edits.length ? a.edits : [{ old_string: a.old_string, new_string: a.new_string ?? "", replace_all: a.replace_all }];
     let text = readFileSync(abs, "utf8");
@@ -197,6 +246,8 @@ export const patchTool: Tool = {
     }
     const bad = placeholderError(readFileSync(abs, "utf8"), text);
     if (bad) return `error: ${bad} No changes were written.`;
+    const vac = vacuousTestError(relative(ctx.cwd, abs), text);
+    if (vac) return `error: ${vac} No changes were written.`;
     ctx.rt.checkpoints.take(ctx.cwd, `before patch ${relative(ctx.cwd, abs)}`, abs);
     writeFileSync(abs, text);
     return `Patched ${relative(ctx.cwd, abs) || abs}: ${notes.join("; ")}`;

@@ -82,9 +82,11 @@ function normalizeSteps(url, steps) {
     return out;
 }
 // ---------- spec generation ----------
+/** jQuery's :contains("x") is not valid CSS in Playwright; models write it often. :has-text is the equivalent. */
+const fixSel = (sel) => sel.replace(/:contains\(/g, ":has-text(");
 function locExpr(sel, text) {
     if (sel)
-        return `page.locator(${q(sel)}).first()`;
+        return `page.locator(${q(fixSel(sel))}).first()`;
     if (text)
         return `page.getByText(${q(text)}).first()`;
     throw new Error("step needs a selector");
@@ -251,7 +253,7 @@ async function execStep(page, s, t, check, startUrl) {
 }
 function locExprRuntime(page, sel, text) {
     if (sel)
-        return page.locator(sel).first();
+        return page.locator(fixSel(sel)).first();
     if (text)
         return page.getByText(text).first();
     throw new Error("step needs a selector");

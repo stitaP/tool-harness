@@ -12,7 +12,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSyn
 import { basename, join, resolve } from "node:path";
 import { expandHome } from "../safety/paths.js";
 import { sectionManifest } from "./verify.js";
-import { buildStory } from "./story.js";
+import { researchFor, buildStory } from "./story.js";
 /** Numbered sections of a phase spec. The level of the first numbered heading decides which headings are stories. */
 export function parseSections(md) {
     const lines = md.split("\n");
@@ -225,7 +225,8 @@ export function importPlan(board, o) {
                 body: [`WHAT TO DO`, `- The ${storyInfo.length} stories of phase ${num} (${short}) are built. Now write the tests.`, "", "FILES TO WRITE", `- ${testFile}   (node:test; run it with: ${testCmd})`, `- ${fn}   (a JSON array of browser steps; use {{base}} in goto urls)`, "",
                     "HOW", `1. For EACH story below, write at least ${MIN} tests. Start every test title with the story key, like: test("${keys[0] ?? "PT-1"}: getProductById returns null for an unknown id", ...)`,
                     "2. Use the story's TEST CASES as your list. Write one test per line where you can.", "3. Read the real code first (and the spec " + spec + ") so each test checks what the code really exports.",
-                    "4. Run the tests. They must pass. If one fails, the feature has a bug: fix the feature, do not weaken the test.", `5. Commit with the ticket key first: "<KEY>: tests for phase ${num}".`, "", "TEST CASES PER STORY", perStory].join("\n") });
+                    "4. OBSERVE BEFORE YOU WRITE. Do not guess what the code or page does; look at it:\n   - Logic (no page): call each function once with execute_code and note the REAL return values, then write the test around them.\n   - Pages: serve the project, open each page with browser_navigate, read it with browser_snapshot, check browser_console for errors, and use page_check. Copy the REAL selectors, texts and links into your tests and browser steps.\n   - If observed behaviour differs from the spec, fix the feature (or note it in a comment on this card). Never change the test to match wrong behaviour, and never edit tests of earlier phases.\n   - If the spec and the code still leave a question open (a library API, an assertion style, a browser behaviour), run ONE web_search for it (at most 2 per attempt), open the best result with browser_navigate if needed, and add a comment on this card with what you found and the source URL. Do not search for things the spec or code already answer.",
+                    "5. Write the tests (keep the whole test file in ONE write; use ES module `import`, never `require`). Run them. They must pass. If one fails, the feature has a bug: fix the feature, do not weaken the test.", `6. Commit with the ticket key first: "<KEY>: tests for phase ${num}".`, "", ...researchFor([testFile], "", "tests"), "", "TEST CASES PER STORY", perStory].join("\n") });
             prev = t.id;
             stories++;
         }
@@ -237,9 +238,20 @@ export function importPlan(board, o) {
             accept.push(`\`${testCmd}\` exits 0`);
         if (!accept.length && goal)
             accept.push(goal);
-        const gate = mk({ title: `Phase ${num} · Gate: "${short}" works end to end`, type: "task", kind: "gate", section: "gate",
+        const hasPages = /\.html\b/i.test(md);
+        const steps = [
+            `Run \`${testCmd ?? "the phase checks"}\`. If any test fails, fix the SOURCE code, never the frozen tests under tests/.`,
+            `Run \`npm test\` (all phases). Earlier phases must still pass; fix any regression you caused.`,
+            hasPages
+                ? "Open each .html page this phase created in the browser. Confirm it loads, shows content, has no console errors, and its local links resolve."
+                : "This phase has no pages (pure JavaScript), so skip any browser check.",
+            `Append a "Phase ${num}" entry to docs/PROGRESS.md listing files created, exports added, and notes.`,
+        ];
+        if (tryIt)
+            steps.push(`Walk through the spec's "Try it" steps:\n${tryIt}`);
+        const gate = mk({ title: `Phase ${num} · Gate: ${short}`, type: "task", kind: "gate", section: "gate",
             depends_on: prev ? [prev] : [], test_cmd: testCmd, acceptance: accept,
-            body: `Close phase ${num}. ${read}, ${spec}.\n1) Run \`${testCmd ?? "the phase checks"}\` and fix whatever fails (never edit the frozen tests).\n2) Check every page of this phase in the browser: loads, has content, no console errors, links work.\n3) Append a "Phase ${num}" entry to docs/PROGRESS.md (files created, exports, notes).\n${tryIt ? `4) Walk through the spec's "Try it" steps:\n${tryIt}\n` : ""}${doneWhen ? `\nDone when:\n${doneWhen}` : ""}` });
+            body: `GOAL: close phase ${num} by proving it is complete. Do not add new features.\nREAD FIRST: ${read}, ${spec}.\n\nSTEPS (in order):\n${steps.map((t, i) => `${i + 1}. ${t}`).join("\n")}\n${doneWhen ? `\nDONE WHEN:\n${doneWhen}` : ""}` });
         prevTail = gate.id;
         stories++;
         void storyIds;

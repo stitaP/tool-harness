@@ -21,6 +21,7 @@ import { goalKey, loopKey, heartbeatKey } from "../loop/autonomy.js";
 import { handleChatCompletions, handleModels } from "./openai-api.js";
 import { activity, boardSummary, cardDetail, evidenceFile } from "../kanban/dashboard.js";
 import { enrichBoard, describeEnrich } from "../kanban/enrich.js";
+import { startDesignJob, designJob, stopDesignJob } from "../kanban/design.js";
 import { log } from "../util/log.js";
 import { errMsg } from "../util/misc.js";
 export function serverToken(home) {
@@ -709,6 +710,30 @@ export async function startServer(rt, opts = {}) {
                     return json(res, 400, { error: errMsg(e) });
                 }
             }
+            if (p === "/api/kanban/design" && req.method === "POST") {
+                const b = await body(req);
+                try {
+                    if (!b.source)
+                        return json(res, 400, { error: "source is required: a design file, folder or http(s) URL" });
+                    if (!b.project)
+                        return json(res, 400, { error: "project is required: the folder the work happens in" });
+                    const job = startDesignJob(rt, { source: String(b.source), project: String(b.project), board: b.board || undefined, keyPrefix: b.key || undefined, research: b.research !== false,
+                        maxSearches: b.searches !== undefined && b.searches !== "" ? Number(b.searches) : undefined, storiesPerEpic: b.stories !== undefined && b.stories !== "" ? Number(b.stories) : undefined });
+                    return json(res, 200, { ok: true, job });
+                }
+                catch (e) {
+                    return json(res, 400, { error: errMsg(e) });
+                }
+            }
+            if (p === "/api/kanban/design/stop" && req.method === "POST") {
+                const b = await body(req);
+                return json(res, 200, { ok: stopDesignJob(b.id || undefined) });
+            }
+            const kdj = /^\/api\/kanban\/design(?:\/([^/]+))?$/.exec(p);
+            if (kdj && req.method === "GET") {
+                const j = designJob(rt, kdj[1] ? decodeURIComponent(kdj[1]) : undefined);
+                return json(res, 200, { job: j });
+            }
             if (p === "/api/kanban/boards" && req.method === "GET")
                 return json(res, 200, { active: rt.kanban.boards.activeId(), boards: rt.kanban.boards.list({ archived: "all" }) });
             if (p === "/api/kanban/boards" && req.method === "POST") {
@@ -740,6 +765,11 @@ export async function startServer(rt, opts = {}) {
                             return json(res, 200, { ok: true, ...B.delete(x.id) });
                         }
                         case "move": return json(res, 200, { ok: true, moved: B.move(Array.isArray(b.keys) ? b.keys : [], String(b.to ?? "")) });
+                        case "approve": {
+                            const r = B.approve(String(b.board ?? ""), { keys: Array.isArray(b.keys) ? b.keys : undefined });
+                            const dispatched = b.run && r.approved.length ? (rt.kanban.setPaused(false), await rt.kanban.tick()) : 0;
+                            return json(res, 200, { ok: true, ...r, dispatched });
+                        }
                         default: return json(res, 400, { error: "unknown action" });
                     }
                 }
@@ -782,6 +812,48 @@ export async function startServer(rt, opts = {}) {
                 }
             }
             const kc = /^\/api\/kanban\/card\/([^/]+)$/.exec(p);
+            if (kc && (req.method === "PATCH" || req.method === "POST")) {
+                // review edits from the board: text fields and lists only; status moves go through approve / the workers
+                const b = await body(req);
+                const K = rt.kanban;
+                try {
+                    const c = K.get(decodeURIComponent(kc[1]));
+                    if (!c)
+                        return json(res, 404, { error: "no such card" });
+                    if (c.status === "running")
+                        return json(res, 409, { error: "a worker is on this ticket; stop it before editing" });
+                    const list = (v) => (Array.isArray(v) ? v : String(v ?? "").split("\n")).map((x) => String(x).trim()).filter(Boolean).slice(0, 60);
+                    const patch = {};
+                    if (typeof b.title === "string" && b.title.trim())
+                        patch.title = b.title.trim().slice(0, 200);
+                    if (typeof b.body === "string")
+                        patch.body = b.body.slice(0, 20000);
+                    if (b.acceptance !== undefined)
+                        patch.acceptance = list(b.acceptance);
+                    if (b.test_cases !== undefined)
+                        patch.test_cases = list(b.test_cases);
+                    if (b.files !== undefined)
+                        patch.files = list(b.files);
+                    if (typeof b.test_cmd === "string")
+                        patch.test_cmd = b.test_cmd.trim() || undefined;
+                    if (b.depends_on !== undefined)
+                        patch.depends_on = list(b.depends_on).map((k) => { const d = K.get(k); if (!d)
+                            throw new Error(`no ticket ${k}`); if (d.id === c.id)
+                            throw new Error("a ticket cannot depend on itself"); return d.id; });
+                    if (b.status === "backlog" || b.status === "ready") {
+                        if (c.type === "epic")
+                            return json(res, 400, { error: "an epic's status follows its tickets" });
+                        patch.status = b.status;
+                    }
+                    const n = K.update(c.id, patch, { by: "user", reason: patch.status ? (patch.status === "ready" ? "approved after review" : "moved back to draft") : undefined });
+                    if (Object.keys(patch).some((k) => k !== "status"))
+                        K.comment(n.id, `Edited in review: ${Object.keys(patch).filter((k) => k !== "status").join(", ")}.`, "user");
+                    return json(res, 200, { ok: true, card: n });
+                }
+                catch (e) {
+                    return json(res, 400, { error: errMsg(e) });
+                }
+            }
             if (kc && req.method === "GET") {
                 const d = cardDetail(rt, decodeURIComponent(kc[1]));
                 return d ? json(res, 200, d) : json(res, 404, { error: "no such card" });

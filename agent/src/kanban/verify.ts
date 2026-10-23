@@ -9,7 +9,7 @@
  * Everything is written to <project>/.stitap/evidence/<KEY>/. generateVerifyTest() also writes a dependency-free
  * node:test file (tests/verify/<phase>.verify.test.mjs) so the static part of the check keeps running in `npm test`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { Card, KanbanBoard } from "./board.js";
 import { serve, sitePages, checkPages } from "../tools/pagecheck.js";
@@ -21,6 +21,19 @@ export interface VerifyReport { key: string; ok: boolean; checks: CheckLine[]; e
 
 const FILE_RE = /^(?:\.(?:git\w+|env(?:\.[\w-]+)?|editorconfig|nvmrc|npmrc|prettierrc(?:\.\w+)?|eslintrc(?:\.\w+)?|htaccess|dockerignore|babelrc)|[\w./-]+\.(?:m?js|html|css|json|md|svg|ya?ml|txt|xml))$/;
 const REFERENCE_DOC = /^docs\/(?:phase-\d+|00-[\w-]+)\.md$/;
+
+/** Files that exist but hold nothing real: empty, or only comments and whitespace (the placeholders a scaffold leaves). Folders are skipped. */
+export function stubFiles(cwd: string, files: string[] = []): string[] {
+  const out: string[] = [];
+  for (const f of files) {
+    const p = join(cwd, f);
+    if (!existsSync(p) || statSync(p).isDirectory() || /(^|\/)\.[\w.-]+$/.test(f)) continue;   // dotfiles (.gitignore) may legitimately be tiny
+    const text = readFileSync(p, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "").replace(/^\s*\/\/.*$/gm, "").replace(/\s+/g, "");
+    if (text.length < 24) out.push(`${f} is only a placeholder (empty or comments only); write its real content`);
+  }
+  return out;
+}
 
 /** Files, exports and pages a phase spec promises. */
 export function parseManifest(md: string): Manifest {
@@ -80,6 +93,13 @@ export function sectionManifest(heading: string, body: string): { files: string[
     if (rel) { const prefix = rel[1].replace(/\/*$/, "/"); files = rel[2].split(/\s+/).filter((w) => FILE_RE.test(w)).map((w) => prefix + w); }
     // otherwise the opening lines, ignoring files named only as an example
     else files = pick(body.split("\n").slice(0, 8).filter((l) => !/for example|e\.g\.|such as/i.test(l)).join("\n"));
+    // a section that labels several files ("**`boot.js`**", "**`login.js`**: …") delivers all of them; a bare name sits next to the first path
+    const dir = files.find((f) => f.includes("/"))?.replace(/[^/]+$/, "") ?? "";
+    for (const m of body.matchAll(/^\*\*`([^`]+)`\*\*/gm)) {
+      if (!FILE_RE.test(m[1]) || m[1].startsWith("tests/") || REFERENCE_DOC.test(m[1])) continue;
+      const f = m[1].includes("/") ? m[1] : dir + m[1];
+      if (!files.includes(f)) files.push(f);
+    }
   }
   const names = [...body.matchAll(/export\s+(?:async\s+)?(?:function\*?|const|let|class)\s+(\w+)/g)].map((m) => m[1]);
   // tables like | `getProductById(id, list)` | the product or null | name the functions a module must export

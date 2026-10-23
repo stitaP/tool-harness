@@ -28,5 +28,7 @@ interface Row {
     says: string;
 }
 export declare function tableRows(body: string): Row[];
+/** Official documentation to read for the languages and APIs a piece of work uses. */
+export declare function researchFor(files: string[], text: string, kind?: "story" | "tests"): string[];
 export declare function buildStory(i: StoryInput): Story;
 export {};

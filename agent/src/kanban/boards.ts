@@ -14,7 +14,9 @@ import type { Runtime } from "../runtime/runtime.js";
 import { shortId } from "../util/misc.js";
 import type { Card, KanbanBoard } from "./board.js";
 
-export interface BoardInfo { id: string; name: string; description?: string; created_at: number; archived?: boolean; archived_at?: number }
+export interface BoardInfo { id: string; name: string; description?: string; created_at: number; archived?: boolean; archived_at?: number;
+  /** made from a design document and not approved yet: its tickets wait in backlog for review */
+  draft?: boolean; design?: string; project?: string; approved_at?: number }
 export type LinkType = "relates to" | "blocks" | "is blocked by" | "duplicates" | "clones";
 export const LINK_TYPES: LinkType[] = ["relates to", "blocks", "is blocked by", "duplicates", "clones"];
 export const LINK_INVERSE: Record<LinkType, string> = { "relates to": "relates to", blocks: "is blocked by", "is blocked by": "blocks", duplicates: "is duplicated by", clones: "is cloned by" };
@@ -79,6 +81,34 @@ export class Boards {
     const b: BoardInfo = { id: shortId("b_"), name: n, ...(description ? { description } : {}), created_at: Date.now() };
     this.rt.db.putRecord("kanban_board", b.id, b);
     return b;
+  }
+  /** Mark a board as a draft made from a design (or clear the mark). */
+  setDraft(ref: string, d: { draft: boolean; design?: string; project?: string }): BoardInfo {
+    const b = this.need(ref);
+    const n: BoardInfo = { ...b, draft: d.draft, ...(d.design ? { design: d.design } : {}), ...(d.project ? { project: d.project } : {}) };
+    this.rt.db.putRecord("kanban_board", n.id, n);
+    return n;
+  }
+  /**
+   * The reviewer's go-ahead: backlog tickets of the board (all, or only `keys`) move to "ready", the board stops being a draft
+   * once every ticket is approved, and it becomes the active board so the workers serve it. Epics stay as they are (they roll up).
+   */
+  approve(ref: string, o: { keys?: string[]; use?: boolean } = {}): { board: BoardInfo; approved: string[] } {
+    const b = this.need(ref);
+    if (b.archived) throw new Error(`"${b.name}" is archived: unarchive it first`);
+    const want = o.keys?.length ? new Set(o.keys.map((k) => k.toUpperCase())) : null;
+    const approved: string[] = [];
+    for (const c of this.cards().filter((x) => x.board === b.id && x.type !== "epic" && x.status === "backlog")) {
+      if (want && !want.has((c.key ?? "").toUpperCase())) continue;
+      this.K.update(c.id, { status: "ready" }, { by: "user", reason: "approved after review" });
+      approved.push(c.key ?? c.id);
+    }
+    if (want) for (const k of want) if (!approved.includes(k) && !this.cards().some((c) => c.board === b.id && (c.key ?? "").toUpperCase() === k)) throw new Error(`${k} is not a ticket on "${b.name}"`);
+    const left = this.cards().some((x) => x.board === b.id && x.type !== "epic" && x.status === "backlog");
+    const n: BoardInfo = { ...b, draft: left ? b.draft : false, ...(approved.length ? { approved_at: Date.now() } : {}) };
+    this.rt.db.putRecord("kanban_board", n.id, n);
+    if (o.use !== false && approved.length) this.use(n.id);
+    return { board: n, approved };
   }
   /** Make a board the active one: what the UI shows, what import fills and what the workers serve. */
   use(ref: string): BoardInfo {

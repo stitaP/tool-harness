@@ -199,6 +199,36 @@ or phrases: `every 30m`, `hourly`, `daily at 7:00`, `weekdays at 8:30`, `every m
 `harness serve` runs the scheduler; without a daemon, call `harness cron tick` from Task
 Scheduler / launchd / cron.
 
+### Design document → kanban board
+
+Give the agent any design (Markdown, text, HTML, PDF, Word/RTF/ODT, a web page, or a folder of them) and it plans the
+build for you to review:
+
+```bash
+harness kanban design ~/specs/design.md --project ~/work/app [--board "App v1"] [--key AP] [--searches 12] [--stories 8] [--no-research]
+harness kanban approve "App v1" [AP-3 AP-4]     # after review: tickets → ready, board becomes active
+harness kanban run                              # or press "Run workers" in the UI
+```
+
+1. **Read**: the document is split by headings into parts that fit the model's context; each part's goals, components,
+   requirements, constraints, technologies and open questions are noted.
+2. **Research**: the sources the design cites are read first; then the technologies and open questions become web
+   searches (the configured `web.search_provider`, falling back to DuckDuckGo lite and Wikipedia when one is blocked).
+   Official documentation is read before blogs; every finding keeps its source URL.
+3. **Plan**: epics in build order, then 2–8 one-day stories per epic in a fixed card shape (context capsule, steps,
+   how to check it works, test cases, how to undo, references). A last pass lists requirements no story covers; those
+   gaps are posted on the first epic.
+4. **Board**: a new board marked *draft*; every ticket waits in backlog, so no worker starts anything. In the UI
+   (board menu → "New board from a design document…") open a ticket to read, edit or approve it, or approve the whole
+   board. Only approved tickets run, and the normal done checks apply (dependencies done, real content, committed under
+   the key, check command passing).
+
+Everything a run produced stays in `<project>/.stitap/design/<name>-<date>/`: `source.md` (the spec the tickets point
+at; workers may not edit it), `outline.json`, `research.md`, `plan.json` and `report.md`. In chat, the agent uses
+`kanban action=design` / `design_status` / `approve`, and approves only when you ask. Settings: `kanban.design`
+(`max_searches`, `max_cited`, `pages_per_question`, `stories_per_epic`, `search_delay_ms`). Planning quality follows the
+model: route it to the strong tier when the router is on.
+
 ## 5. Integrations
 
 **Messaging gateway** (`harness gateway`): Telegram (long polling), Discord (gateway

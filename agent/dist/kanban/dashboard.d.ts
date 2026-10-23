@@ -15,6 +15,9 @@ export declare function boardSummary(rt: Runtime, boardRef?: string): {
         archived: boolean;
         active: boolean;
         description: string;
+        draft: boolean;
+        design: string;
+        project: string;
     };
     boards: (import("./boards.js").BoardInfo & {
         cards: number;
@@ -168,6 +171,7 @@ export declare function cardDetail(rt: Runtime, ref: string): {
     files?: string[];
     exports?: Record<string, string[]>;
     order?: number;
+    writes_tests?: boolean;
     verification?: {
         at: number;
         ok: boolean;

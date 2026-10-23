@@ -7,6 +7,11 @@ export interface BoardInfo {
     created_at: number;
     archived?: boolean;
     archived_at?: number;
+    /** made from a design document and not approved yet: its tickets wait in backlog for review */
+    draft?: boolean;
+    design?: string;
+    project?: string;
+    approved_at?: number;
 }
 export type LinkType = "relates to" | "blocks" | "is blocked by" | "duplicates" | "clones";
 export declare const LINK_TYPES: LinkType[];
@@ -51,6 +56,23 @@ export declare class Boards {
         active: boolean;
     })[];
     create(name: string, description?: string): BoardInfo;
+    /** Mark a board as a draft made from a design (or clear the mark). */
+    setDraft(ref: string, d: {
+        draft: boolean;
+        design?: string;
+        project?: string;
+    }): BoardInfo;
+    /**
+     * The reviewer's go-ahead: backlog tickets of the board (all, or only `keys`) move to "ready", the board stops being a draft
+     * once every ticket is approved, and it becomes the active board so the workers serve it. Epics stay as they are (they roll up).
+     */
+    approve(ref: string, o?: {
+        keys?: string[];
+        use?: boolean;
+    }): {
+        board: BoardInfo;
+        approved: string[];
+    };
     /** Make a board the active one: what the UI shows, what import fills and what the workers serve. */
     use(ref: string): BoardInfo;
     rename(ref: string, name: string): BoardInfo;

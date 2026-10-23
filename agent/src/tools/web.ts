@@ -70,7 +70,54 @@ async function tavily(rt: Runtime, q: string, n: number, signal?: AbortSignal): 
   return (j.results ?? []).map((r: any) => ({ title: r.title, url: r.url, snippet: r.content ?? "" }));
 }
 
+/** DuckDuckGo's text-only page: a separate endpoint that often still answers when the HTML page shows a captcha. */
+async function ddgLite(rt: Runtime, q: string, n: number, signal?: AbortSignal): Promise<Hit[]> {
+  const res = await guardedFetch(rt, "https://lite.duckduckgo.com/lite/", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: `q=${encodeURIComponent(q)}` }, signal);
+  const html = await res.text();
+  const hits: Hit[] = [];
+  const re = /<a[^>]+href="([^"]+)"[^>]*class=['"]result-link['"][^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:class=['"]result-snippet['"][^>]*>([\s\S]*?)<\/td>)?/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) && hits.length < n) {
+    let url = decodeEntities(m[1]);
+    const u = /uddg=([^&]+)/.exec(url);
+    if (u) url = decodeURIComponent(u[1]);
+    if (url.startsWith("//")) url = "https:" + url;
+    if (/duckduckgo\.com\/y\.js/.test(url)) continue;
+    hits.push({ url, title: decodeEntities(m[2].replace(/<[^>]+>/g, "")).trim(), snippet: decodeEntities((m[3] ?? "").replace(/<[^>]+>/g, "")).trim() });
+  }
+  if (!hits.length && /anomaly|captcha/i.test(html)) throw new Error("DuckDuckGo lite rate-limited this request");
+  return hits;
+}
+
+/** Wikipedia's own search API: no key, no captcha. Only a last resort: it finds encyclopedia pages, not documentation. */
+async function wikipedia(rt: Runtime, q: string, n: number, signal?: AbortSignal): Promise<Hit[]> {
+  const res = await guardedFetch(rt, `https://en.wikipedia.org/w/api.php?action=opensearch&format=json&limit=${n}&search=${encodeURIComponent(q)}`, {}, signal);
+  const j: any = await res.json();
+  return (j?.[1] ?? []).map((title: string, i: number) => ({ title, url: j[3]?.[i] ?? "", snippet: j[2]?.[i] ?? "" })).filter((h: Hit) => h.url);
+}
+
 const PROVIDERS: Record<string, typeof ddg> = { duckduckgo: ddg, searxng: searx, brave, tavily };
+
+/**
+ * Search for unattended work (design research): the configured provider first; when it fails or finds nothing,
+ * wait a moment and try DuckDuckGo lite, then Wikipedia. Returns the hits and which source answered.
+ */
+export async function searchWebResilient(rt: Runtime, q: string, n: number, o: { signal?: AbortSignal; waitMs?: number; sleep?: (ms: number) => Promise<void> } = {}): Promise<{ hits: Hit[]; source: string; errors: string[] }> {
+  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const first = rt.cfg.data.web.search_provider in PROVIDERS ? rt.cfg.data.web.search_provider : "duckduckgo";
+  const chain: [string, typeof ddg][] = [[first, PROVIDERS[first]], ...(first === "duckduckgo" ? [] : [["duckduckgo", ddg] as [string, typeof ddg]]), ["duckduckgo-lite", ddgLite], ["wikipedia", wikipedia]];
+  const errors: string[] = [];
+  for (let i = 0; i < chain.length; i++) {
+    const [name, fn] = chain[i];
+    if (i > 0) await sleep(o.waitMs ?? 2500);
+    try {
+      const hits = await fn(rt, q, n, o.signal);
+      if (hits.length) return { hits, source: name, errors };
+      errors.push(`${name}: no results`);
+    } catch (e: any) { if (o.signal?.aborted) throw e; errors.push(`${name}: ${e?.message ?? e}`); }
+  }
+  return { hits: [], source: "", errors };
+}
 
 /** Search with the configured provider (web.search_provider). */
 export function searchWeb(rt: Runtime, q: string, n: number, signal?: AbortSignal): Promise<Hit[]> {
