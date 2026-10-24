@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setup, dist, call } from "./helpers.mjs";
+import { setup, dist, call, story } from "./helpers.mjs";
 
 const git = (cwd, ...a) => execFileSync("git", a, { cwd, encoding: "utf8" }).trim();
 const repo = (cwd) => { git(cwd, "init", "-q", "-b", "main"); git(cwd, "config", "user.email", "t@example.com"); git(cwd, "config", "user.name", "T"); writeFileSync(join(cwd, "a.txt"), "1\n"); git(cwd, "add", "."); git(cwd, "commit", "-qm", "init"); };
@@ -262,7 +262,7 @@ test("kanban.worktrees: the worker runs in its own worktree and the card merges 
   try {
     repo(t.work);
     const K = t.rt.kanban;
-    const c = K.create({ title: "add x.js", cwd: t.work, files: ["x.js"], test_cmd: "test -s x.js" });
+    const c = story(K, { title: "add x.js", cwd: t.work, files: ["x.js"], test_cmd: "test -s x.js" });
     t.mock.script([
       { tool_calls: [call("write_file", { path: "x.js", content: "export const answer = () => 42;\n" })] },
       { tool_calls: [call("terminal", { command: `git add x.js && git commit -qm "${c.key}: add x.js"` })] },
@@ -277,7 +277,7 @@ test("kanban.worktrees: the worker runs in its own worktree and the card merges 
     assert.equal(existsSync(join(t.work, ".stitap-worktrees", c.key)), false);
     // a dirty main checkout runs the card there instead
     writeFileSync(join(t.work, "dirty.txt"), "x");
-    const d = K.create({ title: "y", cwd: t.work });
+    const d = story(K, { title: "y", cwd: t.work });
     t.mock.script([{ content: "nothing to do" }]);
     const r = await K.work(d.id);
     assert.ok(r.comments.some((x) => /Worktree skipped/.test(x.text)));

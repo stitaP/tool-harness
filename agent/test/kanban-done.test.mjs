@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { setup, dist } from "./helpers.mjs";
+import { setup, dist, story } from "./helpers.mjs";
 
 const git = (cwd, ...a) => execFileSync("git", a, { cwd, encoding: "utf8" }).trim();
 const repo = (cwd) => { git(cwd, "init", "-q", "-b", "main"); git(cwd, "config", "user.email", "t@example.com"); git(cwd, "config", "user.name", "T"); writeFileSync(join(cwd, "a.txt"), "1"); git(cwd, "add", "."); git(cwd, "commit", "-qm", "init"); };
@@ -12,10 +12,10 @@ test("done: a ticket cannot be done before the tickets it depends on", async () 
   const t = await setup("kanban:\n  enforce_commit_keys: false\n");
   try {
     const K = t.rt.kanban;
-    const a = K.create({ title: "A", cwd: t.work });
-    const b = K.create({ title: "B", cwd: t.work, depends_on: [a.key] });
+    const a = story(K, { title: "A", cwd: t.work });
+    const b = story(K, { title: "B", cwd: t.work, depends_on: [a.key] });
     let v = await K.complete(b.key);
-    assert.equal(v.passed, false); assert.match(v.detail, /waiting on PT-1/);
+    assert.equal(v.passed, false); assert.match(v.detail, /waiting on US0011/);
     assert.equal(K.get(b.key).status, "ready");
     assert.equal((await K.complete(a.key)).passed, true);
     v = await K.complete(b.key);
@@ -29,7 +29,7 @@ test("done: placeholder files and a worker that ended in an error do not count",
     const K = t.rt.kanban;
     mkdirSync(join(t.work, "css/pages"), { recursive: true });
     writeFileSync(join(t.work, "css/pages/cart.css"), "/* pages/cart.css: cart page layout and sections */\n");
-    const c = K.create({ title: "cart.css", cwd: t.work, files: ["css/pages/cart.css"] });
+    const c = story(K, { title: "cart.css", cwd: t.work, files: ["css/pages/cart.css"] });
     let v = await K.complete(c.key);
     assert.equal(v.passed, false); assert.match(v.detail, /only a placeholder/);
     writeFileSync(join(t.work, "css/pages/cart.css"), ".cart { display: grid; gap: var(--space-4); }\n.cart__total { font-weight: 700; }\n");
@@ -46,14 +46,14 @@ test("done: the work must be committed under the ticket key", async () => {
   try {
     repo(t.work);
     const K = t.rt.kanban;
-    const c = K.create({ title: "x.js", cwd: t.work, files: ["x.js"] });
+    const c = story(K, { title: "x.js", cwd: t.work, files: ["x.js"] });
     writeFileSync(join(t.work, "x.js"), "export const answer = () => 42; // the real thing\n");
     let v = await K.complete(c.key);
-    assert.equal(v.passed, false); assert.match(v.detail, /no commit message starts with PT-1/); assert.match(v.detail, /not committed .*x\.js/);
+    assert.equal(v.passed, false); assert.match(v.detail, /no commit message starts with US0011/); assert.match(v.detail, /not committed .*x\.js/);
     git(t.work, "add", "x.js"); git(t.work, "commit", "-qm", "unrelated message");
     v = await K.complete(c.key);
-    assert.equal(v.passed, false); assert.match(v.detail, /no commit message starts with PT-1/); assert.doesNotMatch(v.detail, /new or modified/);
-    git(t.work, "commit", "-q", "--allow-empty", "-m", `${c.key}: already done by PT-0`);
+    assert.equal(v.passed, false); assert.match(v.detail, /no commit message starts with US0011/); assert.doesNotMatch(v.detail, /new or modified/);
+    git(t.work, "commit", "-q", "--allow-empty", "-m", `${c.key}: already done by US0010`);
     v = await K.complete(c.key);
     assert.equal(v.passed, true); assert.equal(K.get(c.key).commits.length, 1);
   } finally { await t.close(); }
@@ -78,4 +78,19 @@ test("story manifest: a section that labels several files delivers all of them",
   assert.deepEqual(m.exports, { "js/pages/admin/boot.js": ["session", "bootAdmin"] });
   // a heading that names its file keeps exactly that file
   assert.deepEqual(sectionManifest("2. `js/lib/cart.js`", "**`helper.js`**: not a deliverable here").files, ["js/lib/cart.js"]);
+});
+
+test("done: a chat cannot close a ticket with nothing to check (no test_cmd, files or commits); the user can", async () => {
+  const t = await setup();
+  try {
+    const K = t.rt.kanban;
+    const c = story(K, { title: "Implement Footer", cwd: t.work });          // not a git repo, no test, no files: what the chat "finished" on 2026-10-24
+    const tool = (await import(dist("kanban/board.js"))).kanbanTool, ctx = { rt: t.rt, signal: new AbortController().signal, session: { source: "web" } };
+    assert.match(await tool.handler({ action: "update", id: c.key, status: "done" }, ctx), /Not done: nothing shows the work is finished/);
+    assert.equal(K.get(c.key).status, "ready");
+    assert.match(K.get(c.key).comments.at(-1).text, /no test_cmd, no files, no commits/);
+    assert.equal((await K.complete(c.key, "user")).card.status, "done");
+    // and the chat cannot make a story without its main feature
+    await assert.rejects(tool.handler({ action: "create", title: "Header Component Implementation", type: "task" }, ctx), /needs a main feature/);
+  } finally { await t.close(); }
 });

@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setup, dist } from "./helpers.mjs";
+import { setup, dist, story } from "./helpers.mjs";
 
 const SPEC = `# Phase 08: Product page
 
@@ -44,7 +44,7 @@ test("verify: generated tests/verify file fails on missing files/exports/links a
   try {
     const proj = mk();
     const K = t.rt.kanban;
-    const c = K.create({ title: "P8", cwd: proj, spec: "docs/phase-08.md", test_cmd: "true" });
+    const c = story(K, { title: "P8", cwd: proj, spec: "docs/phase-08.md", test_cmd: "true" });
     const out = K.genTests(c.key);
     assert.equal(out, join(proj, "tests", "verify", "phase-08.verify.test.mjs"));
     const run = () => spawnSync(process.execPath, ["--test", out], { cwd: proj, encoding: "utf8", env: { ...process.env, NODE_TEST_CONTEXT: undefined } });
@@ -66,7 +66,7 @@ test("verify: browser pass saves a screenshot per page and a report; broken page
   try {
     const proj = mk({ "js/lib/qty.js": "export function clamp() {}\nexport const MAX_QTY = 10;\n", "css/product.css": "body{font-family:sans-serif}", "product.html": PAGE(), "other.html": PAGE() });
     const K = t.rt.kanban;
-    const c = K.create({ title: "P8", cwd: proj, spec: "docs/phase-08.md", test_cmd: "true" });
+    const c = story(K, { title: "P8", cwd: proj, spec: "docs/phase-08.md", test_cmd: "true" });
     let rep = await K.verify(c.key);
     assert.equal(rep.ok, true, rep.markdown);
     assert.equal(rep.shots.length, 1);
@@ -93,16 +93,16 @@ test("verify: a new card that breaks an earlier page or earlier tests is caught 
     const proj = mk({ "js/lib/qty.js": "export function clamp() {}\nexport const MAX_QTY = 10;\n", "css/product.css": "body{}", "product.html": PAGE(), "other.html": PAGE(), "flag.txt": "1" });
     writeFileSync(join(proj, "docs", "phase-09.md"), "# Phase 09: Other\n\n**Files to write:** `other.html`.\n");
     const K = t.rt.kanban;
-    const a = K.create({ title: "P8", cwd: proj, spec: "docs/phase-08.md", test_cmd: "true" });
+    const a = story(K, { title: "P8", cwd: proj, spec: "docs/phase-08.md", test_cmd: "true" });
     const done = await K.complete(a.key);
     assert.equal(done.passed, true, done.detail);          // verification ran inside complete() and set the page baseline
     assert.equal(K.get(a.key).status, "done");
-    const early = K.create({ title: "Flag", cwd: proj, test_cmd: "test -f flag.txt" });
+    const early = story(K, { title: "Flag", cwd: proj, test_cmd: "test -f flag.txt" });
     K.update(early.key, { status: "done" });
     // phase 09 "implementation" wipes product.html and deletes the flag file the earlier card depends on
     writeFileSync(join(proj, "product.html"), PAGE(""));
     execFileSync("rm", [join(proj, "flag.txt")]);
-    const b = K.create({ title: "P9", cwd: proj, spec: "docs/phase-09.md", test_cmd: "true" });
+    const b = story(K, { title: "P9", cwd: proj, spec: "docs/phase-09.md", test_cmd: "true" });
     const res = await K.complete(b.key);
     assert.equal(res.passed, false);
     assert.equal(res.detail, "verification failed");
@@ -119,9 +119,9 @@ test("verify: functional steps run through the webtest engine against the projec
   try {
     const proj = mk({ "js/lib/qty.js": "export function clamp() {}\nexport const MAX_QTY = 10;\n", "css/product.css": "body{}", "product.html": PAGE() });
     const K = t.rt.kanban;
-    const ok = K.create({ title: "F", cwd: proj, spec: "docs/phase-08.md", functional: [{ action: "goto", url: "{{base}}product.html" }, { action: "expect_text", text: "Product" }, { action: "click", text: "Other" }] });
+    const ok = story(K, { title: "F", cwd: proj, spec: "docs/phase-08.md", functional: [{ action: "goto", url: "{{base}}product.html" }, { action: "expect_text", text: "Product" }, { action: "click", text: "Other" }] });
     assert.equal((await K.verify(ok.key)).checks.find((x) => x.name === "functional").ok, true);
-    const bad = K.create({ title: "F2", cwd: proj, spec: "docs/phase-08.md", functional: [{ action: "goto", url: "{{base}}product.html" }, { action: "expect_text", text: "Add to cart" }], });
+    const bad = story(K, { title: "F2", cwd: proj, spec: "docs/phase-08.md", functional: [{ action: "goto", url: "{{base}}product.html" }, { action: "expect_text", text: "Add to cart" }], });
     const f = (await K.verify(bad.key)).checks.find((x) => x.name === "functional");
     assert.equal(f.ok, false);
     assert.match(f.detail, /step \d+ expect_text failed/);

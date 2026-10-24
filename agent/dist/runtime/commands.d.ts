@@ -12,6 +12,7 @@ export interface CommandResult {
     exit?: boolean;
     send?: string;
     clear?: boolean;
+    open?: string;
 }
 type Handler = (args: string, c: CommandContext) => Promise<CommandResult> | CommandResult;
 export interface Cmd {

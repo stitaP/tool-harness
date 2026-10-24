@@ -112,11 +112,11 @@ export class StoreBridge {
         const act = s(a.action), k = rt.kanban;
         const P: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
         const ST: Record<string, string> = { todo: "backlog", ready: "ready", "in-progress": "running", review: "review", done: "done", blocked: "blocked", cancelled: "done" };
-        if (act === "add-task") return k.create({ title: s(a.title), body: s(a.description), priority: P[s(a.priority)] ?? 1, depends_on: a.dependsOn ? s(a.dependsOn).split(",").map((x) => x.trim()) : [] });
+        if (act === "add-task") return k.create({ title: s(a.title), body: s(a.description), parent: s(a.parent) || undefined, priority: P[s(a.priority)] ?? 1, depends_on: a.dependsOn ? s(a.dependsOn).split(",").map((x) => x.trim()) : [] });
         if (act === "move-task") return k.update(s(a.taskId), { status: (ST[s(a.status)] ?? s(a.status)) as any });
         if (act === "add-comment") return k.comment(s(a.taskId), s(a.comment), s(a.author) || "agent");
         if (act === "get-ready") return { tasks: k.ready() };
-        if (act === "fan-out") { const subs = typeof a.subtasks === "string" ? (() => { try { return JSON.parse(a.subtasks as string); } catch { return s(a.subtasks).split(","); } })() : a.subtasks; return { subtasks: (subs as any[]).map((t) => k.create({ title: typeof t === "string" ? t.trim() : t.title, body: typeof t === "string" ? "" : t.description ?? "", depends_on: [] })) }; }
+        if (act === "fan-out") { const subs = typeof a.subtasks === "string" ? (() => { try { return JSON.parse(a.subtasks as string); } catch { return s(a.subtasks).split(","); } })() : a.subtasks; return { subtasks: (subs as any[]).map((t) => k.create({ title: typeof t === "string" ? t.trim() : t.title, body: typeof t === "string" ? "" : t.description ?? "", parent: s(a.parent) || undefined, depends_on: [] })) }; }
         return { cards: k.list() };
       },
     });

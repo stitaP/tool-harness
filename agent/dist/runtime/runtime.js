@@ -29,6 +29,8 @@ import { readFileTool, writeFileTool, patchTool, searchFilesTool, listDirTool } 
 import { webSearchTool, webExtractTool } from "../tools/web.js";
 import { docsLookupTool } from "../tools/docs.js";
 import { officeTool } from "../tools/office.js";
+import { showDocumentTool } from "../tools/show-document.js";
+import { convertDocumentTool } from "../tools/convert.js";
 import { captureTools } from "../tools/capture.js";
 import { webtestTool } from "../tools/webtest.js";
 import { PipelineRunner, pipelineTool } from "../loop/pipeline.js";
@@ -259,7 +261,7 @@ export class Runtime extends EventEmitter {
     }
     registerBuiltinTools() {
         for (const t of [
-            terminalTool, processTool, runTestsTool, gitTool, githubTool, codeSearchTool, lspTool, fileHistoryTool, pageCheckTool, siteTemplateTool, financeTool, strapiTool, readFileTool, writeFileTool, patchTool, searchFilesTool, listDirTool, officeTool,
+            terminalTool, processTool, runTestsTool, gitTool, githubTool, codeSearchTool, lspTool, fileHistoryTool, pageCheckTool, siteTemplateTool, financeTool, strapiTool, readFileTool, writeFileTool, patchTool, searchFilesTool, listDirTool, officeTool, showDocumentTool, convertDocumentTool,
             webSearchTool, webExtractTool, docsLookupTool, todoTool, memoryTool, skillsListTool, skillViewTool, skillManageTool,
             sessionSearchTool, clarifyTool, toolSearchTool, useToolTool, delegateTool, executeCodeTool, visionTool,
             cronTool, pipelineTool, kanbanTool, ragSearchTool, ...browserTools, desktopTool, ...captureTools, webtestTool,

@@ -814,7 +814,7 @@ export async function designToBoard(rt: Runtime, o: DesignOptions, deps: DesignD
   const epicCard = new Map<string, Card>();
   for (const e of ov.epics) {
     if (!stories.some((s) => s.epic === e.id)) continue;
-    const c = K.create({ title: e.title, type: "epic", numbering: "feature", status: "backlog", board: b.id, cwd: project, spec: specRel,
+    const c = K.create({ title: e.title, type: "epic", status: "backlog", board: b.id, cwd: project, spec: specRel,
       body: `GOAL: ${e.goal}\n\nPart of: ${ov.title}\n${ov.summary}\n\nDesign sections: ${e.sections.map((i) => chunks[i]?.heading).filter(Boolean).join("; ") || "all"}${arts.some((a) => a.verdict !== "skip") ? `\n\nPrior art (see ${relative(project, join(dir, "prior-art.md"))}):\n${priorArtText(arts, project)}` : ""}` });
     epicCard.set(e.id, c); keys.push(c.key!);
   }
@@ -866,6 +866,10 @@ export function designJob(rt: Runtime, id?: string): DesignJob | null {
   const all = [...jobs.values()].map((x) => x.job).sort((a, b) => b.started - a.started);
   return all[0] ?? null;
 }
+/** The design run that is going right now, if any. */
+export function runningDesignJob(): DesignJob | null { return [...jobs.values()].map((x) => x.job).find((j) => j.status === "running") ?? null; }
+/** What a chat model is told while a design run is going: stop and let it finish. */
+export const DESIGN_WAIT = "Do NOT wait for it, poll it, sleep, make another board, create tickets, read the documents yourself or write any code: the run builds the whole board on its own and takes from several minutes to an hour. End your turn now: tell the user the run has started, that they can follow it in Kanban (board menu \u203a New board from a design document) or ask you for its status, and that the draft board will wait for their review.";
 export function stopDesignJob(id?: string): boolean {
   const j = id ? jobs.get(id) : [...jobs.values()].find((x) => x.job.status === "running");
   if (!j || j.job.status !== "running") return false;
@@ -876,5 +880,5 @@ export function describeJob(j: DesignJob | null): string {
   const last = j.log.slice(-12).map((p) => `- [${p.stage}] ${p.message}`).join("\n");
   const head = `Design run ${j.id} (${j.status}) from ${j.source} into ${j.project}`;
   if (j.result) return `${head}\nBoard "${j.result.board.name}" (draft): ${j.result.stories} stories in ${j.result.epics} main features, ${j.result.findings} research findings, ${j.result.pdfs?.length ?? 0} PDF(s), ${j.result.priorArt?.length ?? 0} repo(s) judged; ${j.result.flagged ?? 0} story(ies) flagged for review.\nReport: ${j.result.report}\n${j.result.gaps.length ? `Review found ${j.result.gaps.length} gap(s): ${j.result.gaps.slice(0, 5).join("; ")}\n` : ""}Next: review the tickets (kanban show <KEY>, edit with kanban update), then kanban action=approve board="${j.result.board.name}".\n${last}`;
-  return `${head}${j.error ? `\nError: ${j.error}` : ""}\n${last}`;
+  return `${head}${j.error ? `\nError: ${j.error}` : ""}\n${last}${j.status === "running" ? `\n\nSTILL RUNNING. ${DESIGN_WAIT}` : ""}`;
 }

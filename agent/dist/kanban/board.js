@@ -1,5 +1,6 @@
 /**
- * Kanban board: a small Jira-style tracker. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria,
+ * Kanban board: a small Jira-style tracker. Main features (epics) are MF001, MF002 …; every story or bug sits under one
+ * and is numbered after it (MF006 → US0061, BG0061). Cards have types (epic/task/bug), acceptance criteria,
  * a test command that gates "done", threaded comments, a status history and linked git commits. Cards are dispatched
  * to worker sessions in goal mode; interrupted cards (power cut, crash) are put back on the queue by recover().
  */
@@ -15,7 +16,7 @@ import { verifyCard, writeVerifyTest, checkBuilt, stubFiles } from "./verify.js"
 import { Boards } from "./boards.js";
 import { Projects } from "./projects.js";
 import { enrichBoard, describeEnrich } from "./enrich.js";
-import { startDesignJob, designJob, stopDesignJob, describeJob } from "./design.js";
+import { startDesignJob, designJob, stopDesignJob, describeJob, runningDesignJob, DESIGN_WAIT } from "./design.js";
 import { createWorktree, mergeWorktree, removeWorktree, worktreeChanges } from "../runtime/worktree.js";
 const HOOK_MARK = "# stitap-kanban-hook";
 const HOOK = `#!/bin/sh
@@ -106,26 +107,25 @@ export class KanbanBoard {
         }
         return `${prefix}${num}${String(max + 1).padStart(n.story_digits, "0")}`;
     }
-    nextKey(prefix) {
-        const re = new RegExp(`^${prefix}-(\\d+)$`);
-        let max = 0;
-        for (const c of this.rt.db.listRecords("kanban")) {
-            const m = c.key?.match(re);
-            if (m)
-                max = Math.max(max, Number(m[1]));
-        }
-        return `${prefix}-${max + 1}`;
+    /** Why a story/bug cannot be created under `parent`: it needs a main feature (MF###) to belong to. */
+    needFeature(p, parent) {
+        const n = this.numbering, board = p.board ?? this.boards.activeId();
+        const open = this.list(undefined, board).filter((c) => c.type === "epic" && this.featureNumber(c.key)).slice(0, 8).map((c) => `${c.key} "${c.title}"`);
+        return `"${p.title}" needs a main feature: ${parent ? `${parent} is not one (main features are ${n.feature_prefix}${"1".padStart(n.feature_digits, "0")}, ${n.feature_prefix}${"2".padStart(n.feature_digits, "0")} …)` : "no parent given"}. `
+            + `First create the main feature (action=create, type=epic), then each user story with parent=<its ${n.feature_prefix} key>; the stories are numbered after it (${n.story_prefix}0011 …). `
+            + (open.length ? `Main features on this board: ${open.join(", ")}.` : "This board has no main feature yet.");
     }
     create(p) {
-        const prefix = (p.key_prefix ?? this.cfg.project_key ?? "PT").toUpperCase();
         const now = Date.now();
         const status = p.status ?? (p.type === "epic" ? "backlog" : "ready");
         const parent = p.parent ? this.get(p.parent)?.key ?? p.parent : undefined;
         if (p.key && this.get(p.key))
             throw new Error(`ticket key ${p.key} is already used`);
         const folder = p.folder ? this.projects.checkFolder(p.board ?? this.boards.activeId(), p.folder) : undefined;
-        const featureEpic = p.type === "epic" && (p.numbering === "feature" || (!p.key_prefix && this.numbering.style !== "prefix"));
-        const key = p.key?.toUpperCase() ?? (featureEpic ? this.featureKey() : parent && this.featureNumber(parent) && p.type !== "epic" ? this.childKey(parent, p.type) : this.nextKey(prefix));
+        // epic first, then its stories: an epic is the next main feature (MF010), a story or bug is numbered after its feature (US0101)
+        if (!p.key && p.type !== "epic" && !this.featureNumber(parent))
+            throw new Error(this.needFeature(p, parent));
+        const key = p.key?.toUpperCase() ?? (p.type === "epic" ? this.featureKey() : this.childKey(parent, p.type));
         const c = { id: shortId("k_"), board: p.board ?? this.boards.activeId(), key, type: p.type ?? "task", title: p.title, body: p.body ?? "", status, priority: p.priority ?? 0,
             depends_on: (p.depends_on ?? []).map((d) => this.get(d)?.id ?? d), review: !!p.review, comments: [], created_at: now, updated_at: now, attempts: 0,
             ...(parent ? { parent } : {}), ...(p.links?.length ? { links: p.links } : {}), ...(p.acceptance?.length ? { acceptance: p.acceptance } : {}),
@@ -394,6 +394,12 @@ export class KanbanBoard {
                 continue;
             }
             const dup = this.list().find((b) => b.type === "bug" && b.links?.includes(c.key) && b.status !== "done");
+            if (!dup && !this.featureNumber(c.parent)) {
+                this.comment(c.id, `Regression: tests fail again (exit ${t.code}). Reopened; no bug filed because ${c.key} is not under a main feature.`, "system");
+                this.update(c.id, { status: "ready", attempts: 0 }, { by: "system", reason: "regression" });
+                out.push(`${c.key} FAILED → reopened`);
+                continue;
+            }
             const bug = dup ?? this.create({ title: `Regression: ${c.title}`, type: "bug", parent: c.parent, links: [c.key], priority: c.priority + 1, spec: c.spec, cwd: c.cwd, test_cmd: c.test_cmd,
                 acceptance: [`\`${c.test_cmd}\` exits 0`], body: `Tests for ${c.key} now fail.\n\nCommand: ${c.test_cmd}\nExit code: ${t.code}\n\n${tail(t.output, 3000)}` });
             this.comment(c.id, `Regression: tests fail again (exit ${t.code}). Reopened; bug ${bug.key} filed.`, "system");
@@ -412,8 +418,8 @@ export class KanbanBoard {
     recover() {
         const out = [];
         for (const c of this.listAll("running")) {
-            if (this.active.has(c.id))
-                continue;
+            if (this.active.has(c.id) || c.type === "epic")
+                continue; // an epic's status follows its stories
             const exhausted = c.attempts >= (this.cfg.max_attempts ?? 3);
             this.comment(c.id, `Interrupted by a restart or crash (attempt ${c.attempts}). ${exhausted ? "Attempts exhausted; blocked." : "Re-queued; the next worker resumes from the commits and notes on this card."}`, "system");
             out.push(this.update(c.id, { status: exhausted ? "blocked" : "ready" }, { by: "system", reason: "interrupted" }));
@@ -648,10 +654,10 @@ export class KanbanBoard {
 }
 export const kanbanTool = {
     name: "kanban", toolset: "kanban", tier: "standard",
-    description: "Project tracker (kanban tool call, not a shell command): plan, track and verify multi-task projects. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria, a test_cmd that must pass before done, threaded comments, status history and linked git commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, enrich (look up the technical words in the tickets on official sites and add short REFERENCE NOTES with links), import (ONLY when the user literally asks to import: turn a plan folder of phase-NN.md specs into epics and tasks without research; the tickets land in backlog as a draft for review). WRITING A TICKET BY HAND: one focus per ticket; plain short sentences; in the body list WHAT TO BUILD, FILES, NAMES, STEPS, what each part must do, and TEST CASES (a normal case and an edge case for every function); put the files in acceptance so they can be checked. DESIGN TO BOARD — the default whenever the user asks to plan, create, build or start a kanban/Jira board FROM design documents, a design folder, an idea or a spec (even a folder of phase-NN.md files): call design, not import, and do not read the documents yourself first. design (path = a design document: file, folder or URL; project = folder the work happens in: a NEW folder unless the user names one; board = a NEW board name unless the user names one) reads the document, researches it on the web (pages, PDFs, follow-up searches), downloads and judges free GitHub repos that already do the same, and builds a DRAFT board (main features MF010, their stories US0101 …, each story checked and flagged when it needs a person) whose tickets wait in backlog; it runs in the background, follow it with design_status, stop it with design_stop. approve (board, optional keys) moves reviewed draft tickets to ready and makes the board active. Only approve when the user has asked you to run the stories. PROJECTS, FOLDERS AND BOARDS (create, show, update, delete for each): a PROJECT groups boards and named working folders (one ★ primary). projects lists them; project_new (project_name, folder_path = main folder, folder = its short name, default code); project_show; project_update (new_name, description); project_use switches to a project (opens its board; the workers serve the active board); project_archive / project_unarchive (with its boards); project_delete (confirm=true; boards kept unless delete_boards=true). folder_add (folder = short name like docs or api, folder_path, primary); folder_update (new_name, folder_path, primary); folder_remove (files on disk stay). A ticket runs in: its cwd, else its project folder (create/update with folder=docs), else its board's folder, else the project's primary folder. Boards: boards; board_show; board_new (name, description, project = folder, project_name); board_update (new_name, description, project = folder, project_name = move it into a project, \"\" takes it out); board_project; board_use; board_archive / board_unarchive; board_save / board_restore; board_clear removes every ticket of ONE board, board_delete removes the board too (both need confirm=true and save a snapshot that board_restore brings back). Tickets: create, list, show, update (also folder, cwd, parent), delete (confirm=true; an epic takes its tickets), move between boards. You CAN do all of these: when the user asks to create, change, clear, reset, start fresh, archive or delete a project, folder, board or ticket, do not refuse and do not touch git or files instead; name what you will act on, call the action (for confirm=true actions call once without it, tell the user what will go, and call again with confirm=true once they agree or if they already said so plainly). Files on disk are never deleted by these actions.",
+    description: "Project tracker (a tool call, not a shell command). Keys: main features MF006, their stories US0061, bugs BG0061; cards have acceptance criteria, a test_cmd that must pass before done, threaded comments, history and linked commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, enrich (look up the technical words in the tickets on official sites and add short REFERENCE NOTES with links), import (ONLY when the user literally asks to import: turn a plan folder of phase-NN.md specs into epics and tasks without research; the tickets land in backlog as a draft for review). WRITING TICKETS BY HAND — EPIC FIRST: create the main feature (type=epic, gets an MF key), then each story with parent=that key (a story without one is refused). Story: 'As a <user>, I want <goal> so that <benefit>', one focus, small, independent (INVEST); acceptance 3–6 'Given …, when …, then …' criteria plus the files it builds; body: WHAT TO BUILD, FILES, NAMES, STEPS and TEST CASES (a normal and an edge case per function). DESIGN TO BOARD — the default whenever the user asks to plan, create, build or start a kanban/Jira board FROM design documents, a design folder, an idea or a spec (even a folder of phase-NN.md files): call design, not import, and do not read the documents yourself first. design (path = a design document: file, folder or URL; project = folder the work happens in: a NEW folder unless the user names one; board = a NEW board name unless the user names one) reads the document, researches it on the web (pages, PDFs, follow-up searches), downloads and judges free GitHub repos that already do the same, and builds a DRAFT board (main features MF010, their stories US0101 …, each story checked and flagged when it needs a person) whose tickets wait in backlog; it runs in the background, follow it with design_status, stop it with design_stop. approve (board, optional keys) asks the user in the chat and, only if they say Approve, moves the draft tickets to ready and makes the board active. Never approve or dispatch on your own after a design run: tell the user the draft is ready for review and stop. PROJECTS, FOLDERS AND BOARDS (create, show, update, delete for each): a PROJECT groups boards and named working folders (one ★ primary). projects lists them; project_new (project_name, folder_path = main folder, folder = its short name, default code); project_show; project_update (new_name, description); project_use switches to a project (opens its board; the workers serve the active board); project_archive / project_unarchive (with its boards); project_delete (confirm=true; boards kept unless delete_boards=true). folder_add (folder = short name like docs or api, folder_path, primary); folder_update (new_name, folder_path, primary); folder_remove (files on disk stay). A ticket runs in: its cwd, else its project folder (create/update with folder=docs), else its board's folder, else the project's primary folder. Boards: boards; board_show; board_new (name, description, project = folder, project_name); board_update (new_name, description, project = folder, project_name = move it into a project, \"\" takes it out); board_project; board_use; board_archive / board_unarchive; board_save / board_restore; board_clear removes every ticket of ONE board, board_delete removes the board too (both need confirm=true and save a snapshot that board_restore brings back). Tickets: create, list, show, update (also folder, cwd, parent), delete (confirm=true; an epic takes its tickets), move between boards. You CAN do all of these: when asked to create, change, clear, archive or delete a project, folder, board or ticket, do not refuse or touch git/files instead; for confirm=true actions call once without it, tell the user what will go, and call again with confirm=true once they agree (or already said so plainly). Files on disk are never deleted.",
     parameters: obj({
         action: enm(["create", "list", "show", "update", "comment", "dispatch", "resume", "link_commit", "sync", "test", "verify", "gentests", "regression", "board", "report", "import", "boards", "board_new", "board_project", "board_update", "board_show", "board_use", "board_rename", "board_archive", "board_unarchive", "board_clear", "board_delete", "board_save", "board_restore", "move", "link", "unlink", "enrich", "design", "design_status", "design_stop", "approve", "delete", "projects", "project_new", "project_show", "project_update", "project_use", "project_archive", "project_unarchive", "project_delete", "folder_add", "folder_update", "folder_remove"], "operation"),
-        id: str("card id or key (PT-12)"),
+        id: str("card id or key (MF006, US0061)"),
         title: str("card title"),
         body: str("details / acceptance criteria"),
         status: enm(["backlog", "ready", "running", "review", "blocked", "done"], "status"),
@@ -661,7 +667,7 @@ export const kanbanTool = {
         text: str("comment text"),
         reply_to: str("comment id to reply to"),
         type: enm(["epic", "task", "bug"], "card type"),
-        parent: str("epic key"),
+        parent: str("create a story/bug: its main feature key (MF006); required"),
         acceptance: arr(str("criterion"), "acceptance criteria"),
         test_cmd: str("shell command that must exit 0 before the card can be done"),
         spec: str("path of the specification file for this card"),
@@ -672,7 +678,6 @@ export const kanbanTool = {
         path: str("import: folder holding phase-NN.md files"),
         project: str("import/design: project folder the docs and tests are copied into and the cards run in; board_new/board_project: the board's project folder (\"\" in board_project removes it)"),
         tests: str("import: folder of reference tests to copy into <project>/tests"),
-        key_prefix: str("import/create: key prefix, default from config"),
         board: str("import: name of the board to fill (created if missing, then made active); board_*: the board concerned (default: the active board)"),
         name: str("board_new / board_restore: the board's name"),
         new_name: str("board_rename: the new name"),
@@ -691,10 +696,14 @@ export const kanbanTool = {
     async handler(a, ctx) {
         const K = ctx.rt.kanban;
         const by = "agent";
+        // while a design run builds a board, a chat must not build a plan of its own next to it
+        const dj = runningDesignJob(), chat = !["kanban", "subagent", "cron", "pipeline", "webhook"].includes(String(ctx.session?.source ?? ""));
+        if (dj && chat && ["board_new", "create", "import", "approve", "dispatch", "resume"].includes(String(a.action)))
+            return `Refused: design run ${dj.id} is still building the board from ${dj.source} (last step: ${dj.log[dj.log.length - 1]?.message ?? "starting"}). ${DESIGN_WAIT}`;
         const projRef = () => { const r = String(a.project_name ?? "").trim() || K.projects.active()?.id; if (!r)
             throw new Error("name the project (project_name); the active board is not in a project"); return r; };
         switch (a.action) {
-            case "create": return `Created ${K.fmt(K.create({ title: String(a.title ?? "untitled"), body: a.body, priority: a.priority, depends_on: a.depends_on, status: a.status, review: a.review, type: a.type, parent: a.parent, acceptance: a.acceptance, test_cmd: a.test_cmd, spec: a.spec, cwd: a.cwd, functional: a.functional, key_prefix: a.key_prefix, folder: a.folder }))}`;
+            case "create": return `Created ${K.fmt(K.create({ title: String(a.title ?? "untitled"), body: a.body, priority: a.priority, depends_on: a.depends_on, status: a.status, review: a.review, type: a.type, parent: a.parent, acceptance: a.acceptance, test_cmd: a.test_cmd, spec: a.spec, cwd: a.cwd, functional: a.functional, folder: a.folder }))}`;
             case "list": {
                 const l = K.list(a.status);
                 return l.length ? l.map((c) => K.fmt(c)).join("\n") : "Board is empty.";
@@ -705,6 +714,15 @@ export const kanbanTool = {
                     ...(a.acceptance ? { acceptance: a.acceptance } : {}), ...(a.test_cmd ? { test_cmd: a.test_cmd } : {}), ...(a.spec ? { spec: a.spec } : {}), ...(a.type ? { type: a.type } : {}), ...(a.functional ? { functional: a.functional } : {}),
                     ...(a.folder !== undefined ? { folder: a.folder ? K.projects.checkFolder(K.get(a.id)?.board, a.folder) : undefined } : {}), ...(a.cwd !== undefined ? { cwd: a.cwd || undefined } : {}), ...(a.parent ? { parent: a.parent } : {}) };
                 if (a.status === "done") {
+                    // a chat cannot close a ticket on its word alone: something must show the work exists
+                    const c = K.get(a.id);
+                    if (!c)
+                        return `no ticket ${a.id}`;
+                    if (c.type !== "epic" && !c.test_cmd && !c.files?.length && !c.commits?.length) {
+                        const why = `Not done: nothing shows the work is finished (no test_cmd, no files, no commits under ${c.key}). Add a test_cmd or the files it builds, or let a worker do it (dispatch); the user can close it on the board.`;
+                        K.comment(c.id, why, "system");
+                        return `${K.fmt(c)} — ${why}`;
+                    }
                     const v = await K.complete(a.id, by);
                     return `${K.fmt(v.card)} — ${v.detail}`;
                 }
@@ -738,19 +756,30 @@ export const kanbanTool = {
             case "import": {
                 if (!a.path)
                     return "import needs path (folder with phase-NN.md files)";
-                return importPlan(K, { planDir: String(a.path), projectDir: a.project, testsDir: a.tests, keyPrefix: a.key_prefix, board: a.board });
+                return importPlan(K, { planDir: String(a.path), projectDir: a.project, testsDir: a.tests, board: a.board });
             }
             case "design": {
                 if (!a.path)
                     return "design needs path (the design document: a file, a folder or an http(s) URL) and project (the folder the work happens in)";
                 const project = String(a.project ?? ctx.cwd);
                 const job = startDesignJob(ctx.rt, { source: String(a.path), project, board: a.board });
-                return `Started design run ${job.id}: reading ${job.source}, researching it on the web and planning stories for ${project}. It takes a while; check it with kanban action=design_status. The board it makes is a DRAFT: nothing runs until the user reviews and approves it.`;
+                return `Started design run ${job.id}: reading ${job.source}, researching it on the web and planning stories for ${project}. The board it makes is a DRAFT: nothing runs until the user reviews and approves it. ${DESIGN_WAIT}`;
             }
             case "design_status": return describeJob(designJob(ctx.rt, a.id));
             case "design_stop": return stopDesignJob(a.id) ? "Stopping the design run." : "No design run is going.";
             case "approve": {
-                const r = K.boards.approve(String(a.board ?? K.boards.active().name), { keys: a.keys });
+                // only the user approves a draft: the agent asks in the chat and waits; nobody watching means no approval
+                const ab = K.boards.get(String(a.board ?? K.boards.active().name));
+                if (!ab)
+                    return `no board "${a.board}"`;
+                const want = a.keys?.length ? new Set(a.keys.map((k) => k.toUpperCase())) : null;
+                const waiting = K.list("backlog", ab.id).filter((c) => c.type !== "epic" && (!want || want.has((c.key ?? "").toUpperCase())));
+                if (!waiting.length)
+                    return `Nothing to approve on "${ab.name}" (no backlog tickets${a.keys?.length ? " with those keys" : ""}).`;
+                const ans = typeof ctx.clarify === "function" ? await ctx.clarify(`Approve ${waiting.length} draft ticket(s) on "${ab.name}"? They move to ready and the workers can start them.`, ["Approve", "Not yet"]) : null;
+                if (!ans || !/^\s*(approve|yes|y|ok|go)\b/i.test(ans))
+                    return `Not approved: ${ans ? `the user answered "${ans}"` : "the user did not answer (or nobody is watching this chat)"}. The tickets stay in backlog for review. Do not ask again unless the user asks you to approve or run them; they can also approve on the board.`;
+                const r = K.boards.approve(ab.id, { keys: a.keys });
                 return r.approved.length ? `Approved ${r.approved.length} ticket(s) on "${r.board.name}" (${r.approved.slice(0, 12).join(", ")}${r.approved.length > 12 ? " …" : ""}); it is the active board now. Use kanban action=dispatch to start the workers.` : `Nothing to approve on "${r.board.name}" (no backlog tickets${a.keys?.length ? " with those keys" : ""}).`;
             }
             case "enrich": return describeEnrich(await enrichBoard(ctx.rt, { board: a.board, signal: ctx.signal, onProgress: ctx.progress }));

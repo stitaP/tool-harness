@@ -1,6 +1,8 @@
 import type { Runtime } from "../runtime/runtime.js";
 import { type Tool } from "./types.js";
 export declare function playwrightAvailable(): boolean;
+/** Print an HTML page to a PDF file with a headless Chromium of its own (not the user's browser session). */
+export declare function htmlToPdf(html: string, out: string): Promise<void>;
 /**
  * browser config: mode safari (the real Safari via safaridriver — default on macOS) | launch (Playwright's bundled Chromium) |
  * chrome (an installed Chromium-based browser: channel chrome/msedge or executable_path, own profile) | connect (a running Chrome over CDP)

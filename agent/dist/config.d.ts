@@ -190,7 +190,6 @@ export declare const DEFAULT_CONFIG: {
         worktrees: boolean;
         enabled: boolean;
         guard_chat_writes: boolean;
-        project_key: string;
         cwd: string;
         max_attempts: number;
         test_timeout_s: number;
@@ -200,7 +199,6 @@ export declare const DEFAULT_CONFIG: {
         default_board: string;
         tier_by_kind: Record<string, "fast" | "strong">;
         numbering: {
-            style: "feature" | "prefix";
             feature_prefix: string;
             story_prefix: string;
             bug_prefix: string;

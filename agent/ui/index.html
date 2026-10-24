@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#11181a">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <title>stitaP Agent</title>
 <style>
 /* Theme: the stitaP site's palette (repo src/index.css) — near-monochrome neutrals, burnt-orange primary, 6px radius */
@@ -138,8 +140,66 @@ aside.right h4:first-child { margin-top: 0; }
 .chip { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 999px; padding: 7px 13px; font-size: 13px; }
 .chip:hover { border-color: var(--accent); }
 .notice { background: var(--panel-2); border-radius: var(--radius); padding: 6px 10px; color: var(--muted); font-size: 13px; margin: 8px 0; white-space: pre-wrap; }
-@media (max-width: 1100px) { .app, .app.no-right { grid-template-columns: 240px 1fr; } aside.right { display: none; } }
-@media (max-width: 720px) { .app, .app.no-right { grid-template-columns: 1fr; } aside.left { display: none; } aside.left.open { display: flex; position: fixed; inset: 0 25% 0 0; z-index: 10; } .menu-btn { display: inline-block !important; } .inner { padding: 0 14px; } }
+@media (max-width: 1100px) { .app, .app.no-right { grid-template-columns: 240px 1fr; } aside.right { display: none; }
+  /* the side panel becomes a drawer from the right (▤) */
+  .app.right-open aside.right { display: block; position: fixed; top: 0; right: 0; bottom: 0; width: min(360px, 88vw); z-index: 12; box-shadow: -8px 0 24px rgba(0,0,0,.2); padding-top: calc(14px + env(safe-area-inset-top)); padding-bottom: calc(14px + env(safe-area-inset-bottom)); } }
+@media (max-width: 720px) { .app, .app.no-right { grid-template-columns: 1fr; } aside.left { display: none; } aside.left.open { display: flex; position: fixed; top: 0; bottom: 0; left: 0; width: min(340px, 86vw); z-index: 12; box-shadow: 8px 0 24px rgba(0,0,0,.2); padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); } .menu-btn { display: inline-block !important; } .inner { padding: 0 14px; } }
+#scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 11; display: none; }
+#scrim.on { display: block; }
+.ctlhome { display: none; text-decoration: none; color: var(--muted); font-size: 13px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; margin-left: 8px; }
+body.proxied .ctlhome { display: inline-block; }
+.drawerx { display: none; }
+/* ── phones ── */
+@media (max-width: 720px) {
+  input, textarea, select { font-size: 16px; }
+  .topbar { gap: 6px; padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top)); min-height: 46px; }
+  .topbar .title { font-size: 14px; min-width: 0; }
+  .topbar #modelPill, .topbar #goalPill, .topbar #agentPill { display: none !important; }
+  .topbar .cwdpill { max-width: 26vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modesw button { padding: 4px 9px; font-size: 13px; }
+  .composer-wrap { padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); }
+  .composer-wrap .hint { display: none; }
+  /* chat on a phone: tighter text, nothing wider than the screen */
+  #msgs { font-size: 15px; line-height: 1.5; }
+  .msg { margin: 10px 0; }
+  .msg.user .bubble { max-width: 88%; padding: 8px 12px; }
+  .msg.agent .content { overflow-wrap: anywhere; }
+  .msg.agent .content p { margin: 6px 0; }
+  .msg.agent .content pre { max-width: 100%; overflow-x: auto; font-size: 12.5px; -webkit-overflow-scrolling: touch; }
+  .msg.agent .content table { display: block; max-width: 100%; overflow-x: auto; font-size: 13px; }
+  .msg.agent .content img { max-width: 100%; height: auto; }
+  .tool { font-size: 12.5px; margin: 4px 0; }
+  .tool summary { padding: 6px 8px; }
+  .tool pre, .tool .out { max-width: 100%; overflow-x: auto; }
+  .kbbar { padding: 6px 10px; font-size: 12.5px; gap: 6px; }
+  .kbbar .grow { min-width: 0; flex-basis: 100%; }
+  .composer textarea { min-height: 44px; }
+  .attach, .send { min-height: 44px; }
+}
+@media (max-width: 440px) {
+  .topbar .cwdpill #cwdName { display: none; }
+  .modesw button { padding: 4px 7px; font-size: 12px; }
+  .topbar .title { font-size: 13.5px; }
+  .drawerx { display: inline-block; margin-left: auto; }
+  /* full-screen windows */
+  .modal { padding: 0; }
+  .modal .box { width: 100%; height: 100%; max-height: none; border-radius: 0; border: 0; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .modal .hd { flex-wrap: wrap; }
+  .modal .hd .stabs { order: 3; width: 100%; overflow-x: auto; flex-wrap: nowrap; display: flex; gap: 6px; }
+  .modal .hd .stabs button { flex: 0 0 auto; }
+  /* kanban: one compact header, the rest behind "Actions" */
+  #kb .kbhd { gap: 6px; padding: 8px 10px; padding-top: calc(8px + env(safe-area-inset-top)); }
+  #kb .kbhd .kbact { display: none; }
+  #kb.acts .kbhd .kbact { display: inline-flex; }
+  #kb .kbhd .kbmore { display: inline-flex; }
+  #kb .kbhd .kbsearch { flex: 1 1 100%; order: 10; }
+  #kb .kbhd > b { display: none; }
+  #kb .kbagent { order: 11; flex: 1 1 100%; }
+  #kb .kbcols { scroll-snap-type: x mandatory; }
+  #kb .kbcols > * { scroll-snap-align: start; }
+  #kb.detail .kbmain { grid-template-columns: 0 1fr; }
+}
+.kbmore { display: none; }
 .menu-btn { display: none; }
 .tabs { display: flex; gap: 4px; margin: 0 12px 10px; padding: 3px; background: var(--panel-2); border-radius: var(--radius); }
 .tabs button { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 5px 0; border-radius: var(--radius); font-size: 13px; }
@@ -215,8 +275,8 @@ aside.right h4:first-child { margin-top: 0; }
 .kbcounts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .kbpill { border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; font-size: 12px; background: var(--panel); }
 .kbpill b { font-weight: 650; }
-.kbbar { height: 8px; border-radius: 99px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--border); }
-.kbbar > i { display: block; height: 100%; background: var(--ok); }
+.kbprog { height: 8px; border-radius: 99px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--border); }
+.kbprog > i { display: block; height: 100%; background: var(--ok); }
 .st-backlog { color: var(--muted); } .st-ready { color: oklch(0.6 0.12 250); } .st-running { color: var(--warn); } .st-done { color: var(--ok); } .st-blocked { color: var(--err); } .st-review { color: var(--accent); }
 .live { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); animation: pulse 1s infinite; margin-right: 5px; }
 #kb { position: fixed; inset: 0; z-index: 25; background: var(--bg); display: none; flex-direction: column; }
@@ -332,12 +392,100 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
 .kblink .ty { color: var(--muted); font-size: 12px; min-width: 92px; } .kblink .bd { font-size: 11px; border: 1px solid var(--border); border-radius: 6px; padding: 0 5px; color: var(--muted); }
 .kblink .x { margin-left: auto; cursor: pointer; color: var(--muted); border: 0; background: transparent; }
 .kbform { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .kbform select, .kbform input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 7px; font: inherit; font-size: 12.5px; }
+/* ── story review (Kanban tab): tick to approve, comment per story and per main feature; phone first ── */
+#kbrv { position: fixed; inset: 0; z-index: 35; background: var(--bg); display: none; flex-direction: column; }
+#kbrv.on { display: flex; }
+#kbrv .rvhd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top)); border-bottom: 1px solid var(--border); background: var(--panel); }
+#kbrv .rvhd select { max-width: 46vw; }
+#kbrv .rvcount { color: var(--muted); font-size: 13px; }
+#kbrv .rvchips { display: flex; gap: 6px; flex-basis: 100%; overflow-x: auto; }
+#kbrv .rvchips button { flex: 0 0 auto; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+#kbrv .rvchips button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+#kbrv .rvbody { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 0 24px; }
+#kbrv .rvin { max-width: 860px; margin: 0 auto; padding: 0 10px; }
+#kbrv .rvfoot { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 12px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: var(--panel); }
+#kbrv .rvfoot .btn { flex: 1 1 auto; min-height: 42px; }
+.rvepic { border: 1px solid var(--border); border-radius: var(--radius-lg, 10px); margin: 10px 0; background: var(--panel); overflow: hidden; }
+.rvrow { display: flex; align-items: flex-start; gap: 4px; }
+.rvchk { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 46px; min-height: 46px; cursor: pointer; }
+.rvchk input { width: 22px; height: 22px; accent-color: var(--ok); cursor: pointer; margin: 0; }
+.rvchk input:disabled { cursor: default; opacity: .6; }
+.rvtitle { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; color: var(--text); padding: 12px 10px 12px 0; font-size: 15px; line-height: 1.35; cursor: pointer; }
+.rvtitle .k { font: 600 12px var(--mono); color: var(--muted); margin-right: 6px; }
+.rvtitle small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.rvtitle .tag { display: inline-block; font-size: 11.5px; border-radius: 999px; padding: 0 7px; margin-left: 4px; border: 1px solid var(--border); color: var(--muted); vertical-align: 1px; }
+.rvtitle .tag.flag { border-color: var(--warn); color: var(--warn); }
+.rvtitle .tag.fb { border-color: var(--accent); color: var(--accent); }
+.rvepic > .rvrow { background: var(--panel-2); }
+.rvepic > .rvrow .rvtitle { font-weight: 650; }
+.rvstory { border-top: 1px solid var(--border); }
+.rvstory.ok .rvtitle > span:not(.k) { color: var(--muted); }
+.rvdet { padding: 0 12px 12px 50px; font-size: 14px; }
+.rvdet h6 { margin: 10px 0 4px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.rvdet ul { margin: 0; padding-left: 18px; }
+.rvdet .flags { border-left: 3px solid var(--warn); padding: 4px 8px; background: var(--panel-2); border-radius: 4px; }
+.rvcm { border-left: 3px solid var(--border); padding: 4px 8px; margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rvcm.user { border-left-color: var(--accent); }
+.rvcm.reply { margin-left: 14px; }
+.rvcm b { font-size: 12px; color: var(--muted); font-weight: 600; }
+.rvcm .open { color: var(--accent); font-size: 12px; }
+.rvsay textarea { width: 100%; box-sizing: border-box; min-height: 64px; font-size: 15px; margin-top: 6px; }
+.rvquick { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.rvquick button { border: 1px solid var(--border); background: var(--panel-2); color: var(--text); border-radius: 999px; padding: 4px 10px; font-size: 12.5px; }
+.rvsay .row { display: flex; gap: 8px; align-items: center; }
+.rvsay .row .err { flex: 1; }
+@media (max-width: 720px) { .rvdet { padding-left: 14px; } #kbrv .rvhd select { max-width: 60vw; } }
+/* ── document viewer: documents the agent made, opened from chat links, /open or show_document ── */
+#docv { position: fixed; inset: 0; z-index: 45; background: var(--bg); display: none; flex-direction: column; }
+#docv.on { display: flex; }
+#docv .dvhd { display: flex; align-items: center; gap: 8px; padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top)); border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
+#docv .dvname { font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#docv .dvpath { color: var(--muted); font: 12px var(--mono); min-width: 0; flex: 1 1 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#docv .dvmain { flex: 1; display: grid; grid-template-columns: 250px 1fr; min-height: 0; }
+#docv.nolist .dvmain { grid-template-columns: 1fr; }
+#docv .dvlist { border-right: 1px solid var(--border); overflow-y: auto; padding: 8px 0; background: var(--panel); }
+#docv.nolist .dvlist { display: none; }
+#docv .dvlist h5 { margin: 6px 12px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+#docv .dvlist button { display: flex; gap: 6px; width: 100%; text-align: left; border: 0; background: transparent; color: var(--text); padding: 5px 12px; font-size: 13px; cursor: pointer; }
+#docv .dvlist button:hover { background: var(--panel-2); }
+#docv .dvlist button.on { background: var(--panel-2); color: var(--accent); font-weight: 600; }
+#docv .dvlist button span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#docv .dvbody { overflow: auto; min-width: 0; -webkit-overflow-scrolling: touch; }
+#docv .dvbody .content { max-width: 860px; margin: 0 auto; padding: 18px 24px 60px; line-height: 1.6; overflow-wrap: anywhere; }
+#docv .dvbody .content img { max-width: 100%; height: auto; }
+#docv .dvbody .content pre.src { white-space: pre-wrap; }
+#docv .dvbody iframe, #docv .dvbody embed { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+#docv .dvbody .dvimg { display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 16px; box-sizing: border-box; }
+#docv .dvbody .dvimg img { max-width: 100%; max-height: calc(100vh - 120px); background: repeating-conic-gradient(var(--panel-2) 0 25%, transparent 0 50%) 0 0/16px 16px; }
+#docv .dvmsg { color: var(--muted); padding: 24px; text-align: center; }
+#docv .dvseg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+#docv .dvseg button { border: 0; background: transparent; color: var(--muted); padding: 4px 10px; font-size: 13px; }
+#docv .dvseg button.on { background: var(--panel-2); color: var(--text); font-weight: 600; }
+#docv .dvopen { display: flex; gap: 8px; margin: 4px 0 6px; }
+#docv .dvopen input { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); color: var(--text); font-size: 15px; }
+a.flink { color: var(--accent); text-decoration: underline dotted; cursor: pointer; }
+a.flink code { color: inherit; }
+.tool summary .viewbtn { margin-left: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--accent); border-radius: var(--radius); padding: 0 7px; font-size: 12px; cursor: pointer; flex: 0 0 auto; }
+@media (max-width: 720px) {
+  /* one column: the document, or (☰ Files) the list */
+  #docv .dvmain, #docv.nolist .dvmain { grid-template-columns: 1fr; }
+  #docv .dvlist { display: none; }
+  #docv.listopen .dvlist { display: block; border-right: 0; }
+  #docv.listopen .dvbody { display: none; }
+  #docv .dvhd { gap: 6px; padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top)); }
+  #docv .dvhd .btn { padding: 5px 9px; font-size: 13px; }
+  #docv .dvname { flex-basis: 100%; order: 9; }
+  #docv .dvpath { flex-basis: 100%; order: 10; white-space: normal; word-break: break-all; font-size: 11px; }
+  #docv #dvCopy { display: none; }
+  #docv .dvbody .content { padding: 12px 14px 48px; }
+}
 </style>
 </head>
 <body>
+<div id="scrim"></div>
 <div class="app" id="app">
   <aside class="left" id="left">
-    <div class="brand"><span class="dot"></span>stitaP agent<button class="gear" id="settingsBtn" title="Settings: agents and configuration">⚙</button></div>
+    <div class="brand"><span class="dot"></span>stitaP agent<a class="ctlhome" href="../" title="Back to stitaP Control: start, stop, terminal, scripts">⌂ Control</a><button class="gear" id="settingsBtn" title="Settings: agents and configuration">⚙</button><button class="iconbtn drawerx" data-close="left" aria-label="Close menu">✕</button></div>
     <div class="tabs"><button class="on" data-pane="chats">Chats</button><button data-pane="skills">Skills</button><button data-pane="mcp">MCP</button><button data-pane="kanban">Kanban</button><button data-pane="rag">RAG</button></div>
     <div class="pane on" id="pane-chats">
       <div class="newrow"><button class="newbtn" id="newBtn">＋ New chat</button><select id="agentPick" title="Agent for new chats"><option value="default">default</option></select></div>
@@ -372,7 +520,7 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
     </div>
     <div class="pane" id="pane-kanban">
       <div class="plist" id="kbSide"><div class="hint2" style="padding:8px">Loading board…</div></div>
-      <div class="pform"><button class="btn primary" id="kbOpen">Open full board</button><div class="err" id="kbErr"></div></div>
+      <div class="pform"><button class="btn primary" id="kbOpen">Open full board</button><button class="btn" id="kbReviewBtn" title="Approve stories with a tick and comment on them, epic by epic (works well on a phone)">✅ Review stories</button><div class="err" id="kbErr"></div></div>
     </div>
     <div class="pane" id="pane-rag">
       <div class="dz" id="ragDrop"><b>Share documents</b><div class="hint2">Drop files here or click. Word, Excel, PowerPoint, PDF, OpenDocument, RTF, HTML, CSV, text and code are converted to markdown.</div><input type="file" id="ragFile" multiple hidden></div>
@@ -390,6 +538,7 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
       <span class="pill" id="goalPill" hidden></span>
       <button class="pill cwdpill" id="cwdBtn" title="Working folder for this chat — click to change">📁 <span id="cwdName">…</span></button>
       <span class="pill" id="modelPill"></span>
+      <button class="iconbtn" id="docsBtn" title="Documents of this chat: design documents, reports, pages (/open)" aria-label="Documents">📄</button>
       <button class="iconbtn" id="panelBtn" title="Toggle side panel">▤</button>
     </div>
     <div class="kbbar" id="kbBar" hidden></div>
@@ -407,7 +556,7 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
     </div></div>
   </main>
   <aside class="right" id="right">
-    <h4>Model stats</h4>
+    <h4 style="display:flex;align-items:center">Model stats<button class="iconbtn drawerx" data-close="right" aria-label="Close panel">✕</button></h4>
     <div class="stats">
       <div class="stat"><div class="l"><span>Tokens consumed</span><span id="stTokCalls"></span></div><div class="v" id="stTok">–</div><div class="s" id="stTokSub"></div></div>
       <div class="stat"><div class="l"><span>Generation rate</span><span id="stRateTag"></span></div><div class="v" id="stRate">–</div><div class="s" id="stRateSub">No model calls yet.</div></div>
@@ -419,6 +568,26 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
     <h4>Session</h4><div id="sessInfo" class="kv"></div>
     <h4>Agent</h4><div id="agentInfo" class="kv"></div>
   </aside>
+</div>
+<div id="kbrv" role="dialog" aria-modal="true" aria-label="Review stories"><div class="rvhd">
+  <button class="btn" id="rvClose" aria-label="Close the review">‹ Back</button>
+  <select id="rvBoard" aria-label="Board"></select>
+  <span class="rvcount" id="rvCount"></span>
+  <button class="btn" id="rvReload" title="Load the board again" aria-label="Reload">↻</button>
+  <div class="rvchips" id="rvChips" role="group" aria-label="Show"><button data-f="all" class="on">All</button><button data-f="todo">To approve</button><button data-f="flag">⚠ Flagged</button><button data-f="fb">💬 Open comments</button><button data-f="ok">✓ Approved</button></div>
+  </div>
+  <div class="rvbody" id="rvBody"><div class="rvin" id="rvList"></div></div>
+  <div class="rvfoot"><button class="btn" id="rvApproveShown">✓ Approve all shown</button><button class="btn" id="rvApply" title="Start a chat in which the agent rewrites the commented stories and answers each comment">💬 Apply my comments</button><button class="btn primary" id="rvRun" title="Make this the active board and start workers on the approved stories">▶ Run approved</button></div>
+</div>
+<div id="docv" role="dialog" aria-modal="true" aria-label="Document viewer"><div class="dvhd">
+  <button class="btn" id="dvFiles" title="Documents of this chat and files next to this one" aria-expanded="false">☰ Files</button>
+  <span class="dvname" id="dvName">Documents</span><span class="dvpath" id="dvPath"></span>
+  <span class="dvseg" id="dvMode" hidden><button data-m="view" class="on">View</button><button data-m="src">Source</button></span>
+  <button class="btn" id="dvCopy" title="Copy the path">Copy path</button>
+  <button class="btn" id="dvTab" title="Open in a new browser tab">Open in tab</button>
+  <button class="btn" id="dvDl" title="Download the file">Download</button>
+  <button class="btn" id="dvClose">Close</button></div>
+  <div class="dvmain"><nav class="dvlist" id="dvList"></nav><div class="dvbody" id="dvBody"></div></div>
 </div>
 <div class="modal" id="settings"><div class="box"><div class="hd"><b>Settings</b><div class="stabs"><button class="on" data-st="agents">Agents</button><button data-st="tools">Tools</button><button data-st="general">General</button><button data-st="bench">Benchmarks</button></div><button class="btn" id="settingsClose">Close</button></div>
   <div class="bd" id="stAgents"></div>
@@ -441,12 +610,13 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
   <div id="kbMenu" class="kbmenu" hidden></div>
   <input id="kbSearch" class="kbsearch" placeholder="Search key or title…  ( / )" aria-label="Search tickets">
   <select id="kbEpic" title="Filter by phase" aria-label="Phase"><option value="">All phases</option></select><span class="sp"></span>
-  <button class="btn" id="kbProjBtn" title="Create, open, rename, archive or delete projects and their working folders">🗂 Projects</button>
-  <button class="btn" id="kbNewTicket" title="Add a ticket to this board">＋ Ticket</button>
-  <button class="btn danger" id="kbClearBtn" title="Remove every ticket of this board (a snapshot is saved first; files are not touched)">Clear board…</button>
-  <button class="btn" id="kbDispatch" title="Start workers on ready cards">Run workers</button>
-  <button class="btn" id="kbEnrich" title="Look up the technical words in the tickets on official sites (MDN, W3C, nodejs.org) and add short notes with links">Add web notes</button>
-  <button class="btn" id="kbResume" title="Re-queue cards interrupted by a crash or restart, then dispatch">Resume interrupted</button>
+  <button class="btn kbact" id="kbProjBtn" title="Create, open, rename, archive or delete projects and their working folders">🗂 Projects</button>
+  <button class="btn kbact" id="kbNewTicket" title="Add a ticket to this board">＋ Ticket</button>
+  <button class="btn kbact danger" id="kbClearBtn" title="Remove every ticket of this board (a snapshot is saved first; files are not touched)">Clear board…</button>
+  <button class="btn kbmore" id="kbMore" aria-expanded="false">Actions ▾</button>
+  <button class="btn kbact" id="kbDispatch" title="Start workers on ready cards">Run workers</button>
+  <button class="btn kbact" id="kbEnrich" title="Look up the technical words in the tickets on official sites (MDN, W3C, nodejs.org) and add short notes with links">Add web notes</button>
+  <button class="btn kbact" id="kbResume" title="Re-queue cards interrupted by a crash or restart, then dispatch">Resume interrupted</button>
   <button class="btn" id="kbClose">Close</button></div>
   <div id="kbBanner"></div>
   <div class="kbfilters" id="kbFilters"></div>
@@ -470,12 +640,24 @@ let curAgent = null, curText = "", toolEls = {}, sessionsCache = [];
 
 // ── markdown (escape-first, then a small set of safe transforms) ──
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// file paths in replies open the document viewer: `path/x.md` in code, [text](path), and bare /abs or ~/ document paths
+const VIEW_EXT = /\.(md|markdown|mdx|html?|pdf|png|jpe?g|gif|webp|svg|bmp|docx?|xlsx?|pptx?|od[tsp]|rtf|csv|tsv|txt|log|json|ya?ml|toml|xml|js|mjs|cjs|ts|tsx|jsx|py|css|scss|sh|go|rs|java|kt|swift|rb|php|c|h|cpp|sql)$/i;
+const DOC_EXT_RE = /\.(md|markdown|html?|pdf|png|jpe?g|gif|webp|svg|docx?|xlsx?|pptx?|od[tsp]|rtf|csv|tsv|txt)$/i;
+let mdBase = null; // the folder of the document being shown in the viewer (relative links resolve against it)
+const looksPath = (c) => !/\s/.test(c) && !/^[a-z]+:\/\//i.test(c) && c.length < 400 && VIEW_EXT.test(c.replace(/:\d+(:\d+)?$/, "")) && (/\//.test(c) || /^[\w.-]+$/.test(c));
+const joinBase = (rel) => !mdBase || /^(\/|~)/.test(rel) ? rel : (mdBase.replace(/\/$/, "") + "/" + rel).split("/").reduce((a, x) => (x === ".." ? a.pop() : x !== "." && a.push(x), a), []).join("/").replace(/^(?!\/)/, "/");
+// Google Docs / Sheets / Slides, Drive files and links straight to a PDF, Word … file open in the viewer too
+const isDocUrl = (u) => /^https:\/\/(docs\.google\.com\/(document|spreadsheets|presentation)\/d\/|drive\.google\.com\/(file\/d\/|open\?id=))/.test(u) || /^https?:\/\/[^?#]+\.(pdf|docx?|xlsx?|pptx?|od[tsp]|rtf|csv)(?:[?#]|$)/i.test(u.replace(/&amp;/g, "&"));
+const flink = (path, label) => `<a class="flink" href="#" data-path="${path}" title="Open in the document viewer">${label}</a>`;
 function inline(s) {
-  return s.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`)
+  return s.replace(/!\[([^\]]*)\]\(([^\s)]+)\)/g, (m, alt, src) => mdBase && !/^(https?:|data:)/.test(src) ? `<img alt="${alt}" src="${rawUrl(joinBase(src.replace(/&amp;/g, "&")))}">` : /^https?:/.test(src) && mdBase ? `<img alt="${alt}" src="${src}">` : m)
+    .replace(/`([^`]+)`/g, (_, c) => looksPath(c) ? flink(joinBase(c.replace(/:\d+(:\d+)?$/, "")), `<code>${c}</code>`) : `<code>${c}</code>`)
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?:;]|$)/g, "$1<em>$2</em>")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/(^|\s)(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, t, u) => isDocUrl(u) ? flink(u, t) : `<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`)
+    .replace(/\[([^\]]+)\]\(((?:~|\.{1,2}\/|\/|[\w-])[^\s)#]*)(#[^\s)]*)?\)/g, (m, t, path) => looksPath(path) || /\/$/.test(path) ? flink(joinBase(path), t) : m)
+    .replace(/(^|\s)(https?:\/\/[^\s<]+)/g, (m, pre, u) => pre + (isDocUrl(u) ? flink(u, u) : `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`))
+    .replace(/(^|[\s(])((?:~|\/)[^\s<>"'`()]+?)(?=[.,;:!?)]*(?:\s|$|<))/g, (m, pre, path) => DOC_EXT_RE.test(path) ? pre + flink(path, path) : m);
 }
 function md(src) {
   const out = []; const lines = esc(src).split("\n"); let i = 0;
@@ -511,6 +693,13 @@ function md(src) {
 const log = $("log"), msgs = $("msgs");
 const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 120;
 const scroll = (force) => { if (force || atBottom()) log.scrollTop = log.scrollHeight; };
+/** the message box hint: short on a phone */
+function inputPlaceholder() {
+  const phone = window.matchMedia("(max-width: 720px)").matches;
+  let rag = false; try { rag = curMode === "rag"; } catch { /* not set up yet */ }
+  if (rag) return phone ? "Ask about the shared documents…" : "Ask a question about the shared documents…";
+  return phone ? "Message the agent…" : "Give the agent a task…  (/ for commands, @file:path to attach files)";
+}
 function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; }
 
 function addUser(text, internal) {
@@ -532,6 +721,8 @@ function addTool(id, name, args, result, ok, ms) {
   box.innerHTML = `<summary><span class="st ${result === undefined ? "run" : ok ? "ok" : "err"}"></span><span class="name">${esc(name)}</span><span class="arg">${esc(argSummary(name, args)).slice(0, 300)}</span><span class="ms">${ms ? (ms / 1000).toFixed(1) + "s" : ""}</span></summary><pre></pre>`;
   const pre = box.querySelector("pre");
   pre.textContent = result !== undefined ? result : (args && Object.keys(args).length ? JSON.stringify(args, null, 2).slice(0, 4000) + "\n\n" : "");
+  box._args = args;
+  if (result !== undefined && ok) addViewBtn(box);
   agentBlock().appendChild(box);
   toolEls[id] = box; scroll();
   return box;
@@ -564,7 +755,7 @@ function hideWorking() { if (workTimer) clearInterval(workTimer); workTimer = nu
 async function updateWorking() {
   if (!workEl) return;
   const sec = Math.round((Date.now() - workT0) / 1000), t = sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`;
-  let p = null; try { p = await api("/api/model/progress"); } catch (e) { /* the model log may not exist */ }
+  let p = null; try { p = await api("api/model/progress"); } catch (e) { /* the model log may not exist */ }
   const who = p && p.model === "fast" ? "The small model" : "The model";
   let txt = `⏳ Working for ${t}. `;
   if (p && p.phase === "reading") txt += `${who} is reading the whole conversation before it answers${p.percent !== undefined ? `: ${p.percent}% done (${(p.tokens || 0).toLocaleString()} tokens)` : ""}. A long message or a long chat can take several minutes; nothing is wrong.`;
@@ -615,13 +806,13 @@ function renderGoal(g) {
 function approvalCard(ev) {
   const c = el("div", "card");
   c.innerHTML = `<b>⚠ Approval needed</b> — ${esc(ev.reason)}<div class="cmd">${esc(ev.command)}</div><div class="row"><button class="btn primary" data-d="once">Allow once</button><button class="btn" data-d="session">Allow for session</button><button class="btn" data-d="always">Always allow</button><button class="btn danger" data-d="deny">Deny</button></div>`;
-  c.querySelectorAll("button").forEach((b) => b.onclick = async () => { await api(`/api/approvals/${ev.id}`, { method: "POST", body: JSON.stringify({ decision: b.dataset.d }) }); c.innerHTML = `<span class="meta-line">${b.dataset.d === "deny" ? "Denied" : "Approved (" + b.dataset.d + ")"}: <code>${esc(ev.command)}</code></span>`; c.style.border = "0"; });
+  c.querySelectorAll("button").forEach((b) => b.onclick = async () => { await api(`api/approvals/${ev.id}`, { method: "POST", body: JSON.stringify({ decision: b.dataset.d }) }); c.innerHTML = `<span class="meta-line">${b.dataset.d === "deny" ? "Denied" : "Approved (" + b.dataset.d + ")"}: <code>${esc(ev.command)}</code></span>`; c.style.border = "0"; });
   agentBlock().appendChild(c); scroll(true);
 }
 function clarifyCard(ev) {
   const c = el("div", "card q");
   c.innerHTML = `<b>❓ ${esc(ev.question)}</b><div class="row">${(ev.choices || []).map((x, i) => `<button class="btn" data-i="${i}">${esc(x)}</button>`).join("")}</div><div class="row"><input class="search" style="flex:1;margin:0" placeholder="Or type an answer…"><button class="btn primary">Answer</button></div>`;
-  const send = async (answer) => { await api(`/api/clarify/${ev.id}`, { method: "POST", body: JSON.stringify({ answer }) }); c.innerHTML = `<span class="meta-line">Answered: ${esc(answer)}</span>`; c.style.border = "0"; };
+  const send = async (answer) => { await api(`api/clarify/${ev.id}`, { method: "POST", body: JSON.stringify({ answer }) }); c.innerHTML = `<span class="meta-line">Answered: ${esc(answer)}</span>`; c.style.border = "0"; };
   c.querySelectorAll("button[data-i]").forEach((b) => b.onclick = () => send(ev.choices[Number(b.dataset.i)]));
   const inp = c.querySelector("input"); c.querySelector(".btn.primary").onclick = () => inp.value.trim() && send(inp.value.trim());
   inp.onkeydown = (e) => { if (e.key === "Enter" && inp.value.trim()) send(inp.value.trim()); };
@@ -638,7 +829,7 @@ function onEvent(ev) {
     case "discard_text": { const live = curAgent && curAgent.querySelector(".content.live"); if (live) live.remove(); curText = ""; break; }
     case "tool_start": hideWorking(); addTool(ev.id, ev.name, ev.args); break;
     case "tool_output": { const t = toolEls[ev.id]; if (t) { const pre = t.querySelector("pre"); pre.textContent += ev.text; if (!t.open && pre.textContent.length < 3000) t.open = true; pre.scrollTop = pre.scrollHeight; } break; }
-    case "tool_end": { if (busy) setTimeout(showWorking, 50); let t = toolEls[ev.id]; if (!t) t = addTool(ev.id, ev.name, {}); t.querySelector(".st").className = "st " + (ev.ok ? "ok" : "err"); t.querySelector(".ms").textContent = ev.ms ? (ev.ms / 1000).toFixed(1) + "s" : ""; t.querySelector("pre").textContent = ev.result; t.open = false; scroll(); break; }
+    case "tool_end": { if (busy) setTimeout(showWorking, 50); let t = toolEls[ev.id]; if (!t) t = addTool(ev.id, ev.name, {}); t.querySelector(".st").className = "st " + (ev.ok ? "ok" : "err"); t.querySelector(".ms").textContent = ev.ms ? (ev.ms / 1000).toFixed(1) + "s" : ""; t.querySelector("pre").textContent = ev.result; t.open = false; if (ev.ok) addViewBtn(t); scroll(); break; }
     case "turn_end": hideWorking(); finalizeText(ev.silent ? "" : ev.final); { const m = el("div", "meta-line", `${ev.iterations} step${ev.iterations === 1 ? "" : "s"} · ${ev.toolCalls} tool call${ev.toolCalls === 1 ? "" : "s"}${ev.usage && ev.usage.input ? ` · ${(ev.usage.input + ev.usage.output).toLocaleString()} tokens` : ""}${ev.plan ? ` · plan ${ev.plan.done}/${ev.plan.total} done` : ""}${ev.interrupted ? " · interrupted" : ""}`); agentBlock().appendChild(m); } curAgent = null; refreshSessions(); break;
     case "status": statusLine(ev.text); break;
     case "compressed": statusLine("Context " + ev.text); break;
@@ -651,13 +842,14 @@ function onEvent(ev) {
     case "curator": statusLine(`learned ${ev.memory} memory item(s)${ev.skill ? ", new skill: " + ev.skill : ""}`); break;
     case "skill_saved": statusLine(`skill saved: ${ev.name}`); break;
     case "model_call": refreshStats(); break;
+    case "open_document": openDoc(ev.path); break;
     case "statusline": $("foot").textContent = ev.text; $("foot").title = "Status line (/statusline to change it)"; break;
     case "notification": { const n = el("div", "notice"); n.textContent = "🔔 " + ev.text; msgs.appendChild(n); scroll(); break; }
   }
 }
 function connect() {
   if (es) es.close();
-  es = new EventSource(`/api/events?session=${encodeURIComponent(sid)}&token=${encodeURIComponent(TOKEN)}`);
+  es = new EventSource(`api/events?session=${encodeURIComponent(sid)}&token=${encodeURIComponent(TOKEN)}`);
   es.onmessage = (m) => { try { onEvent(JSON.parse(m.data)); } catch (e) { console.error(e); } };
   es.onerror = () => { $("foot").textContent = "reconnecting…"; };
   es.onopen = () => { $("foot").textContent = info ? `${info.model} · ${info.terminal}` : "connected"; };
@@ -672,7 +864,7 @@ async function refreshStats() {
   if (statsBusy || document.hidden || $("app").classList.contains("no-right")) return;
   statsBusy = true;
   try {
-    const st = await api(`/api/stats${sid ? "?session=" + encodeURIComponent(sid) : ""}`);
+    const st = await api(`api/stats${sid ? "?session=" + encodeURIComponent(sid) : ""}`);
     const u = st.session || st.total;
     $("stTokCalls").textContent = `${u.calls} call${u.calls === 1 ? "" : "s"}`;
     // "in" is the whole prompt every call; with a prompt cache most of it is reused, not computed again
@@ -753,7 +945,7 @@ function kbAgentRender(d) {
 async function kbLiveTick() {
   const bar = $("kbBar");
   try {
-    const d = await api("/api/kanban/live"); kbLive = d;
+    const d = await api("api/kanban/live"); kbLive = d;
     kbBusy = !!(d.enabled && d.working.some((w) => w.active)); refreshSend();
     kbFeed(d); kbAgentRender(d);
     if (!d.enabled || (!d.working.length && !d.ready && !d.paused)) { bar.hidden = true; return; }
@@ -770,7 +962,7 @@ async function kbLiveTick() {
       bar.classList.add("idle");
       const g = el("span", "grow"); g.textContent = d.paused ? `Kanban is PAUSED (you pressed Stop). ${d.ready} card(s) ready. Press Resume to continue.` : `Kanban: ${d.ready} card(s) ready, no worker running yet`; bar.appendChild(g);
     }
-    if (!w || !w.active) { const r = el("button", "btn", "Resume"); r.onclick = async () => { r.textContent = "…"; try { const x = await api("/api/kanban/resume", { method: "POST", body: "{}" }); r.textContent = `Re-queued ${x.requeued}, started ${x.dispatched}`; } catch (e) { r.textContent = "failed: " + e.message; } setTimeout(kbLiveTick, 1500); }; bar.appendChild(r); }
+    if (!w || !w.active) { const r = el("button", "btn", "Resume"); r.onclick = async () => { r.textContent = "…"; try { const x = await api("api/kanban/resume", { method: "POST", body: "{}" }); r.textContent = `Re-queued ${x.requeued}, started ${x.dispatched}`; } catch (e) { r.textContent = "failed: " + e.message; } setTimeout(kbLiveTick, 1500); }; bar.appendChild(r); }
     const o = el("button", "btn", `Board ${d.done}/${d.total}`); o.onclick = () => kbOpenOverlay(); bar.appendChild(o);
   } catch { bar.hidden = true; const a = $("kbAgent"); if (a) { a.className = "kbagent off"; a.textContent = "Can't reach the agent server"; } }
 }
@@ -798,14 +990,14 @@ const KB_STATES = ["running", "review", "blocked", "ready", "waiting", "backlog"
 const KB_COLS = ["waiting", "ready", "running", "review", "blocked", "done"];
 const KB_HELP = { waiting: "ready, but waits for a ticket it depends on", ready: "can start now", running: "an agent is working on it", review: "built, waiting for review", blocked: "stuck: see the comments", backlog: "not scheduled", done: "finished and checked" };
 const kbAgo = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`; };
-const kbImg = (key, f) => `/api/kanban/evidence/${encodeURIComponent(key)}/${f.split("/").map(encodeURIComponent).join("/")}?token=${encodeURIComponent(TOKEN)}`;
+const kbImg = (key, f) => `api/kanban/evidence/${encodeURIComponent(key)}/${f.split("/").map(encodeURIComponent).join("/")}?token=${encodeURIComponent(TOKEN)}`;
 const kbShort = (t) => t.replace(/^Phase\s+\d+\s*·\s*/, "").replace(/^Implement\s+/, "");
 const kbKeyNum = (k) => Number(String(k).replace(/\D/g, "")) || 0;
 function kbPush(val, replace) {
   try { const u = new URL(location.href); if (val) u.searchParams.set("kb", val); else u.searchParams.delete("kb"); const st = { kb: val || null }; replace ? history.replaceState(st, "", u) : history.pushState(st, "", u); } catch (e) { /* file:// etc. */ }
 }
 async function kbLoad() {
-  try { kbData = await api("/api/kanban/board" + (kbBoardId ? `?board=${encodeURIComponent(kbBoardId)}` : "")); $("kbErr").textContent = ""; } catch (e) { $("kbErr").textContent = e.message; return; }
+  try { kbData = await api("api/kanban/board" + (kbBoardId ? `?board=${encodeURIComponent(kbBoardId)}` : "")); $("kbErr").textContent = ""; } catch (e) { $("kbErr").textContent = e.message; return; }
   kbSideRender();
   if ($("kb").classList.contains("on")) { kbRender(); if (kbSel) kbDetail(kbSel, true); }
 }
@@ -817,15 +1009,15 @@ function kbSideRender() {
   if (!d.total) { box.innerHTML = '<div class="hint2" style="padding:8px">The board is empty. Ask the agent to run <b>kanban import</b> on a plan folder, or add cards with the kanban tool.</div>'; return; }
   const pct = Math.round(((d.counts.done || 0) / d.total) * 100);
   let h = `<div class="kbcounts" style="margin-bottom:6px"><select id="kbSideBoard" class="kbboard" style="width:100%;max-width:none" title="Board the workers serve">${d.boards.filter((b) => !b.archived).map((b) => `<option value="${esc(b.id)}" ${b.active ? "selected" : ""}>${b.active ? "▶ " : ""}${esc(b.name)} (${b.done}/${b.cards})</option>`).join("")}</select></div><div class="kbcounts">${kbPills(d, false)}</div>
-    <div class="kbbar"><i style="width:${pct}%"></i></div><div class="hint2" style="margin:4px 0 10px">${d.counts.done} of ${d.total} tickets done (${pct}%) · ${d.epics.length} phases · ${d.workers} worker${d.workers === 1 ? "" : "s"}${d.enabled ? "" : " · workers disabled"}</div>`;
+    <div class="kbprog"><i style="width:${pct}%"></i></div><div class="hint2" style="margin:4px 0 10px">${d.counts.done} of ${d.total} tickets done (${pct}%) · ${d.epics.length} phases · ${d.workers} worker${d.workers === 1 ? "" : "s"}${d.enabled ? "" : " · workers disabled"}</div>`;
   const cur = d.epics.find((e) => e.done < e.total);
-  if (cur) h += `<div class="pitem click" data-e="${esc(cur.key)}"><div class="n">Current phase</div><div class="d">${esc(cur.title)}</div><div class="kbbar" style="margin-top:4px"><i style="width:${cur.total ? Math.round(cur.done / cur.total * 100) : 0}%"></i></div><div class="m">${cur.done}/${cur.total} done${cur.running ? ` · ${cur.running} running` : ""}${cur.blocked ? ` · ${cur.blocked} blocked` : ""}</div></div>`;
+  if (cur) h += `<div class="pitem click" data-e="${esc(cur.key)}"><div class="n">Current phase</div><div class="d">${esc(cur.title)}</div><div class="kbprog" style="margin-top:4px"><i style="width:${cur.total ? Math.round(cur.done / cur.total * 100) : 0}%"></i></div><div class="m">${cur.done}/${cur.total} done${cur.running ? ` · ${cur.running} running` : ""}${cur.blocked ? ` · ${cur.blocked} blocked` : ""}</div></div>`;
   h += `<b style="font-size:12px">Working now</b>`;
   h += d.working.length ? d.working.map((w) => `<div class="pitem click" data-k="${esc(w.key)}"><div class="n">${w.active ? '<span class="live"></span>' : ""}${esc(w.key)} <span class="m">attempt ${w.attempts}${w.active ? "" : " · no live worker"}</span></div><div class="d">${esc(w.title)}</div>
       ${w.activity.slice(-2).map((a) => `<div class="d" style="-webkit-line-clamp:2">${a.tools.length ? "⚙ " + esc(a.tools.join(", ")) : esc(a.role)}: ${esc(a.text)}</div>`).join("")}</div>`).join("") : '<div class="hint2" style="padding:4px 0 8px">No ticket is running.</div>';
   h += `<b style="font-size:12px">Recent changes</b>` + d.recent.slice(0, 8).map((r) => `<div class="pitem click" data-k="${esc(r.key)}"><div class="n">${esc(r.key)} <span class="m">${esc(r.from || "new")} → <span class="st-${esc(r.to)}">${esc(r.to)}</span></span></div><div class="d">${esc(kbShort(r.title))}</div><div class="m">${esc(r.by)} · ${kbAgo(r.at)}${r.reason ? " · " + esc(r.reason) : ""}</div></div>`).join("");
   box.innerHTML = h;
-  if ($("kbSideBoard")) $("kbSideBoard").onchange = async (e) => { try { await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "use", board: e.target.value }) }); kbBoardId = ""; kbEpic = ""; kbSel = null; await kbLoad(); } catch (x) { alert(x.message); } };
+  if ($("kbSideBoard")) $("kbSideBoard").onchange = async (e) => { try { await api("api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "use", board: e.target.value }) }); kbBoardId = ""; kbEpic = ""; kbSel = null; await kbLoad(); } catch (x) { alert(x.message); } };
   box.querySelectorAll(".kbpill[data-s]").forEach((p) => p.onclick = () => { kbFilt.clear(); kbTagF.clear(); kbQ = ""; kbEpic = ""; if ($("kbSearch")) $("kbSearch").value = ""; kbFilt.add(p.dataset.s); kbSel = null; $("kb").classList.remove("detail"); kbOpenOverlay(); });
   box.querySelectorAll("[data-k]").forEach((x) => x.onclick = () => kbGo(x.dataset.k));
   box.querySelectorAll("[data-e]").forEach((x) => x.onclick = () => { kbEpic = x.dataset.e; kbOpenOverlay(); kbGo(x.dataset.e); });
@@ -870,9 +1062,10 @@ function kbRender() {
   bs.innerHTML = live.map((b) => `<option value="${esc(b.id)}">${b.active ? "▶ " : ""}${esc(b.name)} (${b.done}/${b.cards})</option>`).join("") + (kbShowArch && arch.length ? `<optgroup label="Archived">${arch.map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${b.done}/${b.cards})</option>`).join("")}</optgroup>` : "");
   bs.value = d.board.id;
   $("kbBanner").innerHTML = d.board.archived ? `<div class="kbban arch">📦 <b>${esc(d.board.name)}</b> is archived: hidden, and the workers ignore it. Its tickets can still be linked. <button class="btn" id="kbUnarch">Unarchive</button></div>`
-    : d.board.draft ? `<div class="kbban draft">📝 <b>${esc(d.board.name)}</b> is a draft made from a design: ${d.counts.backlog || 0} ticket(s) wait for your review. Open a ticket to read, edit or approve it.${d.board.design ? ` <span class="hint2">Research and report: ${esc(d.board.design)}</span>` : ""} <button class="btn" id="kbApprove">Approve all</button><button class="btn primary" id="kbApproveRun">Approve all and run</button></div>`
+    : d.board.draft ? `<div class="kbban draft">📝 <b>${esc(d.board.name)}</b> is a draft made from a design: ${d.counts.backlog || 0} ticket(s) wait for your review. Open a ticket to read, edit or approve it.${d.board.design ? ` <span class="hint2">Research and report: ${esc(d.board.design)}</span>` : ""} <button class="btn primary" id="kbReviewList">✅ Review list</button><button class="btn" id="kbApprove">Approve all</button><button class="btn" id="kbApproveRun">Approve all and run</button></div>`
     : !d.board.active ? `<div class="kbban">Viewing <b>${esc(d.board.name)}</b>. The workers serve <b>${esc((d.boards.find((b) => b.active) || {}).name || "?")}</b>. <button class="btn" id="kbMakeActive">Make this board active</button></div>` : "";
   if ($("kbUnarch")) $("kbUnarch").onclick = () => kbBoardAct("unarchive", d.board.id);
+  if ($("kbReviewList")) $("kbReviewList").onclick = () => rvOpen(d.board.id);
   if ($("kbApprove")) $("kbApprove").onclick = () => kbApproveBoard(d.board, false);
   if ($("kbApproveRun")) $("kbApproveRun").onclick = () => kbApproveBoard(d.board, true);
   if ($("kbMakeActive")) $("kbMakeActive").onclick = () => kbBoardAct("use", d.board.id);
@@ -904,7 +1097,7 @@ function kbPhases(body, work) {
     const auto = filtering || e.running || e.blocked || e.review || (cur && cur.key === e.key);
     const open = kbOpenPh.has(e.key) || (auto && !kbClosedPh.has(e.key)) || (kbSel && kids.some((k) => k.key === kbSel));
     const pct = e.total ? Math.round(e.done / e.total * 100) : 0;
-    const ph = el("div", "kbphase" + (open ? " open" : ""), `<div class="ph"><span class="chev">▶</span><span class="t">${esc(e.title)}</span><span class="meta">${e.running ? `<span class="st-running">${e.running} running</span> · ` : ""}${e.blocked ? `<span class="st-blocked">${e.blocked} blocked</span> · ` : ""}${e.done}/${e.total} done</span><div class="kbbar bar"><i style="width:${pct}%"></i></div><button class="btn" data-open title="Open the phase ticket">↗</button></div><div class="rows"></div>`);
+    const ph = el("div", "kbphase" + (open ? " open" : ""), `<div class="ph"><span class="chev">▶</span><span class="t">${esc(e.title)}</span><span class="meta">${e.running ? `<span class="st-running">${e.running} running</span> · ` : ""}${e.blocked ? `<span class="st-blocked">${e.blocked} blocked</span> · ` : ""}${e.done}/${e.total} done</span><div class="kbprog bar"><i style="width:${pct}%"></i></div><button class="btn" data-open title="Open the phase ticket">↗</button></div><div class="rows"></div>`);
     ph.querySelector(".ph").onclick = (ev) => { if (ev.target.closest("[data-open]")) { kbGo(e.key); return; } const o = ph.classList.toggle("open"); o ? (kbOpenPh.add(e.key), kbClosedPh.delete(e.key)) : (kbOpenPh.delete(e.key), kbClosedPh.add(e.key)); };
     const rows = ph.querySelector(".rows"); for (const c of match) rows.appendChild(kbRow(c));
     body.appendChild(ph);
@@ -942,7 +1135,7 @@ function kbList(body, shown) {
 async function kbDetail(key, quiet) {
   kbSel = key; const box = $("kbSideDetail"); $("kb").classList.add("detail");
   if (!quiet) kbRender();
-  let c; try { c = await api(`/api/kanban/card/${encodeURIComponent(key)}`); } catch (e) { box.innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  let c; try { c = await api(`api/kanban/card/${encodeURIComponent(key)}`); } catch (e) { box.innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
   if (kbSel !== key) return;   // the user moved on while this loaded
   if (c.board_info && kbData && c.board_info.id !== kbData.board.id) { kbBoardId = c.board_info.id; await kbLoad(); return; }   // a ticket on another board: show that board
   kbDetailData = c;
@@ -987,10 +1180,10 @@ async function kbDetail(key, quiet) {
   if ($("kbWatch")) $("kbWatch").onclick = () => { $("kb").classList.remove("on"); openSession(c.session_id); };
   box.querySelectorAll("a[data-k]").forEach((a) => a.onclick = (e) => { e.preventDefault(); kbGo(a.dataset.k); });
   box.querySelectorAll("img[data-full]").forEach((i) => i.onclick = () => { $("kbZoom").querySelector("img").src = i.dataset.full; $("kbZoom").classList.add("on"); });
-  $("kbLkAdd").onclick = async () => { const to = $("kbLkTo").value.trim(); if (!to) return; try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}/link`, { method: "POST", body: JSON.stringify({ type: $("kbLkType").value, to }) }); kbDetail(c.key); kbLoad(); } catch (e) { $("kbLkErr").textContent = e.message; } };
-  box.querySelectorAll("[data-unlink]").forEach((x) => x.onclick = async () => { try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}/unlink`, { method: "POST", body: JSON.stringify({ to: x.dataset.unlink, type: x.dataset.t }) }); kbDetail(c.key); } catch (e) { $("kbLkErr").textContent = e.message; } });
-  if ($("kbMv") && $("kbMvTo")) $("kbMv").onclick = async () => { try { await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "move", keys: [c.key], to: $("kbMvTo").value }) }); kbDetail(c.key); } catch (e) { $("kbLkErr").textContent = e.message; } };
-  $("kbCmAdd").onclick = async () => { const t = $("kbCm").value.trim(); if (!t) return; try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}/comment`, { method: "POST", body: JSON.stringify({ text: t }) }); kbDetail(c.key); } catch (e) { $("kbCmErr").textContent = e.message; } };
+  $("kbLkAdd").onclick = async () => { const to = $("kbLkTo").value.trim(); if (!to) return; try { await api(`api/kanban/card/${encodeURIComponent(c.key)}/link`, { method: "POST", body: JSON.stringify({ type: $("kbLkType").value, to }) }); kbDetail(c.key); kbLoad(); } catch (e) { $("kbLkErr").textContent = e.message; } };
+  box.querySelectorAll("[data-unlink]").forEach((x) => x.onclick = async () => { try { await api(`api/kanban/card/${encodeURIComponent(c.key)}/unlink`, { method: "POST", body: JSON.stringify({ to: x.dataset.unlink, type: x.dataset.t }) }); kbDetail(c.key); } catch (e) { $("kbLkErr").textContent = e.message; } });
+  if ($("kbMv") && $("kbMvTo")) $("kbMv").onclick = async () => { try { await api("api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "move", keys: [c.key], to: $("kbMvTo").value }) }); kbDetail(c.key); } catch (e) { $("kbLkErr").textContent = e.message; } };
+  $("kbCmAdd").onclick = async () => { const t = $("kbCm").value.trim(); if (!t) return; try { await api(`api/kanban/card/${encodeURIComponent(c.key)}/comment`, { method: "POST", body: JSON.stringify({ text: t }) }); kbDetail(c.key); } catch (e) { $("kbCmErr").textContent = e.message; } };
 }
 // ── review: approve / edit tickets of a draft board ──
 const kbCanEdit = (c) => c.type !== "epic" && (c.status === "backlog" || c.status === "ready") && !c.active;
@@ -1014,7 +1207,7 @@ function kbReviewBlock(c) {
     </div></div>`;
 }
 async function kbCardPatch(c, patch) {
-  try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}`, { method: "PATCH", body: JSON.stringify(patch) }); await kbLoad(); kbDetail(c.key, true); }
+  try { await api(`api/kanban/card/${encodeURIComponent(c.key)}`, { method: "PATCH", body: JSON.stringify(patch) }); await kbLoad(); kbDetail(c.key, true); }
   catch (e) { if ($("kbRvErr")) $("kbRvErr").textContent = e.message; }
 }
 function kbReviewWire(c) {
@@ -1030,7 +1223,7 @@ function kbReviewWire(c) {
 }
 async function kbApproveBoard(b, run) {
   if (!confirm(`Approve every draft ticket on “${b.name}”${run ? " and start the workers" : ""}?\nIt becomes the active board, so workers stop taking tickets from the current one.`)) return;
-  try { const r = await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "approve", board: b.id, run }) }); kbBoardId = b.id; await kbLoad(); alert(`Approved ${r.approved.length} ticket(s)${run ? `; started ${r.dispatched} worker(s)` : ". Press “Run workers” when you want them to start."}`); }
+  try { const r = await api("api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "approve", board: b.id, run }) }); kbBoardId = b.id; await kbLoad(); alert(`Approved ${r.approved.length} ticket(s)${run ? `; started ${r.dispatched} worker(s)` : ". Press “Run workers” when you want them to start."}`); }
   catch (e) { alert(e.message); }
 }
 
@@ -1053,14 +1246,14 @@ function kbDesignForm(prev) {
     const source = $("kbDsSrc").value.trim(), project = $("kbDsProj").value.trim();
     if (!source || !project) { $("kbDsErr").textContent = "Give the document and the project folder."; return; }
     const n = $("kbDsN").value;
-    try { await api("/api/kanban/design", { method: "POST", body: JSON.stringify({ source, project, board: $("kbDsBoard").value.trim(), prior_art: $("kbDsArt").value === "1", searches: n, research: n !== "0", stories: $("kbDsS").value }) }); kbDesignPoll(); }
+    try { await api("api/kanban/design", { method: "POST", body: JSON.stringify({ source, project, board: $("kbDsBoard").value.trim(), prior_art: $("kbDsArt").value === "1", searches: n, research: n !== "0", stories: $("kbDsS").value }) }); kbDesignPoll(); }
     catch (e) { $("kbDsErr").textContent = e.message; }
   };
 }
 async function kbDesignPoll(first) {
   clearTimeout(kbDsTimer);
   if (!$("kbDesign").classList.contains("on")) return;
-  let j = null; try { j = (await api("/api/kanban/design")).job; } catch (e) { /* none yet */ }
+  let j = null; try { j = (await api("api/kanban/design")).job; } catch (e) { /* none yet */ }
   if (!j || (first && j.status !== "running")) { kbDesignForm(j ? `${j.status}${j.result ? ` → board “${j.result.board.name}”` : j.error ? ` (${j.error})` : ""}` : ""); return; }
   const last = j.log[j.log.length - 1] || { message: "starting…" };
   const bar = last.total ? `<div class="hint2">${esc(last.stage)} ${last.done + 1} of ${last.total}</div>` : "";
@@ -1068,23 +1261,25 @@ async function kbDesignPoll(first) {
   const done = j.status === "done" && j.result;
   $("kbDsBody").innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">${j.status === "running" ? '<span class="live"></span>' : ""}<b>${esc(j.status === "running" ? "Working…" : j.status)}</b> <span class="hint2">${esc(j.source)} → ${esc(j.project)}</span><span style="flex:1"></span>
       ${j.status === "running" ? '<button class="btn" id="kbDsStop">Stop</button>' : '<button class="btn" id="kbDsNew">Start another</button>'}</div>${bar}
-    ${done ? `<div class="kbban draft" style="margin:0 0 8px">Draft board <b>${esc(j.result.board.name)}</b>: ${j.result.stories} stories in ${j.result.epics} main features, ${j.result.findings} research findings, ${(j.result.pdfs || []).length} PDF(s), ${(j.result.priorArt || []).length} repo(s) judged, ${j.result.flagged || 0} story(ies) flagged.${j.result.gaps.length ? ` The plan review found ${j.result.gaps.length} gap(s): see the first epic's comments.` : ""} <button class="btn primary" id="kbDsOpen">Open it for review</button></div>` : ""}
+    ${done ? `<div class="kbban draft" style="margin:0 0 8px">Draft board <b>${esc(j.result.board.name)}</b>: ${j.result.stories} stories in ${j.result.epics} main features, ${j.result.findings} research findings, ${(j.result.pdfs || []).length} PDF(s), ${(j.result.priorArt || []).length} repo(s) judged, ${j.result.flagged || 0} story(ies) flagged.${j.result.gaps.length ? ` The plan review found ${j.result.gaps.length} gap(s): see the first epic's comments.` : ""} <button class="btn primary" id="kbDsOpen">Open it for review</button> <button class="btn" id="kbDsReport" title="${esc(j.result.report)}">Open the report</button> <button class="btn" id="kbDsDir" title="${esc(j.result.dir)}">All documents</button></div>` : ""}
     ${j.error ? `<div class="err" style="margin-bottom:8px">${esc(j.error)}</div>` : ""}<div class="log">${log}</div>`;
-  if ($("kbDsStop")) $("kbDsStop").onclick = async () => { await api("/api/kanban/design/stop", { method: "POST", body: JSON.stringify({ id: j.id }) }); kbDesignPoll(); };
+  if ($("kbDsStop")) $("kbDsStop").onclick = async () => { await api("api/kanban/design/stop", { method: "POST", body: JSON.stringify({ id: j.id }) }); kbDesignPoll(); };
   if ($("kbDsNew")) $("kbDsNew").onclick = () => kbDesignForm("");
+  if ($("kbDsReport")) $("kbDsReport").onclick = () => openDoc(j.result.report);
+  if ($("kbDsDir")) $("kbDsDir").onclick = () => openDoc(j.result.dir);
   if ($("kbDsOpen")) $("kbDsOpen").onclick = async () => { $("kbDesign").classList.remove("on"); kbBoardId = j.result.board.id; kbEpic = ""; kbSel = null; kbOpenOverlay(); await kbLoad(); };
   if (j.status === "running") kbDsTimer = setTimeout(() => kbDesignPoll(), 2000);
 }
 // ── projects, folders, board details, new / delete ticket ──
 const kbFolders = () => { const d = kbData; if (!d || !d.board.project_id) return []; const p = (d.projects || []).find((x) => x.id === d.board.project_id); return p ? p.folders : []; };
 async function kbProjAct(action, project, extra) {
-  try { const r = await api("/api/kanban/projects", { method: "POST", body: JSON.stringify({ action, project, ...(extra || {}) }) }); await kbLoad(); if ($("kbProj").classList.contains("on") && $("kbPjTitle").textContent === "Projects") kbProjRender(); return r; }
+  try { const r = await api("api/kanban/projects", { method: "POST", body: JSON.stringify({ action, project, ...(extra || {}) }) }); await kbLoad(); if ($("kbProj").classList.contains("on") && $("kbPjTitle").textContent === "Projects") kbProjRender(); return r; }
   catch (e) { alert(e.message); }
 }
 function kbProjOpen() { $("kbPjTitle").textContent = "Projects"; $("kbProj").classList.add("on"); kbProjRender(); }
 $("kbPjClose").onclick = () => $("kbProj").classList.remove("on");
 async function kbProjRender() {
-  let pr = null; try { pr = await api("/api/kanban/projects"); } catch (e) { $("kbPjBody").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  let pr = null; try { pr = await api("api/kanban/projects"); } catch (e) { $("kbPjBody").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
   const boards = (kbData && kbData.boards) || [], loose = boards.filter((b) => !b.project_id || !pr.projects.some((p) => p.id === b.project_id));
   const card = (p) => `<div class="pj ${p.active ? "act" : ""}" data-p="${esc(p.id)}"><b>${p.active ? "▶ " : ""}${esc(p.name)}</b>${p.archived ? ' <span class="hint2">(archived)</span>' : ""} <span class="hint2">${p.boards.length} board(s) · ${p.done}/${p.cards} tickets done</span>
       ${p.description ? `<div class="hint2">${esc(p.description)}</div>` : ""}
@@ -1104,7 +1299,7 @@ async function kbProjRender() {
   $("kbPjCreate").onclick = async () => {
     const name = $("kbPjName").value.trim(); if (!name) { $("kbPjErr").textContent = "a project needs a name"; return; }
     const bsel = $("kbPjBoards") ? [...$("kbPjBoards").selectedOptions].map((o) => o.value) : [];
-    try { const r = await api("/api/kanban/projects", { method: "POST", body: JSON.stringify({ action: "new", name, path: $("kbPjPath").value.trim(), folder: $("kbPjFolder").value.trim() || "code", description: $("kbPjDesc").value.trim(), boards: bsel }) }); kbProjView = null; kbBoardId = r.board ? r.board.id : ""; await kbLoad(); kbProjRender(); }
+    try { const r = await api("api/kanban/projects", { method: "POST", body: JSON.stringify({ action: "new", name, path: $("kbPjPath").value.trim(), folder: $("kbPjFolder").value.trim() || "code", description: $("kbPjDesc").value.trim(), boards: bsel }) }); kbProjView = null; kbBoardId = r.board ? r.board.id : ""; await kbLoad(); kbProjRender(); }
     catch (e) { $("kbPjErr").textContent = e.message; }
   };
   $("kbPjBody").querySelectorAll(".kbPjAttach").forEach((sel) => sel.onchange = () => sel.value && kbProjAct("attach", sel.value, { board: sel.dataset.b }));
@@ -1120,7 +1315,7 @@ async function kbProjRender() {
       const a = btn.dataset.a;
       if (a === "use") { const r = await kbProjAct("use", p.id); if (r) { kbProjView = null; kbBoardId = r.board.id; kbEpic = ""; kbSel = null; $("kbProj").classList.remove("on"); await kbLoad(); } }
       else if (a === "fadd") { const nm = prompt("Short name of the folder (code, docs, api …):"); if (!nm) return; const path = prompt(`Path of “${nm}”:`); if (!path) return; await kbProjAct("folder_add", p.id, { folder: nm.trim(), path: path.trim(), primary: !p.folders.length || confirm("Make it the main folder?") }); }
-      else if (a === "board") { const nm = prompt(`Name of the new board in “${p.name}”:`); if (!nm) return; try { const r = await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "new", name: nm.trim() }) }); await kbProjAct("attach", p.id, { board: r.board.id }); } catch (e) { alert(e.message); } }
+      else if (a === "board") { const nm = prompt(`Name of the new board in “${p.name}”:`); if (!nm) return; try { const r = await api("api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "new", name: nm.trim() }) }); await kbProjAct("attach", p.id, { board: r.board.id }); } catch (e) { alert(e.message); } }
       else if (a === "edit") { const nm = prompt("Project name:", p.name); if (nm === null) return; const ds = prompt("Description:", p.description || ""); if (ds === null) return; await kbProjAct("update", p.id, { name: nm.trim(), description: ds }); }
       else if (a === "archive") { if (confirm(`Archive “${p.name}” and its boards? Workers ignore archived boards; unarchive brings them back.`)) await kbProjAct("archive", p.id); }
       else if (a === "unarchive") await kbProjAct("unarchive", p.id);
@@ -1140,7 +1335,7 @@ function kbBoardForm(b) {
     <label>Board folder <small>(empty = the project's main folder${b.cwd ? `; now ${esc(b.cwd)}` : ""})</small></label><input type="text" id="kbBfFolder" value="${esc(b.project || "")}">
     <div style="margin-top:10px"><button class="btn primary" id="kbBfSave">Save</button> <span class="err" id="kbBfErr"></span></div>`;
   $("kbBfSave").onclick = async () => {
-    try { await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "update", board: b.id, name: $("kbBfName").value.trim(), description: $("kbBfDesc").value, project_id: $("kbBfProj").value, project: $("kbBfFolder").value.trim() }) }); $("kbProj").classList.remove("on"); await kbLoad(); }
+    try { await api("api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "update", board: b.id, name: $("kbBfName").value.trim(), description: $("kbBfDesc").value, project_id: $("kbBfProj").value, project: $("kbBfFolder").value.trim() }) }); $("kbProj").classList.remove("on"); await kbLoad(); }
     catch (e) { $("kbBfErr").textContent = e.message; }
   };
 }
@@ -1156,17 +1351,17 @@ function kbTicketForm() {
     <div style="margin-top:10px"><button class="btn primary" id="kbNtSave">Create</button> <span class="err" id="kbNtErr"></span></div>`;
   $("kbNtSave").onclick = async () => {
     const type = $("kbNtType").value;
-    try { const r = await api("/api/kanban/cards", { method: "POST", body: JSON.stringify({ board: d.board.id, title: $("kbNtTitle").value, type, parent: $("kbNtParent").value, body: $("kbNtBody").value, acceptance: $("kbNtAcc").value, test_cmd: $("kbNtCmd").value, folder: $("kbNtFolder") ? $("kbNtFolder").value : "", status: $("kbNtReady").checked ? "ready" : "backlog", ...(type === "epic" ? { numbering: "feature" } : {}) }) });
+    try { const r = await api("api/kanban/cards", { method: "POST", body: JSON.stringify({ board: d.board.id, title: $("kbNtTitle").value, type, parent: $("kbNtParent").value, body: $("kbNtBody").value, acceptance: $("kbNtAcc").value, test_cmd: $("kbNtCmd").value, folder: $("kbNtFolder") ? $("kbNtFolder").value : "", status: $("kbNtReady").checked ? "ready" : "backlog" }) });
       $("kbProj").classList.remove("on"); await kbLoad(); kbDetail(r.card.key); }
     catch (e) { $("kbNtErr").textContent = e.message; }
   };
 }
 async function kbDeleteTicket(c) {
   if (!confirm(`Delete ${c.key} “${c.title}” for good? Links and dependencies on it are removed.`)) return;
-  try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}`, { method: "DELETE" }); kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); } catch (e) { if ($("kbRvErr")) $("kbRvErr").textContent = e.message; }
+  try { await api(`api/kanban/card/${encodeURIComponent(c.key)}`, { method: "DELETE" }); kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); } catch (e) { if ($("kbRvErr")) $("kbRvErr").textContent = e.message; }
 }
 async function kbBoardAct(action, board, extra) {
-  try { const r = await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action, board, ...(extra || {}) }) }); if (action === "use" || action === "new" || action === "archive" || action === "delete") kbBoardId = ""; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); return r; }
+  try { const r = await api("api/kanban/boards", { method: "POST", body: JSON.stringify({ action, board, ...(extra || {}) }) }); if (action === "use" || action === "new" || action === "archive" || action === "delete") kbBoardId = ""; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); return r; }
   catch (e) { alert(e.message); }
 }
 function kbMenu() {
@@ -1201,7 +1396,7 @@ async function kbClearOrDelete(a, b) {
     const n = prompt(`${hint}${what}.\nA snapshot is saved first, so it can be restored. Files are not touched.\nType the board name (${b.name}) to confirm:`);
     if (n === null) return;
     try {
-      const r = await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: a, board: b.id, confirm: n }) });
+      const r = await api("api/kanban/boards", { method: "POST", body: JSON.stringify({ action: a, board: b.id, confirm: n }) });
       if (a === "delete") kbBoardId = ""; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); await kbLoad();
       alert(`Done. ${r.removed} ticket(s) removed.\nSnapshot (restore it with: kanban board restore <file>):\n${r.snapshot}`);
       return;
@@ -1218,7 +1413,7 @@ $("kbProject").onchange = async () => {
   const v = $("kbProject").value;
   if (v === "__manage") { $("kbProject").value = kbProjView === null ? (kbData.board.project_id || "") : kbProjView; kbProjOpen(); return; }
   if (!v) { kbProjView = ""; kbRender(); return; }
-  try { const r = await api("/api/kanban/projects", { method: "POST", body: JSON.stringify({ action: "use", project: v }) }); kbProjView = null; kbBoardId = r.board.id; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); } catch (e) { alert(e.message); }
+  try { const r = await api("api/kanban/projects", { method: "POST", body: JSON.stringify({ action: "use", project: v }) }); kbProjView = null; kbBoardId = r.board.id; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); } catch (e) { alert(e.message); }
 };
 $("kbBoard").onchange = () => { kbBoardId = $("kbBoard").value; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); kbPush("board"); kbLoad(); };
 function kbCloseDetail() { kbSel = null; kbDetailData = null; $("kb").classList.remove("detail"); kbPush("board"); kbRender(); }
@@ -1231,9 +1426,9 @@ document.querySelectorAll("#kbViews button").forEach((b) => b.onclick = () => { 
 $("kbProjBtn").onclick = () => kbProjOpen();
 $("kbNewTicket").onclick = () => kbData && kbTicketForm();
 $("kbClearBtn").onclick = () => kbData && kbClearOrDelete("clear", kbData.board);
-$("kbDispatch").onclick = async () => { try { const r = await api("/api/kanban/dispatch", { method: "POST", body: "{}" }); $("kbDispatch").textContent = `Started ${r.dispatched}`; setTimeout(() => $("kbDispatch").textContent = "Run workers", 2500); kbLoad(); } catch (e) { alert(e.message); } };
-$("kbEnrich").onclick = async () => { const b = $("kbEnrich"); b.disabled = true; b.textContent = "Looking up…"; try { const r = await api("/api/kanban/enrich", { method: "POST", body: JSON.stringify({ board: kbData && kbData.board.id }) }); b.textContent = r.skipped ? "Lookups are off" : `Added ${r.notes} notes`; if (r.failed && r.failed.length) alert(r.text); } catch (e) { b.textContent = "Add web notes"; alert(e.message); } b.disabled = false; setTimeout(() => b.textContent = "Add web notes", 4000); kbLoad(); };
-$("kbResume").onclick = async () => { try { const r = await api("/api/kanban/resume", { method: "POST", body: "{}" }); $("kbResume").textContent = `Re-queued ${r.requeued}`; setTimeout(() => $("kbResume").textContent = "Resume interrupted", 2500); kbLoad(); } catch (e) { alert(e.message); } };
+$("kbDispatch").onclick = async () => { try { const r = await api("api/kanban/dispatch", { method: "POST", body: "{}" }); $("kbDispatch").textContent = `Started ${r.dispatched}`; setTimeout(() => $("kbDispatch").textContent = "Run workers", 2500); kbLoad(); } catch (e) { alert(e.message); } };
+$("kbEnrich").onclick = async () => { const b = $("kbEnrich"); b.disabled = true; b.textContent = "Looking up…"; try { const r = await api("api/kanban/enrich", { method: "POST", body: JSON.stringify({ board: kbData && kbData.board.id }) }); b.textContent = r.skipped ? "Lookups are off" : `Added ${r.notes} notes`; if (r.failed && r.failed.length) alert(r.text); } catch (e) { b.textContent = "Add web notes"; alert(e.message); } b.disabled = false; setTimeout(() => b.textContent = "Add web notes", 4000); kbLoad(); };
+$("kbResume").onclick = async () => { try { const r = await api("api/kanban/resume", { method: "POST", body: "{}" }); $("kbResume").textContent = `Re-queued ${r.requeued}`; setTimeout(() => $("kbResume").textContent = "Resume interrupted", 2500); kbLoad(); } catch (e) { alert(e.message); } };
 document.addEventListener("keydown", (e) => {
   const inField = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || "");
   if (e.key === "Escape") { if ($("kbZoom").classList.contains("on")) $("kbZoom").classList.remove("on"); else if (inField && document.activeElement.id === "kbSearch") document.activeElement.blur(); else if ($("kb").classList.contains("detail")) kbCloseDetail(); else if ($("kb").classList.contains("on")) kbCloseOverlay(); return; }
@@ -1244,6 +1439,8 @@ document.addEventListener("keydown", (e) => {
 /** back/forward and shared links: ?kb=board opens the board, ?kb=PT-12 opens that ticket */
 function kbFromUrl() {
   const v = new URL(location.href).searchParams.get("kb");
+  if (v === "review") { if (!$("kbrv").classList.contains("on")) { $("kbrv").classList.add("on"); rvLoad(); } return; }
+  if ($("kbrv").classList.contains("on")) rvClose(true);
   if (!v) { $("kb").classList.remove("on", "detail"); kbSel = null; return; }
   const open = () => { $("kb").classList.add("on"); if (v === "board") { kbSel = null; $("kb").classList.remove("detail"); kbRender(); } else { kbSel = v; kbRender(); kbDetail(v); } };
   kbData ? open() : kbLoad().then(open);
@@ -1258,12 +1455,12 @@ function setModeUi(mode) {
   curMode = mode === "rag" ? "rag" : "agent";
   document.querySelectorAll("#modeSw button").forEach((b) => b.classList.toggle("on", b.dataset.m === curMode));
   document.body.classList.toggle("ragmode", curMode === "rag");
-  $("input").placeholder = curMode === "rag" ? "Ask a question about the shared documents…" : "Give the agent a task…  (/ for commands, @file:path to attach files)";
+  $("input").placeholder = inputPlaceholder();
   const e = msgs.querySelector(".empty"); if (e) { e.remove(); showEmpty(); }
 }
 async function setMode(mode) {
   if (!sid) await newSession();
-  try { await api(`/api/sessions/${sid}/mode`, { method: "POST", body: JSON.stringify({ mode }) }); } catch (e) { $("ragErr").textContent = e.message; return; }
+  try { await api(`api/sessions/${sid}/mode`, { method: "POST", body: JSON.stringify({ mode }) }); } catch (e) { $("ragErr").textContent = e.message; return; }
   setModeUi(mode);
   const n = el("div", "notice");
   n.textContent = mode === "rag" ? (ragDocs.length ? `RAG Bot on: answers come only from the ${ragDocs.length} shared document${ragDocs.length === 1 ? "" : "s"}.` : "RAG Bot on. No documents are shared yet: open the RAG tab on the left and add some.") : "Agent mode on: tools and the web are available again.";
@@ -1272,18 +1469,18 @@ async function setMode(mode) {
 }
 document.querySelectorAll("#modeSw button").forEach((b) => b.onclick = () => { if (b.dataset.m !== curMode) setMode(b.dataset.m); });
 async function ragLoad() {
-  try { ragDocs = (await api("/api/rag/docs")).docs; } catch (e) { $("ragErr").textContent = e.message; return; }
+  try { ragDocs = (await api("api/rag/docs")).docs; } catch (e) { $("ragErr").textContent = e.message; return; }
   const box = $("ragList");
   box.innerHTML = ragDocs.length ? "" : '<div class="hint2" style="padding:8px">No documents yet.</div>';
   for (const d of ragDocs) {
     const it = el("div", "pitem rgdoc", `<div class="n">${esc(d.name)}</div><div class="m">${esc(d.format)} · ${ragSize(d.bytes)} → ${d.chars.toLocaleString()} chars · ${d.chunks} chunk${d.chunks === 1 ? "" : "s"}</div>${d.warnings.map((w) => `<div class="w">⚠ ${esc(w)}</div>`).join("")}
       <div class="row"><button class="btn" data-a="view">View markdown</button><button class="btn danger" data-a="del">Remove</button></div>`);
     it.querySelector('[data-a="view"]').onclick = async () => {
-      const r = await fetch(`/api/rag/docs/${encodeURIComponent(d.id)}/markdown`, { headers: H }); const t = await r.text();
+      const r = await fetch(`api/rag/docs/${encodeURIComponent(d.id)}/markdown`, { headers: H }); const t = await r.text();
       $("modalTitle").textContent = `${d.name} → markdown`; $("modalBody").innerHTML = `<pre style="white-space:pre-wrap;font-size:12.5px">${esc(t.slice(0, 60000))}${t.length > 60000 ? "\n… (truncated in this view)" : ""}</pre>`;
-      $("modalUse").onclick = () => { window.open(`/api/rag/docs/${encodeURIComponent(d.id)}/markdown?token=${encodeURIComponent(TOKEN)}`, "_blank"); }; $("modalUse").textContent = "Open .md"; $("modal").classList.add("on");
+      $("modalUse").onclick = () => { window.open(`api/rag/docs/${encodeURIComponent(d.id)}/markdown?token=${encodeURIComponent(TOKEN)}`, "_blank"); }; $("modalUse").textContent = "Open .md"; $("modal").classList.add("on");
     };
-    it.querySelector('[data-a="del"]').onclick = async () => { if (!confirm(`Remove "${d.name}" from the shared documents?`)) return; await api(`/api/rag/docs/${encodeURIComponent(d.id)}`, { method: "DELETE" }); ragLoad(); };
+    it.querySelector('[data-a="del"]').onclick = async () => { if (!confirm(`Remove "${d.name}" from the shared documents?`)) return; await api(`api/rag/docs/${encodeURIComponent(d.id)}`, { method: "DELETE" }); ragLoad(); };
     box.appendChild(it);
   }
   $("ragNote").textContent = ragDocs.length ? `${ragDocs.length} document${ragDocs.length === 1 ? "" : "s"}, ${ragDocs.reduce((a, d) => a + d.chunks, 0)} searchable chunks. Search runs locally.` : "";
@@ -1293,7 +1490,7 @@ async function ragUpload(files) {
   $("ragErr").textContent = "";
   for (const f of files) {
     const tmp = el("div", "pitem rgdoc", `<div class="n">${esc(f.name)}</div><div class="m">converting to markdown…</div>`); $("ragList").prepend(tmp);
-    try { await api("/api/rag/docs", { method: "POST", body: JSON.stringify({ name: f.name, data: await b64(f) }) }); }
+    try { await api("api/rag/docs", { method: "POST", body: JSON.stringify({ name: f.name, data: await b64(f) }) }); }
     catch (e) { tmp.classList.add("bad"); tmp.querySelector(".m").textContent = e.message; await new Promise((r) => setTimeout(r, 3500)); }
   }
   ragLoad();
@@ -1309,10 +1506,10 @@ ragLoad();
 let skillsCache = [];
 async function loadSkills() {
   try {
-    const r = await api("/api/skills");
+    const r = await api("api/skills");
     skillsCache = r.skills;
     $("skillDirs").innerHTML = r.dirs.length ? r.dirs.map((d) => `<div>${esc(d)} <a href="#" data-d="${esc(d)}">remove</a></div>`).join("") : "Only built-in and learned skills. Add a folder of SKILL.md skills (e.g. ~/.claude/skills).";
-    $("skillDirs").querySelectorAll("a").forEach((a) => a.onclick = async (e) => { e.preventDefault(); await api("/api/skills/dirs", { method: "POST", body: JSON.stringify({ path: a.dataset.d, remove: true }) }); loadSkills(); });
+    $("skillDirs").querySelectorAll("a").forEach((a) => a.onclick = async (e) => { e.preventDefault(); await api("api/skills/dirs", { method: "POST", body: JSON.stringify({ path: a.dataset.d, remove: true }) }); loadSkills(); });
     renderSkills();
   } catch (e) { $("skillErr").textContent = e.message; }
 }
@@ -1327,7 +1524,7 @@ function renderSkills() {
   }
 }
 async function openSkill(name) {
-  const s = await api(`/api/skills/${encodeURIComponent(name)}`); $("modalUse").textContent = "Use in chat";
+  const s = await api(`api/skills/${encodeURIComponent(name)}`); $("modalUse").textContent = "Use in chat";
   $("modalTitle").textContent = `${s.name} — ${s.category || "skill"}`;
   $("modalBody").innerHTML = md(s.content || s.description || "");
   $("modalUse").onclick = () => { $("input").value = `/${s.name} `; $("modal").classList.remove("on"); $("input").focus(); };
@@ -1338,21 +1535,21 @@ $("modal").onclick = (e) => { if (e.target === $("modal")) $("modal").classList.
 $("skillSearch").oninput = renderSkills;
 $("skillDirAdd").onclick = async () => {
   $("skillErr").textContent = "";
-  try { const r = await api("/api/skills/dirs", { method: "POST", body: JSON.stringify({ path: $("skillDir").value.trim() }) }); $("skillDir").value = ""; await loadSkills(); $("skillErr").textContent = `${r.count} skills available.`; info = await api("/api/info"); }
+  try { const r = await api("api/skills/dirs", { method: "POST", body: JSON.stringify({ path: $("skillDir").value.trim() }) }); $("skillDir").value = ""; await loadSkills(); $("skillErr").textContent = `${r.count} skills available.`; info = await api("api/info"); }
   catch (e) { $("skillErr").textContent = e.message; }
 };
 
 async function loadMcp() {
   try {
-    const list = await api("/api/mcp");
+    const list = await api("api/mcp");
     $("mcpList").innerHTML = list.length ? "" : '<div class="hint2" style="padding:8px">No MCP servers yet. Add one below; its tools become available to the agent as mcp__name__tool.</div>';
     for (const m of list) {
       const d = el("div", "pitem", `<div class="n"><span class="dot ${esc(m.status)}"></span>${esc(m.name)} <span class="m">${esc(m.status)}</span></div>
         <div class="m">${esc(m.transport)}: ${esc(m.target)}</div>${m.error ? `<div class="d" style="color:var(--err)">${esc(m.error)}</div>` : ""}
         <div class="d">${m.tools.length} tool${m.tools.length === 1 ? "" : "s"}${m.tools.length ? ": " + esc(m.tools.slice(0, 12).join(", ")) + (m.tools.length > 12 ? "…" : "") : ""}</div>
         <div class="row"><button class="btn" data-a="reconnect">Reconnect</button><button class="btn danger" data-a="remove">Remove</button></div>`);
-      d.querySelector('[data-a="reconnect"]').onclick = async (e) => { e.target.textContent = "Connecting…"; try { await api(`/api/mcp/${encodeURIComponent(m.name)}/reconnect`, { method: "POST" }); } catch (x) { $("mcpErr").textContent = x.message; } loadMcp(); };
-      d.querySelector('[data-a="remove"]').onclick = async () => { if (!confirm(`Remove MCP server "${m.name}"? Its tools will no longer be available.`)) return; await api(`/api/mcp/${encodeURIComponent(m.name)}`, { method: "DELETE" }); loadMcp(); };
+      d.querySelector('[data-a="reconnect"]').onclick = async (e) => { e.target.textContent = "Connecting…"; try { await api(`api/mcp/${encodeURIComponent(m.name)}/reconnect`, { method: "POST" }); } catch (x) { $("mcpErr").textContent = x.message; } loadMcp(); };
+      d.querySelector('[data-a="remove"]').onclick = async () => { if (!confirm(`Remove MCP server "${m.name}"? Its tools will no longer be available.`)) return; await api(`api/mcp/${encodeURIComponent(m.name)}`, { method: "DELETE" }); loadMcp(); };
       $("mcpList").appendChild(d);
     }
   } catch (e) { $("mcpErr").textContent = e.message; }
@@ -1365,7 +1562,7 @@ $("mcpAdd").onclick = async () => {
   const target = $("mcpTarget").value.trim(), name = $("mcpName").value.trim();
   const body = $("mcpType").value === "http" ? { name, url: target, headers: kv } : (() => { const [command, ...args] = splitCmd(target); return { name, command, args, env: kv }; })();
   $("mcpAdd").textContent = "Connecting…"; $("mcpAdd").disabled = true;
-  try { const r = await api("/api/mcp", { method: "POST", body: JSON.stringify(body) }); if (r.status !== "ready") $("mcpErr").textContent = `${r.name}: ${r.status}${r.error ? " — " + r.error : ""}`; else { $("mcpName").value = $("mcpTarget").value = $("mcpKv").value = ""; } }
+  try { const r = await api("api/mcp", { method: "POST", body: JSON.stringify(body) }); if (r.status !== "ready") $("mcpErr").textContent = `${r.name}: ${r.status}${r.error ? " — " + r.error : ""}`; else { $("mcpName").value = $("mcpTarget").value = $("mcpKv").value = ""; } }
   catch (e) { $("mcpErr").textContent = e.message; }
   $("mcpAdd").textContent = "Connect"; $("mcpAdd").disabled = false; loadMcp();
 };
@@ -1379,7 +1576,7 @@ const GENERAL = [
   ["Web & scheduling", [["web.docs_lookup", "Official-docs lookup", ["ask", "always", "never"]], ["web.search_provider", "Search provider", ["duckduckgo", "searxng", "brave", "tavily"]], ["cron.enabled", "Scheduler", "bool"], ["cron.approval_mode", "Unattended risky commands", ["deny", "ask", "yolo"]]]],
 ];
 async function loadAgents() {
-  agentsCache = await api("/api/agents");
+  agentsCache = await api("api/agents");
   const pick = $("agentPick"), cur = pick.value;
   pick.innerHTML = '<option value="default">default</option>' + agentsCache.map((a) => `<option value="${esc(a.name)}">${esc(a.name)}</option>`).join("");
   if ([...pick.options].some((o) => o.value === cur)) pick.value = cur;
@@ -1393,7 +1590,7 @@ function renderAgentList() {
       <div class="row"><button class="btn" data-a="edit">Edit</button><button class="btn" data-a="chat">New chat with it</button><button class="btn danger" data-a="del">Delete</button></div>`);
     d.querySelector('[data-a="edit"]').onclick = () => agentForm(a);
     d.querySelector('[data-a="chat"]').onclick = async () => { $("agentPick").value = a.name; $("settings").classList.remove("on"); await newSession(); };
-    d.querySelector('[data-a="del"]').onclick = async () => { if (!confirm(`Delete agent "${a.name}"? Chats already using it keep their current prompt.`)) return; await api(`/api/agents/${encodeURIComponent(a.name)}`, { method: "DELETE" }); await loadAgents(); renderAgentList(); };
+    d.querySelector('[data-a="del"]').onclick = async () => { if (!confirm(`Delete agent "${a.name}"? Chats already using it keep their current prompt.`)) return; await api(`api/agents/${encodeURIComponent(a.name)}`, { method: "DELETE" }); await loadAgents(); renderAgentList(); };
     box.appendChild(d);
   }
   const add = el("button", "btn primary", "＋ New agent"); add.onclick = () => agentForm(null); box.appendChild(add);
@@ -1427,12 +1624,12 @@ function agentForm(a) {
       tool_profile: $("agProfile").value || undefined, tools: [...$("agTools").querySelectorAll("input:checked")].map((x) => x.value),
       model: { name: $("agModel").value, base_url: $("agBase").value, temperature: $("agTemp").value }, personality: $("agPers").value, max_iterations: $("agIter").value,
     };
-    try { await api("/api/agents", { method: "POST", body: JSON.stringify(body) }); await loadAgents(); renderAgentList(); }
+    try { await api("api/agents", { method: "POST", body: JSON.stringify(body) }); await loadAgents(); renderAgentList(); }
     catch (e) { $("agErr").textContent = e.message; }
   };
 }
 async function renderGeneral() {
-  const cur = await api("/api/settings");
+  const cur = await api("api/settings");
   const box = $("stGeneral");
   let html = '<div class="sform">';
   for (const [group, rows] of GENERAL) {
@@ -1450,7 +1647,7 @@ async function renderGeneral() {
   $("genSave").onclick = async () => {
     const out = {};
     box.querySelectorAll("[data-k]").forEach((x) => { const k = x.dataset.k, orig = cur[k]; let v = x.value; if (typeof orig === "number") v = Number(v); if (typeof orig === "boolean") v = v === "true"; if (JSON.stringify(v) !== JSON.stringify(orig ?? "")) out[k] = v; });
-    try { const r = await api("/api/settings", { method: "POST", body: JSON.stringify(out) }); $("genMsg").textContent = (r.changed.length ? `Saved: ${r.changed.join(", ")}` : "No changes.") + (r.errors.length ? ` · Errors: ${r.errors.join("; ")}` : ""); info = await api("/api/info"); }
+    try { const r = await api("api/settings", { method: "POST", body: JSON.stringify(out) }); $("genMsg").textContent = (r.changed.length ? `Saved: ${r.changed.join(", ")}` : "No changes.") + (r.errors.length ? ` · Errors: ${r.errors.join("; ")}` : ""); info = await api("api/info"); }
     catch (e) { $("genMsg").textContent = e.message; }
   };
 }
@@ -1479,7 +1676,7 @@ function fieldHtml(k, label, type, val) {
 async function renderTools() {
   const box = $("stTools");
   box.textContent = "Loading…";
-  const [tools, cur] = await Promise.all([api("/api/tools"), api("/api/settings")]);
+  const [tools, cur] = await Promise.all([api("api/tools"), api("api/settings")]);
   toolsCache = tools;
   const groups = {};
   for (const t of tools) (groups[t.mcp ? "MCP: " + t.toolset.slice(4) : t.toolset] ??= []).push(t);
@@ -1499,7 +1696,7 @@ async function renderTools() {
   // browser picker: installed browsers the browser_* tools can drive
   const bg = box.querySelector('.tgroup[data-g="browser"] .sform');
   if (bg) {
-    const br = await api("/api/browsers");
+    const br = await api("api/browsers");
     const row = el("div", "full", `<div style="display:grid;grid-template-columns:170px 1fr auto;gap:8px 12px;align-items:center">
       <label>Browser</label><select id="browserPick">${br.browsers.map((b) => `<option value="${esc(b.id)}" ${b.id === br.current ? "selected" : ""} ${b.supported ? "" : "disabled"}>${esc(b.label)}${b.supported ? "" : " — unavailable"}</option>`).join("")}${br.browsers.some((b) => b.id === br.current) ? "" : `<option selected>${esc(br.current)} (from config)</option>`}</select>
       <button class="btn" id="browserTest">Test</button></div><div class="hint2" id="browserNote" style="margin:4px 0 0 182px"></div>`);
@@ -1507,18 +1704,18 @@ async function renderTools() {
     const note = () => { const b = br.browsers.find((x) => x.id === $("browserPick").value); $("browserNote").textContent = b ? b.note || "" : ""; };
     note();
     $("browserPick").onchange = async () => {
-      try { await api("/api/browsers", { method: "POST", body: JSON.stringify({ id: $("browserPick").value }) }); br.current = $("browserPick").value; note(); $("toolMsg").textContent = `Browser: ${$("browserPick").selectedOptions[0].textContent}`; }
+      try { await api("api/browsers", { method: "POST", body: JSON.stringify({ id: $("browserPick").value }) }); br.current = $("browserPick").value; note(); $("toolMsg").textContent = `Browser: ${$("browserPick").selectedOptions[0].textContent}`; }
       catch (e) { $("browserNote").textContent = e.message; $("browserPick").value = br.current; }
     };
     $("browserTest").onclick = async () => {
       $("browserTest").textContent = "Testing…"; $("browserTest").disabled = true;
-      try { const r = await api("/api/browsers/test", { method: "POST", body: "{}" }); $("browserNote").textContent = (r.ok ? "✓ " : "✕ ") + r.message; }
+      try { const r = await api("api/browsers/test", { method: "POST", body: "{}" }); $("browserNote").textContent = (r.ok ? "✓ " : "✕ ") + r.message; }
       catch (e) { $("browserNote").textContent = e.message; }
       $("browserTest").textContent = "Test"; $("browserTest").disabled = false;
     };
   }
   box.querySelectorAll("select[data-tool]").forEach((sel) => sel.onchange = async () => {
-    try { await api("/api/tools/state", { method: "POST", body: JSON.stringify({ name: sel.dataset.tool, state: sel.value, session: $("toolApplyHere").checked ? sid : undefined }) }); sel.className = sel.value; $("toolMsg").textContent = `${sel.dataset.tool}: ${STATE_LABEL[sel.value]}`; }
+    try { await api("api/tools/state", { method: "POST", body: JSON.stringify({ name: sel.dataset.tool, state: sel.value, session: $("toolApplyHere").checked ? sid : undefined }) }); sel.className = sel.value; $("toolMsg").textContent = `${sel.dataset.tool}: ${STATE_LABEL[sel.value]}`; }
     catch (e) { $("toolMsg").textContent = e.message; }
   });
   $("toolFilter").oninput = () => {
@@ -1532,13 +1729,13 @@ async function renderTools() {
       const v = t === "bool" ? x.value === "true" : t === "number" ? Number(x.value) : t === "list" ? x.value.split("\n").map((l) => l.trim()).filter(Boolean) : x.value;
       if (JSON.stringify(v) !== JSON.stringify(cur[k] ?? (t === "list" ? [] : ""))) out[k] = v;
     });
-    try { const r = await api("/api/settings", { method: "POST", body: JSON.stringify(out) }); $("toolMsg").textContent = (r.changed.length ? `Saved: ${r.changed.join(", ")}` : "No changes.") + (r.errors.length ? ` · ${r.errors.join("; ")}` : ""); Object.assign(cur, Object.fromEntries(r.changed.map((k) => [k, out[k]]))); }
+    try { const r = await api("api/settings", { method: "POST", body: JSON.stringify(out) }); $("toolMsg").textContent = (r.changed.length ? `Saved: ${r.changed.join(", ")}` : "No changes.") + (r.errors.length ? ` · ${r.errors.join("; ")}` : ""); Object.assign(cur, Object.fromEntries(r.changed.map((k) => [k, out[k]]))); }
     catch (e) { $("toolMsg").textContent = e.message; }
   };
 }
 $("settingsBtn").onclick = async () => {
   $("settings").classList.add("on");
-  try { if (!toolsCache.length) toolsCache = await api("/api/tools"); await loadAgents(); renderAgentList(); } catch (e) { $("stAgents").textContent = e.message; }
+  try { if (!toolsCache.length) toolsCache = await api("api/tools"); await loadAgents(); renderAgentList(); } catch (e) { $("stAgents").textContent = e.message; }
 };
 $("settingsClose").onclick = () => $("settings").classList.remove("on");
 $("settings").onclick = (e) => { if (e.target === $("settings")) $("settings").classList.remove("on"); };
@@ -1553,7 +1750,7 @@ loadAgents().catch(() => {});
 async function renderBench(days = 7) {
   const box = $("stBench");
   box.textContent = "Loading…";
-  let r; try { r = await api(`/api/bench?days=${days}`); } catch (e) { box.textContent = e.message; return; }
+  let r; try { r = await api(`api/bench?days=${days}`); } catch (e) { box.textContent = e.message; return; }
   box.textContent = "";
   const bar = document.createElement("div"); bar.className = "trow";
   bar.append("Last ");
@@ -1573,14 +1770,14 @@ let fdMode = "chat", fdCur = "", foldersInfo = null;
 const short = (p) => foldersInfo && p.startsWith(foldersInfo.home) ? "~" + p.slice(foldersInfo.home.length) : p;
 function showCwd(p) { $("cwdName").textContent = short(p).split("/").filter(Boolean).slice(-2).join("/") || p; $("cwdBtn").title = `Working folder: ${p} — click to change`; }
 async function loadFolders() {
-  foldersInfo = await api("/api/folders");
+  foldersInfo = await api("api/folders");
   $("defFolder").textContent = "New chats in " + short(foldersInfo.default);
   $("defFolderBtn").title = `New chats start in ${foldersInfo.default}${foldersInfo.configured ? "" : " (where the harness was started — click to choose a default)"}`;
 }
 async function browse(path) {
   $("fdErr").textContent = "";
   try {
-    const r = await api(`/api/fs/dirs?path=${encodeURIComponent(path)}`);
+    const r = await api(`api/fs/dirs?path=${encodeURIComponent(path)}`);
     fdCur = r.path; $("fdPath").value = r.path; $("fdUp").disabled = !r.parent; $("fdUp").dataset.p = r.parent || "";
     $("fdList").innerHTML = r.dirs.length ? "" : '<div class="none">No subfolders</div>';
     for (const d of r.dirs) { const x = el("div", "", "📁 " + esc(d)); x.onclick = () => browse(r.path.replace(/\/$/, "") + "/" + d); $("fdList").appendChild(x); }
@@ -1594,7 +1791,7 @@ async function openFolders(mode) {
   $("fdUse").textContent = mode === "chat" ? "Use this folder" : "Set as default";
   $("fdRecent").innerHTML = foldersInfo.recent.length ? "Recent: " : "";
   for (const p of foldersInfo.recent.slice(0, 8)) { const b = el("button"); b.textContent = short(p); b.title = p; b.onclick = () => browse(p); $("fdRecent").appendChild(b); }
-  const start = mode === "chat" && sid ? (await api(`/api/sessions/${sid}`)).cwd : foldersInfo.default;
+  const start = mode === "chat" && sid ? (await api(`api/sessions/${sid}`)).cwd : foldersInfo.default;
   await browse(start);
   $("folders").classList.add("on");
 }
@@ -1607,16 +1804,16 @@ $("fdGo").onclick = () => browse($("fdPath").value.trim());
 $("fdPath").onkeydown = (e) => { if (e.key === "Enter") browse($("fdPath").value.trim()); };
 $("fdMk").onclick = async () => {
   const n = $("fdNew").value.trim(); if (!n || n.includes("/")) { $("fdErr").textContent = "Enter a folder name (no slashes)."; return; }
-  try { const r = await api("/api/fs/mkdir", { method: "POST", body: JSON.stringify({ path: fdCur.replace(/\/$/, "") + "/" + n }) }); $("fdNew").value = ""; await browse(r.path); }
+  try { const r = await api("api/fs/mkdir", { method: "POST", body: JSON.stringify({ path: fdCur.replace(/\/$/, "") + "/" + n }) }); $("fdNew").value = ""; await browse(r.path); }
   catch (e) { $("fdErr").textContent = e.message; }
 };
 $("fdUse").onclick = async () => {
   try {
     if (fdMode === "chat") {
       if (!sid) await newSession();
-      const r = await api(`/api/sessions/${sid}/cwd`, { method: "POST", body: JSON.stringify({ path: fdCur, default: $("fdDefault").checked }) });
+      const r = await api(`api/sessions/${sid}/cwd`, { method: "POST", body: JSON.stringify({ path: fdCur, default: $("fdDefault").checked }) });
       showCwd(r.cwd); statusLine(`Working folder: ${r.cwd}`);
-    } else await api("/api/folders/default", { method: "POST", body: JSON.stringify({ path: fdCur }) });
+    } else await api("api/folders/default", { method: "POST", body: JSON.stringify({ path: fdCur }) });
     await loadFolders();
     $("folders").classList.remove("on");
   } catch (e) { $("fdErr").textContent = e.message; }
@@ -1642,15 +1839,15 @@ function renderSessions() {
     $("sessions").appendChild(b);
   }
 }
-async function refreshSessions() { sessionsCache = await api(`/api/sessions?limit=80${showArchived ? "&archived=1" : ""}`); renderSessions(); }
+async function refreshSessions() { sessionsCache = await api(`api/sessions?limit=80${showArchived ? "&archived=1" : ""}`); renderSessions(); }
 async function archiveChat(s, on) {
-  await api(`/api/sessions/${s.id}/archive`, { method: "POST", body: JSON.stringify({ archived: on }) });
+  await api(`api/sessions/${s.id}/archive`, { method: "POST", body: JSON.stringify({ archived: on }) });
   if (on && s.id === sid) leaveChat();
   await refreshSessions();
 }
 async function deleteChat(s) {
   if (!confirm(`Delete "${s.title || "Untitled"}"? Its messages${s.busy ? ", the running task" : ""} and any pipeline or sub-chats it started are removed. This cannot be undone.`)) return;
-  await api(`/api/sessions/${s.id}`, { method: "DELETE" });
+  await api(`api/sessions/${s.id}`, { method: "DELETE" });
   if (s.id === sid) leaveChat();
   await refreshSessions();
 }
@@ -1663,8 +1860,8 @@ function leaveChat() {
 $("archToggle").onclick = () => { showArchived = !showArchived; $("archToggle").textContent = showArchived ? "← Back to chats" : "Show archived chats"; refreshSessions(); };
 
 async function openSession(id) {
-  sid = id; location.hash = "s=" + id; $("left").classList.remove("open");
-  const d = await api(`/api/sessions/${id}`);
+  sid = id; location.hash = "s=" + id; closeDrawers();
+  const d = await api(`api/sessions/${id}`);
   msgs.innerHTML = ""; curAgent = null; toolEls = {};
   $("title").textContent = d.session.title || "New chat";
   $("modelPill").textContent = d.model;
@@ -1700,7 +1897,241 @@ function showEmpty() {
   for (const t of ideas) { const c = el("button", "chip"); c.textContent = t; c.onclick = () => { $("input").value = t; send(); }; e.querySelector(".chips").appendChild(c); }
   msgs.appendChild(e);
 }
-async function newSession() { const want = curMode; const r = await api("/api/sessions", { method: "POST", body: JSON.stringify({ agent: $("agentPick").value }) }); await refreshSessions(); await openSession(r.id); if (want === "rag") await setMode("rag"); $("input").focus(); }
+async function newSession() { const want = curMode; const r = await api("api/sessions", { method: "POST", body: JSON.stringify({ agent: $("agentPick").value }) }); await refreshSessions(); await openSession(r.id); if (want === "rag") await setMode("rag"); $("input").focus(); }
+
+// ── story review (Kanban tab): tick a story to approve it, comment on stories and main features, let the agent apply the comments ──
+let rvData = null, rvBoardId = null, rvFilt = "all";
+const rvOpenSet = new Set();   // expanded stories / features (kept across reloads)
+const RV_QUICK = ["Looks good", "Add more detail", "Split this story", "Not needed now", "Change the acceptance criteria", "Add test cases"];
+async function rvOpen(boardId) {
+  rvBoardId = boardId || (kbData && kbData.board.id) || null;
+  $("kbrv").classList.add("on");
+  try { const u = new URL(location.href); if (u.searchParams.get("kb") !== "review") { u.searchParams.set("kb", "review"); history.pushState({ kb: "review" }, "", u); } } catch { /* file:// */ }
+  await rvLoad();
+}
+function rvClose(fromHistory) {
+  $("kbrv").classList.remove("on");
+  if (!fromHistory) try { const u = new URL(location.href); if (u.searchParams.get("kb") === "review") { u.searchParams.delete("kb"); history.pushState({}, "", u); } } catch { /* file:// */ }
+  kbLoad();
+}
+async function rvLoad() {
+  try { rvData = await api("api/kanban/review" + (rvBoardId ? `?board=${encodeURIComponent(rvBoardId)}` : "")); rvBoardId = rvData.board.id; }
+  catch (e) { $("rvList").innerHTML = `<div class="dvmsg">Cannot load the board: ${esc(e.message)}</div>`; return; }
+  rvRender();
+}
+const rvShown = (st) => rvFilt === "all" || (rvFilt === "todo" && !st.approved) || (rvFilt === "ok" && st.approved) || (rvFilt === "flag" && st.flags.length) || (rvFilt === "fb" && st.open);
+function rvComments(c) {
+  const byId = new Map(c.comments.map((x) => [x.id, x]));
+  const answered = new Set(c.comments.filter((x) => x.reply_to).map((x) => x.reply_to));
+  return c.comments.map((x) => `<div class="rvcm ${x.by === "user" ? "user" : ""} ${x.reply_to && byId.has(x.reply_to) ? "reply" : ""}"><b>${esc(x.by === "user" ? "You" : x.by)} · ${new Date(x.at).toLocaleString()}</b>${x.by === "user" && !answered.has(x.id) ? ` <span class="open">· waiting for the agent</span>` : ""}\n${esc(x.text)}</div>`).join("");
+}
+function rvSay(key) {
+  return `<div class="rvsay" data-k="${esc(key)}"><div class="rvquick">${RV_QUICK.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>
+    <textarea placeholder="Your comment for the agent: what to change, add or remove" aria-label="Comment on ${esc(key)}"></textarea>
+    <div class="row"><button class="btn primary" data-send="${esc(key)}">Send comment</button><span class="err"></span></div></div>`;
+}
+function rvStory(st) {
+  const open = rvOpenSet.has(st.key);
+  const tags = `${st.flags.length ? `<span class="tag flag">⚠ check</span>` : ""}${st.comments.length ? `<span class="tag ${st.open ? "fb" : ""}">💬 ${st.comments.length}</span>` : ""}${st.locked ? `<span class="tag">${esc(st.status)}</span>` : ""}`;
+  return `<div class="rvstory ${st.approved ? "ok" : ""}" data-k="${esc(st.key)}"><div class="rvrow">
+    <label class="rvchk" title="${st.locked ? "Already started: it can't be taken back here" : st.approved ? "Approved — untick to take it back" : "Tick to approve"}"><input type="checkbox" data-key="${esc(st.key)}" ${st.approved ? "checked" : ""} ${st.locked ? "disabled" : ""} aria-label="Approve ${esc(st.key)}"></label>
+    <button class="rvtitle" data-x="${esc(st.key)}" aria-expanded="${open}"><span class="k">${esc(st.key)}</span><span>${esc(st.title)}</span>${tags}${st.summary && !open ? `<small>${esc(st.summary.slice(0, 140))}</small>` : ""}</button></div>
+    ${open ? `<div class="rvdet">
+      ${st.flags.length ? `<h6>Needs your check</h6><div class="flags">${st.flags.map((f) => esc(f)).join("<br>")}</div>` : ""}
+      ${st.summary ? `<h6>Summary</h6><div>${esc(st.summary)}</div>` : ""}
+      ${st.body ? `<h6>Details</h6><div class="content">${md(st.body)}</div>` : ""}
+      ${st.acceptance.length ? `<h6>Acceptance criteria</h6><ul>${st.acceptance.map((a) => `<li>${inline(esc(a))}</li>`).join("")}</ul>` : ""}
+      ${st.test_cases.length ? `<h6>Test cases</h6><ul>${st.test_cases.map((a) => `<li>${inline(esc(a))}</li>`).join("")}</ul>` : ""}
+      ${st.comments.length ? `<h6>Comments</h6>${rvComments(st)}` : ""}
+      ${rvSay(st.key)}</div>` : ""}</div>`;
+}
+function rvRender() {
+  const d = rvData; if (!d) return;
+  $("rvBoard").innerHTML = d.boards.map((b) => `<option value="${esc(b.id)}">${b.draft ? "📝 " : ""}${esc(b.name)} (${b.cards})</option>`).join("");
+  $("rvBoard").value = d.board.id;
+  $("rvCount").textContent = `${d.counts.approved}/${d.counts.stories} approved${d.counts.flagged ? ` · ⚠ ${d.counts.flagged}` : ""}${d.counts.open ? ` · 💬 ${d.counts.open} open` : ""}`;
+  $("rvChips").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.f === rvFilt));
+  $("rvApply").textContent = `💬 Apply my comments${d.counts.open ? ` (${d.counts.open})` : ""}`; $("rvApply").disabled = !d.counts.open;
+  if (!d.counts.stories) { $("rvList").innerHTML = `<div class="dvmsg">This board has no stories yet.</div>`; return; }
+  const html = d.epics.map((e) => {
+    const shown = e.stories.filter(rvShown);
+    if (!shown.length && rvFilt !== "all" && !(rvFilt === "fb" && e.open)) return "";
+    const free = e.stories.filter((x) => !x.locked), ok = e.stories.filter((x) => x.approved).length;
+    const all = free.length && free.every((x) => x.approved), some = free.some((x) => x.approved);
+    const ek = e.key || "_loose", open = rvOpenSet.has("E:" + ek);
+    return `<section class="rvepic" data-e="${esc(ek)}"><div class="rvrow">
+      <label class="rvchk" title="Tick to approve every story of this feature"><input type="checkbox" data-epic="${esc(ek)}" ${all ? "checked" : ""} ${free.length ? "" : "disabled"} data-some="${some && !all ? 1 : ""}" aria-label="Approve all stories of ${esc(e.key || "this group")}"></label>
+      <button class="rvtitle" data-x="E:${esc(ek)}" aria-expanded="${open}">${e.key ? `<span class="k">${esc(e.key)}</span>` : ""}<span>${esc(e.title)}</span>${e.comments.length ? `<span class="tag ${e.open ? "fb" : ""}">💬 ${e.comments.length}</span>` : ""}<small>${ok}/${e.stories.length} approved${e.key ? ` · ${open ? "hide" : "feedback on the whole feature"} ▾` : ""}</small></button></div>
+      ${open && e.key ? `<div class="rvdet">${e.summary ? `<div>${esc(e.summary)}</div>` : ""}${e.comments.length ? `<h6>Comments on this feature</h6>${rvComments(e)}` : ""}${rvSay(e.key)}</div>` : ""}
+      ${shown.map(rvStory).join("")}</section>`;
+  }).join("");
+  $("rvList").innerHTML = html || `<div class="dvmsg">Nothing to show for this filter.</div>`;
+  $("rvList").querySelectorAll("input[data-some='1']").forEach((x) => x.indeterminate = true);
+}
+async function rvApprove(keys, approve) {
+  if (!keys.length) return;
+  try { await api("api/kanban/review", { method: "POST", body: JSON.stringify({ board: rvBoardId, action: approve ? "approve" : "unapprove", keys }) }); }
+  catch (e) { alert("Could not save: " + e.message); }
+  await rvLoad();
+}
+$("rvList").addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.dataset.key) {
+    // show the tick at once; the reload confirms it
+    const st = rvData.epics.flatMap((x) => x.stories).find((x) => x.key === t.dataset.key); if (st) st.approved = t.checked;
+    rvApprove([t.dataset.key], t.checked);
+  } else if (t.dataset.epic) {
+    const ep = rvData.epics.find((x) => (x.key || "_loose") === t.dataset.epic);
+    rvApprove(ep.stories.filter((x) => !x.locked && x.approved !== t.checked).map((x) => x.key), t.checked);
+  }
+});
+$("rvList").addEventListener("click", async (e) => {
+  const x = e.target.closest("[data-x]");
+  if (x) { const k = x.dataset.x; rvOpenSet.has(k) ? rvOpenSet.delete(k) : rvOpenSet.add(k); rvRender(); return; }
+  const q = e.target.closest("[data-q]");
+  if (q) { const ta = q.closest(".rvsay").querySelector("textarea"); ta.value = ta.value.trim() ? `${ta.value.trim()}\n${q.dataset.q}` : q.dataset.q; ta.focus(); return; }
+  const send = e.target.closest("[data-send]");
+  if (send) {
+    const box = send.closest(".rvsay"), ta = box.querySelector("textarea"), err = box.querySelector(".err"), text = ta.value.trim();
+    if (!text) { err.textContent = "Write a comment first."; return; }
+    send.disabled = true; err.textContent = "";
+    try { await api("api/kanban/review", { method: "POST", body: JSON.stringify({ board: rvBoardId, action: "comment", key: send.dataset.send, text }) }); await rvLoad(); }
+    catch (er) { err.textContent = er.message; send.disabled = false; }
+  }
+});
+$("rvChips").onclick = (e) => { const b = e.target.closest("button[data-f]"); if (b) { rvFilt = b.dataset.f; rvRender(); $("rvBody").scrollTop = 0; } };
+$("rvBoard").onchange = () => { rvBoardId = $("rvBoard").value; rvOpenSet.clear(); rvLoad(); };
+$("rvReload").onclick = () => rvLoad();
+$("rvClose").onclick = () => rvClose();
+$("kbReviewBtn").onclick = () => rvOpen();
+$("rvApproveShown").onclick = () => {
+  const keys = rvData.epics.flatMap((x) => x.stories).filter((x) => rvShown(x) && !x.approved && !x.locked).map((x) => x.key);
+  if (!keys.length) return alert("Every story shown is approved already.");
+  if (confirm(`Approve ${keys.length} stor${keys.length === 1 ? "y" : "ies"}?`)) rvApprove(keys, true);
+};
+$("rvApply").onclick = async () => {
+  if (!confirm(`The agent rewrites the stories you commented on (${rvData.counts.open} open comment(s)) and answers each comment. It does not approve or run anything. Start?`)) return;
+  try {
+    const r = await api("api/kanban/review", { method: "POST", body: JSON.stringify({ board: rvBoardId, action: "apply" }) });
+    if (confirm(`Started: the agent is working on ${r.tickets} ticket(s) in a new chat. Open that chat now? (Otherwise come back here and press ↻ to see its answers.)`)) { rvClose(); if ($("kb").classList.contains("on")) kbCloseOverlay(); await refreshSessions(); await openSession(r.session); }
+  } catch (e) { alert(e.message); }
+};
+$("rvRun").onclick = async () => {
+  const n = rvData.counts.approved;
+  if (!n) return alert("Approve at least one story first.");
+  if (!confirm(`Start workers on the approved stories of “${rvData.board.name}”? It becomes the active board; stories you did not tick stay as drafts.`)) return;
+  try { const r = await api("api/kanban/review", { method: "POST", body: JSON.stringify({ board: rvBoardId, action: "run" }) }); alert(`Started ${r.dispatched} worker(s).`); await rvLoad(); }
+  catch (e) { alert(e.message); }
+};
+
+// ── document viewer ──
+// what the agent made (design documents, reports, pages, PDFs, office files, images) opens here: from a path in a reply,
+// the 👁 button on a file tool, /open, or the agent's show_document tool
+let dvCur = null, dvMode = "view", dvDocs = [];
+const dvQ = (path) => `path=${encodeURIComponent(path)}${sid ? `&session=${encodeURIComponent(sid)}` : ""}`;
+function rawUrl(path, download) { return `api/file/raw?${dvQ(path)}&token=${encodeURIComponent(TOKEN)}${download ? "&download=1" : ""}`; }
+const dvIcon = (k) => ({ dir: "📁", markdown: "📝", html: "🌐", pdf: "📕", image: "🖼", office: "📄", table: "📊" }[k] || "📃");
+const dvSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+function dvShow() { $("docv").classList.add("on"); }
+function dvClose() { $("docv").classList.remove("on", "listopen"); $("dvBody").innerHTML = ""; dvCur = null; }
+function dvList() {
+  const cur = dvCur && dvCur.path;
+  const btn = (d) => `<button data-p="${esc(d.path)}" class="${d.path === cur ? "on" : ""}" title="${esc(d.path)}${d.size !== undefined && d.kind !== "dir" ? " · " + dvSize(d.size) : ""}"><span>${dvIcon(d.kind)}</span><span>${esc(d.name)}</span></button>`;
+  let h = dvDocs.length ? `<h5>This chat</h5>${dvDocs.map(btn).join("")}` : "";
+  const sib = dvCur && (dvCur.siblings || dvCur.entries);
+  if (sib && sib.length) h += `<h5>${esc((dvCur.entries ? dvCur.path : dvCur.folder).split("/").pop() || "/")}</h5>` + (dvCur.folder ? btn({ path: dvCur.folder, name: "‹ the folder", kind: "dir" }) : "") + sib.map(btn).join("");
+  $("dvList").innerHTML = h || `<div class="dvmsg">No documents yet.</div>`;
+  $("docv").classList.toggle("nolist", !h);
+}
+async function dvLoadDocs() { try { dvDocs = sid ? (await api(`api/docs?session=${encodeURIComponent(sid)}`)).docs : []; } catch { dvDocs = []; } }
+/** the list of this chat's documents; on a phone the list fills the screen */
+async function openDocList() {
+  dvCur = null; dvShow(); $("dvName").textContent = "Documents"; $("dvPath").textContent = ""; $("dvMode").hidden = true;
+  ["dvCopy", "dvTab", "dvDl"].forEach((b) => $(b).hidden = true);
+  $("dvBody").innerHTML = `<div class="dvmsg">Loading…</div>`;
+  await dvLoadDocs(); dvList();
+  $("dvBody").innerHTML = dvDocs.length
+    ? `<div class="content"><h2>Documents of this chat</h2><table><thead><tr><th>Name</th><th>Folder</th><th>Changed</th></tr></thead><tbody>${dvDocs.map((d) => `<tr><td>${dvIcon(d.kind)} ${flink(esc(d.path), esc(d.name))}</td><td><code>${esc(d.path.slice(0, d.path.length - d.name.length))}</code></td><td>${new Date(d.mtime).toLocaleString()}</td></tr>`).join("")}</tbody></table></div>`
+    : `<div class="dvmsg">This chat has not made any documents yet.</div>`;
+  $("dvBody").insertAdjacentHTML("afterbegin", `<div class="content"><form id="dvOpenForm" class="dvopen"><input id="dvOpenIn" placeholder="Paste a file path or a Google Docs / Sheets / Slides link" aria-label="File path or link" autocomplete="off" autocapitalize="off"><button class="btn primary">Open</button></form><div class="hint2">PDF, Word, Excel, PowerPoint, CSV, Markdown, HTML, images and text. Google files must be shared as “Anyone with the link”.</div></div>`);
+  $("dvOpenForm").onsubmit = (e) => { e.preventDefault(); const v = $("dvOpenIn").value.trim(); if (v) openDoc(v); };
+  if (window.matchMedia("(max-width: 720px)").matches && dvDocs.length) $("docv").classList.add("listopen");
+}
+async function openDoc(path) {
+  if (!path) return openDocList();
+  dvShow(); $("docv").classList.remove("listopen");
+  $("dvName").textContent = path.split("/").pop(); $("dvPath").textContent = path;
+  $("dvBody").innerHTML = `<div class="dvmsg">${/^https?:/.test(path) ? "Downloading…" : "Loading…"}</div>`;
+  let d;
+  try { d = await api(`api/file?${dvQ(path)}`); }
+  catch (e) { dvCur = null; $("dvBody").innerHTML = `<div class="dvmsg">Cannot open ${esc(path)}: ${esc(e.message)}</div>`; ["dvCopy", "dvTab", "dvDl"].forEach((b) => $(b).hidden = true); $("dvMode").hidden = true; if (!dvDocs.length) await dvLoadDocs(); dvList(); return; }
+  dvCur = d; dvMode = "view";
+  $("dvName").textContent = d.name; $("dvPath").textContent = d.source || d.path; $("dvPath").title = d.source ? `${d.source}\n(a fresh copy: ${d.path})` : d.path;
+  $("dvCopy").hidden = false; $("dvTab").hidden = d.kind === "dir"; $("dvDl").hidden = d.kind === "dir";
+  $("dvMode").hidden = !((d.kind === "markdown" || d.kind === "html") && d.content !== undefined);
+  dvRender();
+  if (!dvDocs.length) await dvLoadDocs();
+  dvList();
+}
+function dvRender() {
+  const d = dvCur, b = $("dvBody");
+  if (!d) return;
+  $("dvMode").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x.dataset.m === dvMode));
+  const text = (t) => `<div class="content"><pre class="src"><code>${esc(t)}</code></pre></div>`;
+  const note = (m) => `<div class="dvmsg">${m}<br><br><a class="btn" href="${rawUrl(d.path, true)}">Download ${esc(d.name)}</a></div>`;
+  if (d.kind === "dir") {
+    b.innerHTML = `<div class="content"><h2>📁 ${esc(d.name)}</h2>${d.entries.length ? `<table><tbody>${d.entries.map((e) => `<tr><td>${dvIcon(e.kind)} ${flink(esc(e.path), esc(e.name))}</td><td>${e.kind === "dir" ? "" : dvSize(e.size)}</td><td>${new Date(e.mtime).toLocaleString()}</td></tr>`).join("")}</tbody></table>` : "<p>Empty folder.</p>"}</div>`;
+    return;
+  }
+  if (d.tooLarge) { b.innerHTML = note(`${esc(d.name)} is too large to show here (${dvSize(d.size)}).`); return; }
+  if (d.error) { b.innerHTML = note(`Could not convert ${esc(d.name)}: ${esc(d.error)}`); return; }
+  if (d.kind === "binary") { b.innerHTML = note(`${esc(d.name)} is a binary file the viewer cannot show.`); return; }
+  if (d.kind === "image") { b.innerHTML = `<div class="dvimg"><img alt="${esc(d.name)}" src="${rawUrl(d.path)}"></div>`; return; }
+  // phones (iOS Safari) show only the first page of a PDF in a frame: offer the full-screen PDF reader first
+  if (d.kind === "pdf") { b.innerHTML = window.matchMedia("(max-width: 720px)").matches ? `<div class="dvmsg">📕 ${esc(d.name)} · ${dvSize(d.size)}<br><br><a class="btn primary" href="${rawUrl(d.path)}" target="_blank" rel="noopener">Open the PDF</a> <a class="btn" href="${rawUrl(d.path, true)}">Download</a></div><iframe title="${esc(d.name)}" style="height:70vh" src="${rawUrl(d.path)}"></iframe>` : `<iframe title="${esc(d.name)}" src="${rawUrl(d.path)}"></iframe>`; return; }
+  if (d.kind === "html" && dvMode === "view") { b.innerHTML = `<iframe title="${esc(d.name)}" sandbox="allow-scripts allow-popups allow-forms" referrerpolicy="no-referrer" src="${esc(d.site)}"></iframe>`; return; }
+  if (d.kind === "markdown" && dvMode === "view") { mdBase = d.folder; try { b.innerHTML = `<div class="content">${md(d.content)}</div>`; } finally { mdBase = null; } b.scrollTop = 0; return; }
+  if (d.markdown !== undefined) { mdBase = d.folder; try { b.innerHTML = `<div class="content">${(d.warnings || []).length ? `<div class="notice">${esc(d.warnings.join("; "))}</div>` : ""}${md(d.markdown)}</div>`; } finally { mdBase = null; } return; }
+  let t = d.content ?? "";
+  if (/\.json$/i.test(d.name)) { try { t = JSON.stringify(JSON.parse(t), null, 2); } catch { /* show as written */ } }
+  b.innerHTML = text(t); b.scrollTop = 0;
+}
+$("dvClose").onclick = dvClose;
+$("docsBtn").onclick = () => openDocList();
+$("dvFiles").onclick = () => {
+  const phone = window.matchMedia("(max-width: 720px)").matches;
+  const on = phone ? $("docv").classList.toggle("listopen") : !$("docv").classList.toggle("nolist");
+  $("dvFiles").setAttribute("aria-expanded", String(on));
+};
+$("dvMode").onclick = (e) => { const m = e.target.closest("button"); if (m) { dvMode = m.dataset.m; dvRender(); } };
+$("dvList").onclick = (e) => { const x = e.target.closest("button[data-p]"); if (x) openDoc(x.dataset.p); };
+$("dvCopy").onclick = async () => { if (!dvCur) return; try { await navigator.clipboard.writeText(dvCur.path); $("dvCopy").textContent = "Copied"; } catch { prompt("Path", dvCur.path); } setTimeout(() => $("dvCopy").textContent = "Copy path", 1200); };
+$("dvTab").onclick = () => { if (dvCur) window.open(dvCur.source || (dvCur.kind === "html" ? dvCur.site : rawUrl(dvCur.path)), "_blank", "noopener"); };
+$("dvDl").onclick = () => { if (dvCur) location.href = rawUrl(dvCur.path, true); };
+// any file link anywhere (replies, tool cards, the viewer itself) opens the viewer
+document.addEventListener("click", (e) => {
+  const a = e.target.closest && e.target.closest("a.flink, .viewbtn");
+  if (!a) return;
+  e.preventDefault(); e.stopPropagation();
+  openDoc(a.dataset.path);
+}, true);
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if ($("docv").classList.contains("on")) { e.stopImmediatePropagation(); dvClose(); }
+  else if ($("kbrv").classList.contains("on") && !/^(TEXTAREA|INPUT)$/.test((document.activeElement || {}).tagName || "")) { e.stopImmediatePropagation(); rvClose(); }
+}, true);
+/** a 👁 button on a successful file tool (write_file, patch, …) whose path is something the viewer shows */
+function addViewBtn(box) {
+  if (box.querySelector(".viewbtn")) return;
+  const a = box._args || {}, own = [a.path, a.output, a.file].find((x) => typeof x === "string" && x && VIEW_EXT.test(x));
+  // also documents the result names, e.g. a design run's "Report: /…/report.md"
+  const named = [...(box.querySelector("pre")?.textContent || "").matchAll(/(?:^|[\s(:"'`])((?:~|\/)[^\s"'`()<>]+)/g)].map((m) => m[1].replace(/[.,;:)]+$/, "")).filter((p) => DOC_EXT_RE.test(p) && !p.startsWith("//"));
+  const paths = [...new Set([own, ...named].filter(Boolean))].slice(0, 3);
+  for (const path of paths) {
+    const b = el("button", "viewbtn", paths.length > 1 ? `👁 ${esc(path.split("/").pop())}` : "👁 View"); b.dataset.path = path; b.title = "Open " + path + " in the document viewer";
+    box.querySelector(".ms").before(b);
+  }
+}
 
 // ── composer ──
 async function send() {
@@ -1711,16 +2142,17 @@ async function send() {
   const empty = msgs.querySelector(".empty"); if (empty) empty.remove();
   inp.value = ""; autosize(); hidePalette();
   try {
-    const r = await api(`/api/sessions/${sid}/messages`, { method: "POST", body: JSON.stringify({ text, images }) });
+    const r = await api(`api/sessions/${sid}/messages`, { method: "POST", body: JSON.stringify({ text, images }) });
     images = []; $("thumbs").innerHTML = "";
     if (r.command) {
       if (r.text) { const n = el("div", "notice"); n.textContent = r.text; msgs.appendChild(n); scroll(true); }
+      if (r.open !== undefined) { if (r.open === "*") openDocList(); else openDoc(r.open); }
       if (r.switchTo) { await refreshSessions(); await openSession(r.switchTo); }
-      else if (/^\/(goal|loop|heartbeat)/.test(text)) { const d = await api(`/api/sessions/${sid}`); renderGoal(d.goal); }
+      else if (/^\/(goal|loop|heartbeat)/.test(text)) { const d = await api(`api/sessions/${sid}`); renderGoal(d.goal); }
     } else if (r.queued) { const n = el("div", "notice"); n.textContent = "Queued — will run after the current step. Use /steer to redirect now."; msgs.appendChild(n); }
   } catch (e) { const n = el("div", "notice"); n.textContent = "Error: " + e.message; msgs.appendChild(n); }
 }
-async function stop() { if (sid) await api(`/api/sessions/${sid}/interrupt`, { method: "POST", body: JSON.stringify({ clear: true }) }); }
+async function stop() { if (sid) await api(`api/sessions/${sid}/interrupt`, { method: "POST", body: JSON.stringify({ clear: true }) }); }
 function autosize() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 240) + "px"; }
 
 let palIdx = 0, palItems = [];
@@ -1748,13 +2180,37 @@ $("input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
 $("sendBtn").onclick = async () => {
-  if (kbBusy && !busy) { try { const r = await api("/api/kanban/stop", { method: "POST", body: "{}" }); notice(`Stopped Kanban${r.stopped.length ? ": " + r.stopped.join(", ") + " went back to the queue" : ""}. Press Resume in the bar when you want it to continue.`); } catch (e) { alert(e.message); } kbLiveTick(); return; }
+  if (kbBusy && !busy) { try { const r = await api("api/kanban/stop", { method: "POST", body: "{}" }); notice(`Stopped Kanban${r.stopped.length ? ": " + r.stopped.join(", ") + " went back to the queue" : ""}. Press Resume in the bar when you want it to continue.`); } catch (e) { alert(e.message); } kbLiveTick(); return; }
   return busy && !$("input").value.trim() ? stop() : send();
 };
 $("newBtn").onclick = newSession;
 $("search").oninput = renderSessions;
-$("panelBtn").onclick = () => { $("app").classList.toggle("no-right"); refreshStats(); };
-$("menuBtn").onclick = () => $("left").classList.toggle("open");
+$("panelBtn").onclick = () => {
+  if (narrow(1100)) { $("left").classList.remove("open"); $("app").classList.remove("no-right"); $("app").classList.toggle("right-open"); drawers(); }
+  else $("app").classList.toggle("no-right");
+  refreshStats();
+};
+const narrow = (w) => window.matchMedia(`(max-width: ${w}px)`).matches;
+function drawers() { const on = $("left").classList.contains("open") || $("app").classList.contains("right-open"); $("scrim").classList.toggle("on", on); }
+function closeDrawers() { $("left").classList.remove("open"); $("app").classList.remove("right-open"); drawers(); }
+$("menuBtn").onclick = () => { $("app").classList.remove("right-open"); $("left").classList.toggle("open"); drawers(); };
+$("scrim").onclick = closeDrawers;
+// buttons in the drawers that open a full-screen view or start something close the drawer behind them
+["kbOpen", "settingsBtn", "newBtn", "ragUse"].forEach((id) => $(id) && $(id).addEventListener("click", () => setTimeout(closeDrawers, 0)));
+document.querySelectorAll(".drawerx").forEach((b) => b.onclick = closeDrawers);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("scrim").classList.contains("on")) closeDrawers(); });
+if (/^\/agent(\/|$)/.test(location.pathname)) document.body.classList.add("proxied");
+// phones: a short placeholder; and a hint when the browser shows the desktop version of the site (Chrome "Desktop site")
+(function phoneTweaks() {
+  window.matchMedia("(max-width: 720px)").addEventListener("change", () => { if (!$("input").disabled) $("input").placeholder = inputPlaceholder(); });
+  const touch = matchMedia("(pointer: coarse)").matches, phoneScreen = Math.min(screen.width, screen.height) <= 500;
+  if (touch && phoneScreen && window.innerWidth > 800) {
+    const n = el("div", "kbban", 'This page is showing the desktop layout. In the browser menu, turn off <b>Desktop site</b> to get the phone layout. <button class="btn">OK</button>');
+    n.style.cssText = "position:fixed;left:8px;right:8px;bottom:8px;z-index:50;font-size:15px";
+    n.querySelector("button").onclick = () => n.remove(); document.body.appendChild(n);
+  }
+})();   // opened through stitaP Control
+$("kbMore").onclick = () => { const on = $("kb").classList.toggle("acts"); $("kbMore").setAttribute("aria-expanded", on); $("kbMore").textContent = on ? "Actions ▴" : "Actions ▾"; };
 $("attachBtn").onclick = () => $("file").click();
 $("file").onchange = async () => {
   for (const f of $("file").files) {
@@ -1772,7 +2228,7 @@ document.addEventListener("paste", (e) => {
 
 (async () => {
   try {
-    info = await api("/api/info");
+    info = await api("api/info");
     $("agentInfo").innerHTML = `<b>model</b> ${esc(info.model)}<br><b>server</b> ${esc(info.base_url || info.provider)}<br><b>tools</b> ${esc(info.profile)} profile<br><b>approvals</b> ${esc(info.approvals)}<br><b>terminal</b> ${esc(info.terminal)}<br><b>skills</b> ${info.skills.length} · <b>store</b> ${info.store.executable}/${info.store.total}<br><b>runtimes</b> ${esc(info.capabilities.join(", "))}${info.policy ? `<br><b>policy</b> ${esc(info.policy.enforced.join(", "))}` : ""}`;
     $("foot").textContent = `${info.model} · v${info.version}`;
     await refreshSessions();

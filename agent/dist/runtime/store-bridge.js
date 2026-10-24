@@ -128,7 +128,7 @@ export class StoreBridge {
                 const P = { critical: 3, high: 2, medium: 1, low: 0 };
                 const ST = { todo: "backlog", ready: "ready", "in-progress": "running", review: "review", done: "done", blocked: "blocked", cancelled: "done" };
                 if (act === "add-task")
-                    return k.create({ title: s(a.title), body: s(a.description), priority: P[s(a.priority)] ?? 1, depends_on: a.dependsOn ? s(a.dependsOn).split(",").map((x) => x.trim()) : [] });
+                    return k.create({ title: s(a.title), body: s(a.description), parent: s(a.parent) || undefined, priority: P[s(a.priority)] ?? 1, depends_on: a.dependsOn ? s(a.dependsOn).split(",").map((x) => x.trim()) : [] });
                 if (act === "move-task")
                     return k.update(s(a.taskId), { status: (ST[s(a.status)] ?? s(a.status)) });
                 if (act === "add-comment")
@@ -142,7 +142,7 @@ export class StoreBridge {
                     catch {
                         return s(a.subtasks).split(",");
                     } })() : a.subtasks;
-                    return { subtasks: subs.map((t) => k.create({ title: typeof t === "string" ? t.trim() : t.title, body: typeof t === "string" ? "" : t.description ?? "", depends_on: [] })) };
+                    return { subtasks: subs.map((t) => k.create({ title: typeof t === "string" ? t.trim() : t.title, body: typeof t === "string" ? "" : t.description ?? "", parent: s(a.parent) || undefined, depends_on: [] })) };
                 }
                 return { cards: k.list() };
             },

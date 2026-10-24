@@ -523,7 +523,7 @@ const COMMANDS = [
                 if (sub === "move") {
                     const i = rest.lastIndexOf("to");
                     if (i < 1)
-                        return ok("Usage: /kanban move PT-1 PT-2 to <board>");
+                        return ok("Usage: /kanban move US0011 US0012 to <board>");
                     return ok(`Moved ${K.boards.move(rest.slice(0, i), rest.slice(i + 1).join(" "))} ticket(s).`);
                 }
                 if (sub === "link") {
@@ -534,8 +534,11 @@ const COMMANDS = [
                 }
                 if (sub === "unlink")
                     return ok(`Removed ${K.boards.unlink(rest[0], rest[1])} link(s).`);
-                if (sub === "add") {
-                    const k = K.create({ title: rest.join(" ") });
+                if (sub === "add") { // /kanban add epic <title>  |  /kanban add MF001 <story title>
+                    const epic = /^epic$/i.test(rest[0] ?? ""), parent = !epic && /^[A-Z]+\d+$/i.test(rest[0] ?? "") ? rest[0] : undefined;
+                    if (!epic && !parent)
+                        return ok("Usage: /kanban add epic <main feature title>  ·  /kanban add <MF key> <story title>");
+                    const k = K.create({ title: rest.slice(1).join(" "), ...(epic ? { type: "epic" } : { parent }) });
                     return ok(`Added ${k.key} (${k.id})`);
                 }
                 if (sub === "run")

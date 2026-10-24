@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { setup, call, dist } from "./helpers.mjs";
+import { setup, call, dist, story } from "./helpers.mjs";
 
 const lastAssistant = (rt, sid) => [...rt.db.getMessages(sid)].reverse().find((m) => m.role === "assistant" && !m.tool_calls?.length);
 
@@ -359,8 +359,8 @@ test("cron: natural schedule, run now, output saved and delivered", async () => 
 test("kanban: dependent cards run in order in goal mode", async () => {
   const t = await setup();
   try {
-    const a = t.rt.kanban.create({ title: "A" });
-    const b = t.rt.kanban.create({ title: "B", depends_on: [a.id] });
+    const a = story(t.rt.kanban, { title: "A" });
+    const b = story(t.rt.kanban, { title: "B", depends_on: [a.id] });
     assert.deepEqual(t.rt.kanban.ready().map((c) => c.id), [a.id]);
     t.mock.script([{ content: "A complete" }]);
     assert.equal((await t.rt.kanban.work(a.id)).status, "done");

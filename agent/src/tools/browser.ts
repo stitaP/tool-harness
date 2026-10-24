@@ -34,6 +34,17 @@ async function loadPlaywright(): Promise<any> {
   return await import(pathToFileURL(p).href);
 }
 
+/** Print an HTML page to a PDF file with a headless Chromium of its own (not the user's browser session). */
+export async function htmlToPdf(html: string, out: string): Promise<void> {
+  const pw = await loadPlaywright();
+  const br = await (pw.chromium ?? pw.default?.chromium).launch({ headless: true });
+  try {
+    const pg = await br.newPage();
+    await pg.setContent(html, { waitUntil: "load", timeout: 60_000 });
+    await pg.pdf({ path: out, format: "A4", printBackground: true, margin: { top: "16mm", bottom: "16mm", left: "14mm", right: "14mm" } });
+  } finally { await br.close(); }
+}
+
 /**
  * browser config: mode safari (the real Safari via safaridriver — default on macOS) | launch (Playwright's bundled Chromium) |
  * chrome (an installed Chromium-based browser: channel chrome/msedge or executable_path, own profile) | connect (a running Chrome over CDP)

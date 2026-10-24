@@ -22,3 +22,10 @@ export async function setup(extraConfig = "", mockOpts = {}) {
 }
 
 export const call = (name, args) => ({ name, arguments: args });
+
+/** A story under a main feature of its board (created on first use): every story needs one (MF001 → US0011 …). */
+export function story(K, p) {
+  const board = p.board ?? K.boards.activeId();
+  const epic = K.list(undefined, board).find((c) => c.type === "epic" && /^MF\d+$/.test(c.key ?? "")) ?? K.create({ title: "Feature", type: "epic", board });
+  return K.create({ ...p, parent: epic.key });
+}

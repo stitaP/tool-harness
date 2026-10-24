@@ -4,8 +4,8 @@
  * Binds to 127.0.0.1 by default; every API call needs the local token.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, readFileSync, writeFileSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { createReadStream, existsSync, readFileSync, writeFileSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir, totalmem } from "node:os";
@@ -24,7 +24,10 @@ import { handleChatCompletions, handleModels } from "./openai-api.js";
 import { activity, boardSummary, cardDetail, evidenceFile } from "../kanban/dashboard.js";
 import { enrichBoard, describeEnrich } from "../kanban/enrich.js";
 import { startDesignJob, designJob, stopDesignJob } from "../kanban/design.js";
+import { applyFeedback, reviewData, setApproval } from "../kanban/review.js";
 import { log } from "../util/log.js";
+import { convertToMarkdown } from "../rag/convert.js";
+import { MIME, chatDocuments, docEntry, docKind, fetchDocUrl, isUrl, listFolder, resolveDoc, viewBlocked } from "../runtime/documents.js";
 import { errMsg } from "../util/misc.js";
 
 export function serverToken(home: string): string {
@@ -189,6 +192,15 @@ export async function startServer(rt: Runtime, opts: { host?: string; port?: num
     rt.db.setMeta("stats_speeds", speeds.slice(-20));
   });
 
+  // document viewer: one random key per folder an HTML page was shown from; it can read that folder only
+  const siteKeys = new Map<string, string>();
+  const siteKey = (dir: string): string => {
+    for (const [k, d] of siteKeys) if (d === dir) return k;
+    const k = randomBytes(16).toString("hex");
+    siteKeys.set(k, dir);
+    if (siteKeys.size > 200) siteKeys.delete(siteKeys.keys().next().value!);
+    return k;
+  };
   const authed = (req: IncomingMessage, url: URL): boolean => {
     const h = String(req.headers["x-stitap-token"] ?? "");
     const bearer = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
@@ -234,6 +246,19 @@ export async function startServer(rt: Runtime, opts: { host?: string; port?: num
         const h = webhooks.get(name);
         if (!h) return json(res, 404, { error: "unknown webhook" });
         return json(res, 200, await h(await body(req), req));
+      }
+      // ── HTML pages shown in the document viewer (own per-folder key, no token: the page can't learn the chat's token) ──
+      const siteM = /^\/api\/site\/([0-9a-f]{32})\/(.*)$/.exec(p);
+      if (siteM && req.method === "GET") {
+        const root = siteKeys.get(siteM[1]);
+        if (!root) { res.writeHead(404).end("unknown or expired page key"); return; }
+        const abs = resolve(root, decodeURIComponent(siteM[2]) || "index.html");
+        if (abs !== root && !abs.startsWith(root.replace(/\/$/, "") + "/")) { res.writeHead(403).end("outside the page's folder"); return; }
+        if (!existsSync(abs) || statSync(abs).isDirectory() || viewBlocked(rt, abs)) { res.writeHead(404).end("not found"); return; }
+        res.writeHead(200, { "content-type": MIME[extname(abs).toLowerCase()] ?? (/\.(css)$/i.test(abs) ? "text/css; charset=utf-8" : /\.(m?js)$/i.test(abs) ? "text/javascript; charset=utf-8" : "application/octet-stream"),
+          "content-security-policy": "sandbox allow-scripts allow-popups allow-forms", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "cache-control": "no-store" });
+        createReadStream(abs).pipe(res);
+        return;
       }
       if (!authed(req, url)) return json(res, 401, { error: "missing or invalid token" });
 
@@ -379,6 +404,44 @@ export async function startServer(rt: Runtime, opts: { host?: string; port?: num
         if (!isDir(dirname(dir))) return json(res, 400, { error: `parent folder does not exist: ${dirname(dir)}` });
         try { mkdirSync(dir, { recursive: false }); } catch (e: any) { if (e.code !== "EEXIST") return json(res, 400, { error: errMsg(e) }); }
         return json(res, 200, { path: dir });
+      }
+      // ── document viewer: a file (or folder) the chat created or names, shown in the web chat ──
+      if ((p === "/api/file" || p === "/api/file/raw" || p === "/api/docs") && req.method === "GET") {
+        const fsid = url.searchParams.get("session") || null;
+        const vsid = fsid && rt.db.getSession(fsid) ? fsid : null;
+        if (p === "/api/docs") return json(res, 200, { docs: vsid ? chatDocuments(rt, vsid) : [] });
+        let abs: string, source: string | undefined;
+        const want = url.searchParams.get("path") ?? "";
+        if (isUrl(want)) {   // a Google Doc / Sheet / Slides or a link to a document: shown from a fresh download
+          try { const r = await fetchDocUrl(rt, want); abs = r.path; source = r.source; } catch (e) { return json(res, 502, { error: errMsg(e) }); }
+        } else try { abs = resolveDoc(rt, vsid, want); } catch (e) { return json(res, /not found/.test(errMsg(e)) ? 404 : 403, { error: errMsg(e) }); }
+        const st = statSync(abs);
+        if (p === "/api/file/raw") {
+          if (st.isDirectory()) return json(res, 400, { error: "a folder has no raw form" });
+          const ext = extname(abs).toLowerCase(), kind = docKind(abs);
+          const name = basename(abs).replace(/[^\w.-]+/g, "_");
+          const h: Record<string, string> = { "content-type": MIME[ext] ?? (kind === "text" || kind === "markdown" ? "text/plain; charset=utf-8" : "application/octet-stream"), "content-length": String(st.size), "x-content-type-options": "nosniff", "cache-control": "no-store",
+            "content-disposition": `${url.searchParams.get("download") ? "attachment" : "inline"}; filename="${name}"` };
+          // pages and SVGs the agent wrote run without scripts' access to this origin (and the chat's token)
+          if (kind === "html" || ext === ".svg") h["content-security-policy"] = "sandbox allow-scripts allow-popups; default-src * data: blob: 'unsafe-inline' 'unsafe-eval'";
+          res.writeHead(200, h);
+          createReadStream(abs).pipe(res);
+          return;
+        }
+        if (st.isDirectory()) return json(res, 200, { ...docEntry(abs), entries: listFolder(abs) });
+        const e = docEntry(abs)!, kind = e.kind as string;
+        const out: Record<string, any> = { ...e, folder: dirname(abs), siblings: source ? [] : listFolder(dirname(abs)).filter((x) => x.kind !== "dir").slice(0, 200), ...(source ? { source } : {}) };
+        if (kind === "html") out.site = `api/site/${siteKey(dirname(abs))}/${encodeURIComponent(basename(abs))}`;
+        if (kind === "image" || kind === "pdf") return json(res, 200, out);
+        const MAX = kind === "office" ? 40e6 : 3e6;
+        if (st.size > MAX) return json(res, 200, { ...out, tooLarge: true });
+        const buf = readFileSync(abs);
+        if (kind === "office" || kind === "table") {
+          try { const c = await convertToMarkdown(abs, buf); return json(res, 200, { ...out, markdown: c.markdown, warnings: c.warnings }); }
+          catch (err) { return json(res, 200, { ...out, error: errMsg(err) }); }
+        }
+        if (buf.subarray(0, 4096).includes(0)) return json(res, 200, { ...out, kind: "binary" });
+        return json(res, 200, { ...out, content: buf.toString("utf8") });
       }
       // ── browser choice for the browser_* tools ──
       if (p === "/api/browsers" && req.method === "GET") {
@@ -604,6 +667,33 @@ export async function startServer(rt: Runtime, opts: { host?: string; port?: num
         res.end(f.data);
         return;
       }
+      // ── story review (Kanban tab, made for a phone): tick to approve, comment, let the agent apply the comments ──
+      if (p === "/api/kanban/review" && req.method === "GET") {
+        try { return json(res, 200, reviewData(rt, url.searchParams.get("board") ?? undefined)); } catch (e) { return json(res, 400, { error: errMsg(e) }); }
+      }
+      if (p === "/api/kanban/review" && req.method === "POST") {
+        const b = await body(req);
+        try {
+          const board = String(b.board ?? "") || rt.kanban.boards.activeId();
+          const keys = (Array.isArray(b.keys) ? b.keys : []).map((k: any) => String(k)).slice(0, 500);
+          switch (b.action) {
+            case "approve": case "unapprove": return json(res, 200, { ok: true, ...setApproval(rt, board, keys, b.action === "approve") });
+            case "comment": {
+              const text = String(b.text ?? "").trim().slice(0, 5000);
+              if (!text) return json(res, 400, { error: "empty comment" });
+              const c = rt.kanban.comment(String(b.key ?? ""), text, "user", b.reply_to || undefined);
+              return json(res, 200, { ok: true, comments: c.comments.length });
+            }
+            case "apply": return json(res, 200, { ok: true, ...(await applyFeedback(rt, board)) });
+            case "run": {
+              // only what the reviewer ticked runs: the board becomes the active one and the workers start
+              rt.kanban.boards.use(board); rt.kanban.setPaused(false);
+              return json(res, 200, { ok: true, dispatched: await rt.kanban.tick() });
+            }
+            default: return json(res, 400, { error: "unknown action" });
+          }
+        } catch (e) { return json(res, 400, { error: errMsg(e) }); }
+      }
       const kcm = /^\/api\/kanban\/card\/([^/]+)\/comment$/.exec(p);
       if (kcm && req.method === "POST") {
         const b = await body(req);
@@ -619,7 +709,7 @@ export async function startServer(rt: Runtime, opts: { host?: string; port?: num
           const lines = (v: any) => (Array.isArray(v) ? v : String(v ?? "").split("\n")).map((x: any) => String(x).trim()).filter(Boolean);
           const c = K.create({ title: String(b.title ?? "").trim().slice(0, 200) || "untitled", body: typeof b.body === "string" ? b.body.slice(0, 20000) : "", type: ["epic", "task", "bug"].includes(b.type) ? b.type : "task",
             parent: b.parent || undefined, test_cmd: typeof b.test_cmd === "string" && b.test_cmd.trim() ? b.test_cmd.trim() : undefined, acceptance: lines(b.acceptance), folder: b.folder || undefined,
-            status: b.status === "ready" ? "ready" : "backlog", ...(board ? { board: board.id } : {}), ...(b.numbering === "feature" ? { numbering: "feature" as const } : {}) });
+            status: b.status === "ready" ? "ready" : "backlog", ...(board ? { board: board.id } : {}) });
           return json(res, 200, { ok: true, card: c });
         } catch (e) { return json(res, 400, { error: errMsg(e) }); }
       }

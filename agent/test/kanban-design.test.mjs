@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setup, dist } from "./helpers.mjs";
+import { setup, dist, story } from "./helpers.mjs";
 
 const D = () => import(dist("kanban/design.js"));
 
@@ -211,9 +211,14 @@ test("kanban tool: design runs in the background; approve needs a board", async 
     const j = designJob(t.rt, job.id);
     assert.equal(j.status, "done"); assert.equal(j.result.stories, 5);
     const { kanbanTool } = await import(dist("kanban/board.js"));
-    const ctx = { rt: t.rt, cwd: t.work, session: { source: "web" } };
+    const asked = [];
+    const ctx = { rt: t.rt, cwd: t.work, session: { source: "web" }, clarify: async (q) => { asked.push(q); return asked.length === 1 ? null : "Approve"; } };
     assert.match(await kanbanTool.handler({ action: "design_status", id: job.id }, ctx), /Board "Pocket Notes" \(draft\): 5 stories in 2 main features/);
+    // the agent cannot approve by itself: nobody answering means no approval
+    assert.match(await kanbanTool.handler({ action: "approve", board: "Pocket Notes" }, ctx), /Not approved/);
+    assert.equal(t.rt.kanban.list("backlog", t.rt.kanban.boards.get("Pocket Notes").id).filter((c) => c.type !== "epic").length, 5);
     assert.match(await kanbanTool.handler({ action: "approve", board: "Pocket Notes" }, ctx), /Approved 5 ticket\(s\)/);
+    assert.match(asked[1], /Approve 5 draft ticket\(s\) on "Pocket Notes"/);
   } finally { await t.close(); }
 });
 
@@ -225,8 +230,8 @@ test("HTTP: review edits, single and board approval, design job validation", asy
     const H = { "content-type": "application/json", "x-stitap-token": srv.token };
     const K = t.rt.kanban;
     const b = K.boards.create("Draft X"); K.boards.setDraft(b.id, { draft: true });
-    const a = K.create({ title: "A", status: "backlog", board: b.id, key_prefix: "DX" });
-    const c = K.create({ title: "B", status: "backlog", board: b.id, key_prefix: "DX" });
+    const a = story(K, { title: "A", status: "backlog", board: b.id, key_prefix: "DX" });
+    const c = story(K, { title: "B", status: "backlog", board: b.id, key_prefix: "DX" });
     const patch = (key, body) => fetch(`${srv.url}/api/kanban/card/${key}`, { method: "PATCH", headers: H, body: JSON.stringify(body) });
     let r = await patch(a.key, { title: "A, edited", acceptance: "first\n\nsecond", depends_on: "", test_cmd: "node --test tests/a.test.js" });
     assert.equal(r.status, 200);
@@ -264,7 +269,9 @@ test("numbering: MF010 is the 10th main feature, its stories are US0101, US0102 
     assert.equal(K.create({ title: "First of feature 1", parent: "MF001" }).key, "US0011");
     for (let i = 3; i <= 10; i++) K.create({ title: `s${i}`, parent: "MF010" });
     assert.equal(K.create({ title: "eleventh", parent: "MF010" }).key, "US01011");   // feature digits are fixed, so this still reads as feature 010, story 11
-    assert.equal(K.create({ title: "plain" }).key.startsWith("PT-"), true);          // tickets outside features keep the project key
+    assert.throws(() => K.create({ title: "plain" }), /needs a main feature: no parent given\. First create the main feature .*Main features on this board: MF\d{3}/);   // no story without its epic
+    assert.throws(() => K.create({ title: "orphan", parent: "PT-3" }), /PT-3 is not one/);
+    assert.throws(() => K.create({ title: "old style", type: "epic", key_prefix: "PT" }) && K.create({ title: "x", key_prefix: "PT" }), /needs a main feature/);
     assert.throws(() => K.create({ title: "dup", key: "US0101" }), /already used/);
     assert.equal(K.featureNumber("MF010"), "010"); assert.equal(K.featureNumber("PT-3"), null);
     assert.ok(K.boards.link(a.key, "relates to", "US0102"));                           // new keys are valid link targets
@@ -306,4 +313,28 @@ test("story check: rules a reviewer applies, and prior-art selection", async () 
   const snap = repoSnapshot(dir);
   assert.match(snap, /FILES \(3\): README\.md, package\.json, src\/db\.js/);
   assert.match(snap, /MANIFEST package\.json:\n\{"name":"r"\}/); assert.match(snap, /README:\n# Repo/);
+});
+
+test("while a design run is going, a chat cannot build its own plan next to it", async () => {
+  const t = await setup();
+  try {
+    const { startDesignJob, stopDesignJob, describeJob } = await D();
+    let release; const gate = new Promise((r) => (release = r));
+    const deps = { ...fakeDeps(), chat: async (...x) => { await gate; return fakeDeps().chat(...x); } };
+    const src = join(t.work, "d.md"); writeFileSync(src, DESIGN);
+    const proj = join(t.work, "p9");
+    const job = startDesignJob(t.rt, { source: src, project: proj }, deps);
+    const { kanbanTool } = await import(dist("kanban/board.js"));
+    const ctx = { rt: t.rt, cwd: t.work, session: { source: "web" }, clarify: async () => "Approve" };
+    assert.match(describeJob(job), /STILL RUNNING[\s\S]*End your turn now/);
+    for (const action of ["board_new", "create", "import", "approve", "dispatch"]) assert.match(await kanbanTool.handler({ action, name: "Phase 07", title: "x", path: t.work }, ctx), /Refused: design run/, action);
+    assert.match(await kanbanTool.handler({ action: "boards" }, ctx), /Main/);   // reading is fine
+    const { writeFileTool } = await import(dist("tools/files.js"));
+    const wctx = { ...ctx, cwd: proj, setCwd() {}, signal: new AbortController().signal, progress() {}, requestApproval: async () => true, depth: 0 };
+    await assert.rejects(writeFileTool.handler({ path: join(proj, "index.html"), content: "<h1>x</h1>" }, wctx), /design run is building/);
+    stopDesignJob(job.id); release();
+    for (let i = 0; i < 100 && job.status === "running"; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.notEqual(job.status, "running");
+    assert.doesNotMatch(await kanbanTool.handler({ action: "board_new", name: "After" }, ctx), /Refused/);
+  } finally { await t.close(); }
 });

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { setup, dist } from "./helpers.mjs";
+import { setup, dist, story } from "./helpers.mjs";
 
 test("projects: each board works in its own folder; clear and archive touch one board only", async () => {
   const t = await setup("kanban:\n  enforce_commit_keys: false\n");
@@ -10,10 +10,10 @@ test("projects: each board works in its own folder; clear and archive touch one 
     const K = t.rt.kanban, B = K.boards;
     const pa = join(t.work, "alpha"), pb = join(t.work, "beta"); mkdirSync(pa); mkdirSync(pb);
     const a = B.create("Alpha", undefined, pa); B.use(a.id);
-    const ca = K.create({ title: "alpha task" });
+    const ca = story(K, { title: "alpha task" });
     const b = B.create("Beta", undefined, pb); B.use(b.id);
-    const cb = K.create({ title: "beta task" });
-    const own = K.create({ title: "own folder", cwd: t.work });
+    const cb = story(K, { title: "beta task" });
+    const own = story(K, { title: "own folder", cwd: t.work });
     assert.equal(K.cwdOf(K.get(ca.key)), pa);
     assert.equal(K.cwdOf(K.get(cb.key)), pb);
     assert.equal(K.cwdOf(K.get(own.key)), t.work);   // a ticket's own cwd wins
@@ -24,7 +24,7 @@ test("projects: each board works in its own folder; clear and archive touch one 
     const tool = (await import(dist("kanban/board.js"))).kanbanTool;
     const ctx = { rt: t.rt, signal: new AbortController().signal };
     assert.match(await tool.handler({ action: "board_clear", board: "Beta" }, ctx), /confirm=true/);
-    assert.match(await tool.handler({ action: "board_clear", board: "Beta", confirm: true }, ctx), /Removed 2 ticket/);
+    assert.match(await tool.handler({ action: "board_clear", board: "Beta", confirm: true }, ctx), /Removed 3 ticket/);   // the two stories and their main feature
     assert.equal(K.get(ca.key).title, "alpha task");   // the other project is untouched
     assert.match(await tool.handler({ action: "board_archive", board: "Alpha" }, ctx), /Archived "Alpha"/);
     assert.match(await tool.handler({ action: "board_project", board: "Beta", project: pa }, ctx), /now works in/);
@@ -56,11 +56,11 @@ test("projects: folders, boards, ticket folders, archive and delete", async () =
     B.use(v3.id);
 
     // where tickets run: own cwd > project folder > board folder > project main folder
-    const a = K.create({ title: "write docs", folder: "docs" });
-    const b = K.create({ title: "code" });
+    const a = story(K, { title: "write docs", folder: "docs" });
+    const b = story(K, { title: "code" });
     assert.equal(K.cwdOf(K.get(a.key)), docs);
     assert.equal(K.cwdOf(K.get(b.key)), code);
-    assert.throws(() => K.create({ title: "x", folder: "nope" }), /no folder named nope/);
+    assert.throws(() => story(K, { title: "x", folder: "nope" }), /no folder named nope/);
     B.setProject(v3.id, ""); assert.equal(K.cwdOf(K.get(b.key)), code);   // falls back to the project's main folder
     P.updateFolder(p.id, "docs", { primary: true }); assert.equal(K.cwdOf(K.get(b.key)), docs);
 
@@ -103,7 +103,9 @@ test("projects: kanban tool and HTTP CRUD", async () => {
     assert.match(await call({ action: "project_use", project_name: "App" }), /Active project: "App"/);
     assert.match(await call({ action: "folder_add", folder: "api", folder_path: join(t.work, "api") }), /api=/);
     assert.match(await call({ action: "projects" }), /▶ App .*api=/);
-    assert.match(await call({ action: "create", title: "endpoint", folder: "api" }), /Created/);
+    await assert.rejects(call({ action: "create", title: "endpoint", folder: "api" }), /needs a main feature/);   // epic first
+    const f = /Created (MF\d+)/.exec(await call({ action: "create", title: "API", type: "epic" }))[1];
+    assert.match(await call({ action: "create", title: "endpoint", folder: "api", parent: f }), /Created US\d+/);
     const card = K.list().find((c) => c.title === "endpoint");
     assert.equal(card.folder, "api");
     assert.match(await call({ action: "board_update", description: "the app board" }), /Project: App/);
@@ -116,7 +118,10 @@ test("projects: kanban tool and HTTP CRUD", async () => {
     const post = async (path, body, method = "POST") => { const r = await fetch(`${srv.url}${path}`, { method, headers: H, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, j: await r.json() }; };
     let r = await post("/api/kanban/projects", { action: "new", name: "Web", path: join(t.work, "web") });
     assert.equal(r.status, 200); assert.equal(r.j.board.project_id, r.j.project.id);
-    r = await post("/api/kanban/cards", { title: "home page", body: "build it", acceptance: "loads\nhas title" });
+    r = await post("/api/kanban/cards", { title: "home page", body: "build it" });
+    assert.equal(r.status, 400); assert.match(r.j.error, /needs a main feature/);
+    r = await post("/api/kanban/cards", { title: "Website", type: "epic" }); assert.equal(r.status, 200);
+    r = await post("/api/kanban/cards", { title: "home page", body: "build it", acceptance: "loads\nhas title", parent: r.j.card.key });
     assert.equal(r.status, 200); assert.equal(r.j.card.status, "backlog"); assert.deepEqual(r.j.card.acceptance, ["loads", "has title"]);
     const key = r.j.card.key;
     r = await post("/api/kanban/projects", { action: "folder_add", project: "Web", folder: "assets", path: join(t.work, "assets") });
@@ -155,9 +160,9 @@ test("defaults: import numbers main features MF001 / stories US0011 and makes a 
     const r = K.boards.approve("Shop");
     assert.equal(r.approved.length, kids.length);
     assert.ok(K.ready().length > 0);
-    // a hand-made epic follows the same numbering; an explicit prefix keeps the old style
+    // a hand-made epic follows the same numbering; an old key prefix is ignored
     assert.equal(K.create({ title: "Payments", type: "epic" }).key, "MF003");
-    assert.equal(K.create({ title: "Legacy", type: "epic", key_prefix: "PT" }).key, "PT-1");
+    assert.equal(K.create({ title: "Legacy", type: "epic", key_prefix: "PT" }).key, "MF004");
     const { buildSystemPrompt } = await import(dist("prompt/builder.js"));
     assert.match(buildSystemPrompt(t.rt, { cwd: t.work, source: "web" }), /kanban action=design with that path/);
   } finally { await t.close(); }

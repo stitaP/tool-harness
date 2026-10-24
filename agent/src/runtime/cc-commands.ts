@@ -17,6 +17,7 @@ import { resourceRoot } from "../util/resources.js";
 import { redactToolOutput } from "../util/redact.js";
 import { splitArgs } from "../util/misc.js";
 import { EFFORTS, effortOf, formatStatus, listOutputStyles, shellKey, statusInfo, statusLine, type ShellRun } from "./modes.js";
+import { chatDocuments, fetchDocUrl, isUrl, openOnDesktop, resolveDoc } from "./documents.js";
 import { commitAll, createWorktree, listWorktrees, mergeWorktree, removeWorktree, safeName, worktreeChanges, type Worktree } from "./worktree.js";
 import type { TodoItem } from "../tools/agent-tools.js";
 
@@ -654,7 +655,30 @@ export async function runInputPrefix(line: string, c: CommandContext): Promise<C
 
 // ── table ───────────────────────────────────────────────────────
 
+/** /open: show a document in the web chat's viewer (the terminal opens the desktop viewer); no path lists this chat's documents. */
+async function openCmd(a: string, c: CommandContext): Promise<CommandResult> {
+  const arg = a.trim();
+  const docs = chatDocuments(c.rt, c.sid);
+  if (!arg) {
+    if (c.source === "web") return { open: "*" };
+    return ok(docs.length ? `Documents of this chat (newest first):\n${docs.map((d, i) => `  ${i + 1}. ${d.path}`).join("\n")}\n/open <number or path> to open one.` : "This chat has not made any documents yet. /open <path> opens any file.");
+  }
+  if (isUrl(arg)) {
+    if (c.source === "web") return { open: arg };
+    try { const r = await fetchDocUrl(c.rt, arg); if (c.source === "cli") { const err = await openOnDesktop(r.path); return ok(err ?? `Opened the ${r.kind} (copy: ${r.path}).`); } return ok(`Downloaded the ${r.kind} to ${r.path}; the viewer is part of the web chat.`); }
+    catch (e: any) { return ok(e.message); }
+  }
+  const pick = /^\d{1,3}$/.test(arg) && !existsSync(resolvePath(c.rt.sessionCwd(c.sid), arg)) ? docs[Number(arg) - 1]?.path : arg;
+  if (!pick) return ok(`There is no document ${arg}; /open lists them.`);
+  let abs: string;
+  try { abs = resolveDoc(c.rt, c.sid, pick); } catch (e: any) { return ok(e.message); }
+  if (c.source === "web") return { open: abs };
+  if (c.source === "cli") { const err = await openOnDesktop(abs); return ok(err ? `${abs}: ${err}` : `Opened ${abs}.`); }
+  return ok(`The document viewer is part of the web chat. The file is at ${abs}.`);
+}
+
 export const CC_COMMANDS: Cmd[] = [
+  { name: "open", aliases: ["view", "docs"], group: "files", usage: "/open [path | number | link]", help: "Show a document (design doc, report, PDF, Word, Excel, PowerPoint, CSV, HTML, image, or a Google Docs/Sheets/Slides link) in the document viewer; no path lists this chat's documents", handler: openCmd },
   { name: "plan", group: "autonomy", usage: "/plan <task> | approve [changes] | on | off | show", help: "Plan mode: investigate read-only and propose a plan; nothing changes until you approve", handler: planCmd },
   { name: "review", group: "review", usage: "/review [PR# | ref | --staged] [paths] [focus]", help: "Read-only code review of the uncommitted changes (or a PR / branch): ranked, verified findings", handler: (a, c) => reviewCmd("review", a, c) },
   { name: "security-review", group: "review", usage: "/security-review [PR# | ref | --staged] [paths]", help: "Read-only security review of the pending changes", handler: (a, c) => reviewCmd("security", a, c) },

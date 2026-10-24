@@ -112,7 +112,7 @@ ${bold("Automation")}
   harness cron list | add "<schedule>" "<prompt>" [--deliver telegram:<id>] | run <id> | pause <id> | resume <id> | rm <id> | tick
   harness kanban design <doc|folder|url> --project <dir> [--board n] [--searches 12] [--no-research] [--no-prior-art]   researched draft board (MF010 features, US0101 stories)
   harness kanban approve <board> [keys…]   reviewed draft tickets → ready
-  harness kanban done <key> | enrich [board] | import … [--enrich] | projects | project new|show|update|use|archive|unarchive|delete|folder add/set/rm|attach … | boards | board new <name> [--project <dir>] [--in <project>] [--desc ..] | board show|update <name> [--to ..] [--desc ..] [--project <dir>] [--in <project>] | board project <name> --project <dir> | update <key> [--title ..] [--status ..] [--folder ..] | rm <key> --yes | board use|rename|archive|unarchive|clear|delete|save|restore <name> [--yes] | move <keys> --to <board> | link <key> <type> <key> | list | board | report | show <key> | add "<title>" [--goal ..] [--test "<cmd>"] [--type epic|task|bug] | comment <key> "<text>" [--reply <id>] | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> --project <dir> [--tests <dir>] [--key PT]
+  harness kanban done <key> | enrich [board] | import … [--enrich] | projects | project new|show|update|use|archive|unarchive|delete|folder add/set/rm|attach … | boards | board new <name> [--project <dir>] [--in <project>] [--desc ..] | board show|update <name> [--to ..] [--desc ..] [--project <dir>] [--in <project>] | board project <name> --project <dir> | update <key> [--title ..] [--status ..] [--folder ..] | rm <key> --yes | board use|rename|archive|unarchive|clear|delete|save|restore <name> [--yes] | move <keys> --to <board> | link <key> <type> <key> | list | board | report | show <key> | add "<title>" [--type epic | --parent MF001] [--goal ..] [--test "<cmd>"] | comment <key> "<text>" [--reply <id>] | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> --project <dir> [--tests <dir>]
   harness batch <prompts.jsonl> --out traj.jsonl [--concurrency 4]
 
 ${bold("Data")}
@@ -399,7 +399,7 @@ export async function main(argv) {
                 else if (sub === "sync")
                     console.log(`linked ${await K.syncCommits(a1)} commit(s)`);
                 else if (sub === "import") {
-                    console.log(importPlan(K, { planDir: a1, projectDir: f.project, testsDir: f.tests, keyPrefix: f.key, board: f.board }));
+                    console.log(importPlan(K, { planDir: a1, projectDir: f.project, testsDir: f.tests, board: f.board }));
                     if (f.enrich)
                         console.log(describeEnrich(await enrichBoard(rt, { onProgress: (m) => console.log(gray("  " + m)) })));
                 }

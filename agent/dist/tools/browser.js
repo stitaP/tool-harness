@@ -37,6 +37,19 @@ async function loadPlaywright() {
         throw new Error("playwright is not installed — run: harness browser setup");
     return await import(pathToFileURL(p).href);
 }
+/** Print an HTML page to a PDF file with a headless Chromium of its own (not the user's browser session). */
+export async function htmlToPdf(html, out) {
+    const pw = await loadPlaywright();
+    const br = await (pw.chromium ?? pw.default?.chromium).launch({ headless: true });
+    try {
+        const pg = await br.newPage();
+        await pg.setContent(html, { waitUntil: "load", timeout: 60_000 });
+        await pg.pdf({ path: out, format: "A4", printBackground: true, margin: { top: "16mm", bottom: "16mm", left: "14mm", right: "14mm" } });
+    }
+    finally {
+        await br.close();
+    }
+}
 export function browserCfg(rt) {
     const b = (rt.cfg.data.browser ?? {});
     const explicit = rt.cfg.userSet("browser.mode");

@@ -68,10 +68,9 @@ export const DEFAULT_CONFIG = {
     store_bridge: { enabled: true, path: "" },
     hooks: {}, // shell hooks per event; pre_tool_call exit code 2 blocks the call
     ui: { statusline: { enabled: true, command: "" }, vim: false, keybindings: {} }, // CLI: status line above the prompt (command = your own script), vi keys, key → slash command
-    kanban: { workers: 1, worktrees: false, enabled: true, guard_chat_writes: true, project_key: "PT", cwd: "", max_attempts: 5, test_timeout_s: 600, enforce_commit_keys: true, verify: true, worker_tier: "auto", default_board: "Main", tier_by_kind: { tests: "fast", gate: "fast" },
-        // MF010 = 10th main feature, US0101 = its first story, BG0101 its first bug. style "feature": every epic is numbered so
-        // (import, design, the tool, the UI); "prefix": the old PT-12 keys unless a ticket asks for feature numbering
-        numbering: { style: "feature", feature_prefix: "MF", story_prefix: "US", bug_prefix: "BG", feature_digits: 3, story_digits: 1 },
+    kanban: { workers: 1, worktrees: false, enabled: true, guard_chat_writes: true, cwd: "", max_attempts: 5, test_timeout_s: 600, enforce_commit_keys: true, verify: true, worker_tier: "auto", default_board: "Main", tier_by_kind: { tests: "fast", gate: "fast" },
+        // MF010 = 10th main feature, US0101 = its first story, BG0101 its first bug; every story or bug needs a main feature
+        numbering: { feature_prefix: "MF", story_prefix: "US", bug_prefix: "BG", feature_digits: 3, story_digits: 1 },
         /** kanban import makes a DRAFT: its tickets wait in backlog until the user approves them (kanban approve) */
         import_draft: true,
         design: { max_searches: 12, max_cited: 6, pages_per_question: 2, pdfs_per_question: 1, research_rounds: 2, max_pdf_mb: 40, prior_art: true, max_repos: 3, max_repo_mb: 200, check_references: true, stories_per_epic: 8, search_delay_ms: 2500 } }, // tier_by_kind: which router tier a kind of ticket prefers (the small model for testing work); design: design document → draft board (kanban design)

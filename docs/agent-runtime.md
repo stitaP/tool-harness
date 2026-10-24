@@ -105,6 +105,8 @@ and autocompaction uses them) and GPU memory. Figures survive restarts. The Reac
 | `/todos [clear]` · `/tasks` (`/bashes`) | the chat's todo list · background processes: `/tasks all`, `log <id>`, `kill <id>`. |
 | `/vim [on\|off]` · `/keybindings` · `/terminal-setup` | vim keys in the terminal chat (Esc = normal mode; motions, `x d c r ~ p u`, `dd cc dw cw`, `j/k` history) · list keys and bind `ctrl+<key>` / `alt+<key>` to a slash command (`/keybindings set ctrl+g /status`) · how to make Option/Alt+Enter insert a new line in your terminal. |
 | `/release-notes` · `/bug <what happened>` | recent harness changes · write a bug report (session, model, recent log, secrets redacted) to `<home>/bugs/`. |
+| `convert_document` (tool) | the agent reads or converts documents as its work needs: PDF, Word, Excel, PowerPoint, OpenDocument, RTF, HTML, CSV, Markdown, images and Google/document links in; `.md .txt .html .docx .doc .odt .rtf .pdf .csv .tsv .xlsx .json` and image formats out (the output's extension picks it; `sheet` picks one sheet or table). Without `output` it returns the content as Markdown. Nothing to install: Word/RTF/ODT through macOS `textutil`, PDF through the browser tools' Chromium (plain-text `cupsfilter` without it), images through `sips`. PowerPoint cannot be written. |
+| `/open [path \| number \| link]` (`/view`, `/docs`) | the document viewer; a link may be a Google Doc, Sheet or Slides file or a Drive file shared as "Anyone with the link" (shown from a fresh Word / Excel / PowerPoint export kept in `<home>/downloads`), or a URL to a PDF, Word, Excel … file. In the web chat (also on a phone through stitaP Control) it opens the file full screen: Markdown rendered (relative links and images work), HTML pages in a sandbox, PDFs, Word/Excel/PowerPoint/OpenDocument/RTF/CSV converted to Markdown, images, text and code; ☰ Files lists this chat's documents and the files next to the open one. Without a path: the documents this chat wrote or named (e.g. a design run's `report.md`). Paths in replies, 👁 View buttons on file tools and the 📄 button open it too, and the agent opens it with the `show_document` tool when asked to show a document. Never shown: `security.blocked_paths`, `.env` files, private keys, the state database, anything outside the home and temp folders. The terminal opens the desktop viewer instead. |
 | `!<command>` | run a shell command yourself in the chat's folder (terminal and web chat); the output is shown and goes to the agent with your next message. |
 | `#<note>` · `#user <fact>` | save a note to memory, or a fact about you to the user profile (also from messaging apps). New chats see it. |
 
@@ -264,9 +266,13 @@ and `PATCH/DELETE /api/kanban/card/:key`. Dashboard: the project picker beside t
 
 ### Design document → kanban board
 
-Numbering and review apply to every board, not only design boards. By default (`kanban.numbering.style: feature`) every
-main feature (epic) is MF001, MF002 … and its stories US0011, US0012 … (bugs BG0011 …), also for `kanban import`, the chat
-tool and the dashboard; `style: prefix` or an explicit key prefix brings back PT-12 keys. `kanban import` makes a draft
+Numbering and review apply to every board, not only design boards. Epic first, then its stories: every main feature
+(epic) is MF001, MF002 … and every story or bug must sit under one and is numbered after it (US0011, US0012 …, BG0011 …),
+in `kanban import`, the chat tool, `/kanban add epic <title>` / `/kanban add MF001 <title>`, the CLI (`--parent MF001`) and
+the dashboard. A story without a main feature is refused with the board's MF keys, so the model creates the epic first;
+the old PT-12 keys and key prefixes are gone (existing PT tickets keep their keys). Stories are written as "As a <user>,
+I want <goal> so that <benefit>" with Given/When/Then acceptance criteria. A chat cannot mark a ticket done when nothing can
+check it (no test_cmd, no files, no commits); a worker or the user can. `kanban import` makes a draft
 too (`kanban.import_draft: true`): its tickets wait in backlog until `kanban approve`. In chat, "plan / create a board
 from these design documents" goes to `design` (research, checked stories, new board, new project folder), not `import`.
 
@@ -313,6 +319,16 @@ at; workers may not edit it), `outline.json`, `research.md`, `sources/` (PDFs), 
 (`max_searches`, `max_cited`, `pages_per_question`, `pdfs_per_question`, `research_rounds`, `max_pdf_mb`, `prior_art`,
 `max_repos`, `max_repo_mb`, `check_references`, `stories_per_epic`, `search_delay_ms`). Planning quality follows the
 model: route it to the strong tier when the router is on.
+
+
+**Reviewing stories from a phone (Kanban tab › ✅ Review stories, or `?kb=review`).** Every main feature with its
+stories, newest draft board first. Tick a story to approve it (backlog → ready; untick to take it back while no worker
+has started it); the feature's tick approves all its stories. Tap a story for its summary, details, acceptance criteria,
+test cases, the checks the design run flagged, and its comments; write a comment (quick replies: "Looks good", "Split
+this story" …) on a story or on a whole feature. Filters: to approve, ⚠ flagged, 💬 open comments, approved.
+**💬 Apply my comments** starts a chat in which the agent rewrites the commented tickets and answers each comment
+(nothing is approved or run); a comment counts as open until it has an answer. **▶ Run approved** makes the board the
+active one and starts workers on the ticked stories only. Workers also see every comment in their prompt.
 
 ## 5. Integrations
 

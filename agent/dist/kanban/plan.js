@@ -180,12 +180,12 @@ export function importPlan(board, o) {
         }
         // dependencies that pointed at a removed card now point at this phase's gate (fixed below through prevTail)
         if (!epic) {
-            epic = board.create({ title, type: "epic", body: goal, spec, cwd: project, key_prefix: o.keyPrefix });
+            epic = board.create({ title, type: "epic", body: goal, spec, cwd: project });
             epics++;
         }
         const base = 1000 - Number(num) * 40;
         let order = 0;
-        const mk = (p) => board.create({ ...p, parent: epic.key, spec, cwd: project, key_prefix: o.keyPrefix, priority: base - order++, ...(draft ? { status: "backlog" } : {}) });
+        const mk = (p) => board.create({ ...p, parent: epic.key, spec, cwd: project, priority: base - order++, ...(draft ? { status: "backlog" } : {}) });
         let prev = prevTail;
         // 2. one story per numbered section, written in plain words with everything a small model needs
         const storyIds = [], storyInfo = [];
@@ -226,7 +226,7 @@ export function importPlan(board, o) {
                     "every test passes against what was built; a failing test means a bug to fix in the feature, not in the test"
                 ],
                 body: [`WHAT TO DO`, `- The ${storyInfo.length} stories of phase ${num} (${short}) are built. Now write the tests.`, "", "FILES TO WRITE", `- ${testFile}   (node:test; run it with: ${testCmd})`, `- ${fn}   (a JSON array of browser steps; use {{base}} in goto urls)`, "",
-                    "HOW", `1. For EACH story below, write at least ${MIN} tests. Start every test title with the story key, like: test("${keys[0] ?? "PT-1"}: getProductById returns null for an unknown id", ...)`,
+                    "HOW", `1. For EACH story below, write at least ${MIN} tests. Start every test title with the story key, like: test("${keys[0] ?? "US0011"}: getProductById returns null for an unknown id", ...)`,
                     "2. Use the story's TEST CASES as your list. Write one test per line where you can.", "3. Read the real code first (and the spec " + spec + ") so each test checks what the code really exports.",
                     "4. OBSERVE BEFORE YOU WRITE. Do not guess what the code or page does; look at it:\n   - Logic (no page): call each function once with execute_code and note the REAL return values, then write the test around them.\n   - Pages: serve the project, open each page with browser_navigate, read it with browser_snapshot, check browser_console for errors, and use page_check. Copy the REAL selectors, texts and links into your tests and browser steps.\n   - If observed behaviour differs from the spec, fix the feature (or note it in a comment on this card). Never change the test to match wrong behaviour, and never edit tests of earlier phases.\n   - If the spec and the code still leave a question open (a library API, an assertion style, a browser behaviour), run ONE web_search for it (at most 2 per attempt), open the best result with browser_navigate if needed, and add a comment on this card with what you found and the source URL. Do not search for things the spec or code already answer.",
                     "5. Write the tests (keep the whole test file in ONE write; use ES module `import`, never `require`). Run them. They must pass. If one fails, the feature has a bug: fix the feature, do not weaken the test.", `6. Commit with the ticket key first: "<KEY>: tests for phase ${num}".`, "", ...researchFor([testFile], "", "tests"), "", "TEST CASES PER STORY", perStory].join("\n") });

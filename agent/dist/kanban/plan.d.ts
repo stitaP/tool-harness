@@ -17,7 +17,6 @@ export declare function importPlan(board: KanbanBoard, o: {
     planDir: string;
     projectDir?: string;
     testsDir?: string;
-    keyPrefix?: string;
     split?: boolean;
     board?: string;
     draft?: boolean;

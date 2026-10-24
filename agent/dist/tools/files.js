@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { runningDesignJob, DESIGN_WAIT } from "../kanban/design.js";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
@@ -41,6 +42,9 @@ export function boardOwnsError(ctx, abs) {
     const src = ctx.session.source;
     if (["kanban", "subagent", "cron", "pipeline", "api", "webhook"].includes(src))
         return null;
+    const dj = runningDesignJob();
+    if (dj && (abs === dj.project || abs.startsWith(dj.project.replace(/\/$/, "") + "/")))
+        return `a design run is building the kanban board for ${dj.project} right now; nothing in that folder is written from chat. ${DESIGN_WAIT}`;
     const k = ctx.rt.cfg.data.kanban;
     if (!k.enabled || k.guard_chat_writes === false)
         return null;

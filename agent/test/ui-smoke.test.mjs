@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
-import { setup, dist } from "./helpers.mjs";
+import { setup, dist, story } from "./helpers.mjs";
 
 let chromium = null;
 try { chromium = createRequire(import.meta.url)("playwright-core").chromium; if (!existsSync(chromium.executablePath())) chromium = null; } catch { chromium = null; }
@@ -18,7 +18,7 @@ test("web UI: no script errors; a chat with messages renders; toggle, RAG tab an
     t.mock.script([{ content: "Hello from the assistant." }]);
     const s = t.rt.createSession({ source: "web", cwd: t.work });
     await t.rt.send(s.id, "Say hello please", { source: "web" }); await t.rt.waitIdle(s.id);
-    t.rt.kanban.create({ title: "A ticket" });
+    story(t.rt.kanban, { title: "A ticket" });
     const pg = await br.newPage({ viewport: { width: 1400, height: 850 } });
     const errs = [];
     pg.on("pageerror", (e) => errs.push(e.message));
@@ -95,7 +95,7 @@ test("web UI: the Kanban bar on the main screen shows which card is being worked
   const h = await startServer(t.rt, { port: 0 });
   const br = await chromium.launch({ headless: true });
   try {
-    const card = t.rt.kanban.create({ title: "Write the footer" });
+    const card = story(t.rt.kanban, { title: "Write the footer" });
     t.rt.kanban.update(card.id, { status: "running", attempts: 2 }, { by: "worker" });
     t.rt.kanban.active.add(card.id);   // pretend a worker is on it
     const pg = await br.newPage({ viewport: { width: 1200, height: 800 } });

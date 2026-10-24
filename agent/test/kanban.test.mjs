@@ -4,14 +4,14 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setup, dist } from "./helpers.mjs";
+import { setup, dist, story } from "./helpers.mjs";
 
 const git = (cwd, ...a) => execFileSync("git", a, { cwd, encoding: "utf8" }).trim();
 const repo = (cwd) => { git(cwd, "init", "-q", "-b", "main"); git(cwd, "config", "user.email", "t@example.com"); git(cwd, "config", "user.name", "T"); writeFileSync(join(cwd, "a.txt"), "1"); git(cwd, "add", "."); git(cwd, "commit", "-qm", "init"); };
 
 
-/** these tests check the plan import and key mechanics with the old defaults: PT-12 keys, imported tickets ready at once */
-const LEGACY = "kanban:\n  import_draft: false\n  numbering:\n    style: prefix\n";
+/** these tests check the plan import and key mechanics with imported tickets ready at once (no draft) */
+const LEGACY = "kanban:\n  import_draft: false\n";
 
 test("kanban: keys, types, history, threaded comments, lookup by key", async () => {
   const t = await setup(LEGACY);
@@ -19,11 +19,11 @@ test("kanban: keys, types, history, threaded comments, lookup by key", async () 
     const K = t.rt.kanban;
     const epic = K.create({ title: "Phase 1", type: "epic" });
     const a = K.create({ title: "Do A", parent: epic.key, acceptance: ["A works"] });
-    const b = K.create({ title: "Do B", depends_on: [a.key] });
-    assert.deepEqual([epic.key, a.key, b.key], ["PT-1", "PT-2", "PT-3"]);
-    assert.equal(K.get("pt-2").id, a.id);
+    const b = story(K, { title: "Do B", depends_on: [a.key] });
+    assert.deepEqual([epic.key, a.key, b.key], ["MF001", "US0011", "US0012"]);
+    assert.equal(K.get("us0011").id, a.id);
     assert.equal(b.depends_on[0], a.id);
-    assert.deepEqual(K.ready().map((c) => c.key), ["PT-2"]); // epic never dispatched; B waits for A
+    assert.deepEqual(K.ready().map((c) => c.key), ["US0011"]); // epic never dispatched; B waits for A
     K.update(a.key, { status: "blocked" }, { by: "me", reason: "waiting" });
     const h = K.get(a.key).history;
     assert.deepEqual(h.map((x) => x.to), ["ready", "blocked"]);
@@ -42,14 +42,14 @@ test("kanban: git link records commits by key and reports the branch", async () 
   try {
     repo(t.work);
     const K = t.rt.kanban;
-    const c = K.create({ title: "Feature", cwd: t.work });
+    const c = story(K, { title: "Feature", cwd: t.work });
     writeFileSync(join(t.work, "b.txt"), "x"); git(t.work, "add", "."); git(t.work, "commit", "-qm", `${c.key}: add b`);
     writeFileSync(join(t.work, "c.txt"), "x"); git(t.work, "add", "."); git(t.work, "commit", "-qm", "unrelated");
     assert.equal(await K.syncCommits(c.key), 1);
     assert.equal(await K.syncCommits(c.key), 0); // idempotent
     const got = K.get(c.key).commits;
     assert.equal(got.length, 1);
-    assert.match(got[0].message, /PT-1: add b/);
+    assert.match(got[0].message, /US0011: add b/);
     assert.throws(() => K.linkCommit(c.key, { hash: "zzz" }), /not a commit hash/);
   } finally { await t.close(); }
 });
@@ -59,7 +59,7 @@ test("kanban: tests gate done; a failing run requeues, then blocks after max att
   try {
     repo(t.work);
     const K = t.rt.kanban;
-    const c = K.create({ title: "Make file", cwd: t.work, test_cmd: "test -f done.txt" });
+    const c = story(K, { title: "Make file", cwd: t.work, test_cmd: "test -f done.txt" });
     let r = await K.work(c.key);
     assert.equal(r.status, "ready"); // judge said done, tests said no
     assert.notEqual(r.test_result.code, 0);
@@ -78,7 +78,7 @@ test("kanban: manual update to done runs the tests first (tool)", async () => {
   const t = await setup();
   try {
     const K = t.rt.kanban;
-    const c = K.create({ title: "T", cwd: t.work, test_cmd: "test -f ok.txt" });
+    const c = story(K, { title: "T", cwd: t.work, test_cmd: "test -f ok.txt" });
     const s = t.rt.createSession({ source: "test", cwd: t.work });
     const tool = t.rt.tools.get("kanban");
     const ctx = t.rt.toolContext(s.id, undefined, "yolo");
@@ -94,7 +94,7 @@ test("kanban: cards missing their test files are blocked, not worked", async () 
   const t = await setup();
   try {
     const K = t.rt.kanban;
-    const c = K.create({ title: "P", cwd: t.work, test_cmd: "node --test tests/phase-01.test.js" });
+    const c = story(K, { title: "P", cwd: t.work, test_cmd: "node --test tests/phase-01.test.js" });
     const r = await K.work(c.key);
     assert.equal(r.status, "blocked");
     assert.equal(r.attempts, 0);
@@ -106,7 +106,7 @@ test("kanban: recover() requeues cards left running by a crash and keeps their n
   const t = await setup("kanban:\n  max_attempts: 2\n");
   try {
     const K = t.rt.kanban;
-    const a = K.create({ title: "A" }); const b = K.create({ title: "B" });
+    const a = story(K, { title: "A" }); const b = story(K, { title: "B" });
     K.update(a.key, { status: "running", attempts: 1 });
     K.update(b.key, { status: "running", attempts: 2 });
     const out = K.recover();
@@ -123,7 +123,7 @@ test("kanban: worker installs the commit hook that enforces the card key, and re
   try {
     repo(t.work);
     const K = t.rt.kanban;
-    const c = K.create({ title: "Hooked", cwd: t.work });
+    const c = story(K, { title: "Hooked", cwd: t.work });
     await K.beginGit(K.get(c.key));
     const gd = join(t.work, ".git");
     assert.ok(existsSync(join(gd, "hooks", "commit-msg")));
@@ -143,16 +143,16 @@ test("kanban: regression reopens a failing done card and files one linked bug", 
   try {
     const K = t.rt.kanban;
     writeFileSync(join(t.work, "ok.txt"), "1");
-    const c = K.create({ title: "Stable", cwd: t.work, test_cmd: "test -f ok.txt" });
+    const c = story(K, { title: "Stable", cwd: t.work, test_cmd: "test -f ok.txt" });
     K.update(c.key, { status: "done" });
-    assert.match(await K.regression(), /PT-1 ok/);
+    assert.match(await K.regression(), /US0011 ok/);
     writeFileSync(join(t.work, "ok.txt"), "1"); execFileSync("rm", [join(t.work, "ok.txt")]);
     const out = await K.regression();
-    assert.match(out, /FAILED → reopened, bug PT-2/);
+    assert.match(out, /FAILED → reopened, bug BG0011/);
     assert.equal(K.get(c.key).status, "ready");
-    const bug = K.get("PT-2");
+    const bug = K.get("BG0011");
     assert.equal(bug.type, "bug");
-    assert.deepEqual(bug.links, ["PT-1"]);
+    assert.deepEqual(bug.links, ["US0011"]);
     assert.equal(bug.test_cmd, c.test_cmd);
     K.update(c.key, { status: "done" });
     await K.regression(c.key);
@@ -171,7 +171,7 @@ test("kanban: import turns phase specs into chained epics and tasks and copies d
     const proj = mkdtempSync(join(tmpdir(), "proj-"));
     const K = t.rt.kanban;
     const { importPlan } = await import(dist("kanban/plan.js"));
-    const msg = importPlan(K, { planDir: plan, projectDir: proj, testsDir: tests, keyPrefix: "SH" });
+    const msg = importPlan(K, { planDir: plan, projectDir: proj, testsDir: tests });
     assert.match(msg, /Imported 2 new phase/);
     assert.ok(existsSync(join(proj, "docs", "phase-00.md")) && existsSync(join(proj, "docs", "00-context.md")) && existsSync(join(proj, "tests", "phase-01.test.js")));
     const tasks = K.list().filter((c) => c.type === "task").sort((a, b) => b.priority - a.priority);
@@ -179,7 +179,7 @@ test("kanban: import turns phase specs into chained epics and tasks and copies d
     assert.equal(tasks[0].test_cmd, "node --test tests/phase-00.test.js");
     assert.deepEqual(tasks[0].acceptance, ["folders exist", "package.json is ESM", "`node --test tests/phase-00.test.js` exits 0"]);
     assert.equal(tasks[0].spec, "docs/phase-00.md");
-    assert.match(tasks[0].key, /^SH-\d+$/);
+    assert.match(tasks[0].key, /^US\d+$/);
     assert.deepEqual(tasks[1].depends_on, [tasks[0].id]);
     assert.deepEqual(K.ready().map((c) => c.id), [tasks[0].id]); // phase 01 waits for phase 00
     assert.equal(K.list().filter((c) => c.type === "epic").length, 2);
@@ -193,14 +193,14 @@ test("kanban: worker prompt carries spec, acceptance, test rule, key rule and re
   try {
     repo(t.work);
     const K = t.rt.kanban;
-    const c = K.create({ title: "Cart", cwd: t.work, spec: "docs/phase-09.md", acceptance: ["cart works"], test_cmd: "true" });
+    const c = story(K, { title: "Cart", cwd: t.work, spec: "docs/phase-09.md", acceptance: ["cart works"], test_cmd: "true" });
     await K.work(c.key);
-    const workerReq = () => JSON.stringify(t.mock.requests.filter((r) => JSON.stringify(r.messages).includes("Kanban card PT-1")).at(-1).messages);
+    const workerReq = () => JSON.stringify(t.mock.requests.filter((r) => JSON.stringify(r.messages).includes("Kanban card US0011")).at(-1).messages);
     const first = workerReq();
     assert.match(first, /Specification file: docs\/phase-09\.md/);
     assert.match(first, /Acceptance criteria/);
     assert.match(first, /never write, edit or delete files under tests\//);
-    assert.match(first, /must start with \\"PT-1\\"/);
+    assert.match(first, /must start with \\"US0011\\"/);
     K.update(c.key, { status: "ready" }); // simulate a re-queue
     t.mock.reset();
     await K.work(c.key);
@@ -380,14 +380,14 @@ test("kanban boards: create, switch, rename, archive; tickets belong to one boar
   const t = await setup();
   try {
     const K = t.rt.kanban, B = K.boards;
-    const a = K.create({ title: "old ticket" });
+    const a = story(K, { title: "old ticket" });
     assert.equal(B.active().name, "Main"); assert.equal(K.get(a.key).board, B.active().id);
     const v2 = B.create("Shop v2"); assert.throws(() => B.create("shop V2"), /already exists/);
     B.use(v2.name);
-    const b = K.create({ title: "new ticket" });
-    assert.deepEqual(K.list().map((c) => c.key), [b.key]);                        // list() = the active board
-    assert.deepEqual(K.listAll().map((c) => c.key).sort(), [a.key, b.key].sort());
-    assert.equal(b.key, "PT-2");                                                   // keys stay unique across boards
+    const b = story(K, { title: "new ticket" });
+    assert.deepEqual(K.list().filter((c) => c.type !== "epic").map((c) => c.key), [b.key]);   // list() = the active board
+    assert.deepEqual(K.listAll().filter((c) => c.type !== "epic").map((c) => c.key).sort(), [a.key, b.key].sort());
+    assert.equal(b.key, "US0021");                                                   // keys stay unique across boards
     B.rename("Shop v2", "Shop v3"); assert.equal(B.get("shop-v3").id, v2.id);
     B.archive("Main"); assert.equal(B.list().length, 1); assert.equal(B.list({ archived: "all" }).length, 2);
     assert.throws(() => B.use("Main"), /archived/); B.unarchive("Main"); B.use("Main"); assert.equal(B.active().name, "Main");
@@ -423,9 +423,9 @@ test("kanban links: typed, across boards, with inverse view; blocking links sche
   const t = await setup();
   try {
     const K = t.rt.kanban, B = K.boards;
-    const a = K.create({ title: "A on main" });
+    const a = story(K, { title: "A on main" });
     const v2 = B.create("Next board"); B.use(v2.id);
-    const b = K.create({ title: "B on next" });
+    const b = story(K, { title: "B on next" });
     // B is blocked by A (different board): B cannot be ready until A is done
     B.link(b.key, "blocked by", a.key);
     assert.deepEqual(K.ready().map((c) => c.key), []);
@@ -437,10 +437,10 @@ test("kanban links: typed, across boards, with inverse view; blocking links sche
     assert.equal(K.get(b.key).refs.filter((r) => r.type === "relates to").length, 1);
     assert.throws(() => B.link(b.key, "relates to", b.key), /itself/); assert.throws(() => B.link(b.key, "relates to", "banana"), /not a ticket key/); assert.throws(() => B.link(b.key, "likes", a.key), /unknown link type/);
     // a link to a ticket that does not exist yet (a future board) is pending, and activates when the key appears
-    const r = B.link(a.key, "blocks", "PT-3"); assert.equal(r.pending, true);
-    const future = K.create({ title: "future" }); assert.equal(future.key, "PT-3");
-    assert.equal(K.get(a.key).refs.find((x) => x.key === "PT-3").pending, undefined);
-    assert.ok(K.get(future.key).depends_on.includes(a.id));                      // "A blocks PT-3" became a real dependency
+    const r = B.link(a.key, "blocks", "US0022"); assert.equal(r.pending, true);
+    const future = story(K, { title: "future" }); assert.equal(future.key, "US0022");
+    assert.equal(K.get(a.key).refs.find((x) => x.key === "US0022").pending, undefined);
+    assert.ok(K.get(future.key).depends_on.includes(a.id));                      // "A blocks US0022" became a real dependency
     assert.equal(B.linksOf(K.get(future.key))[0].type, "is blocked by");
     // move: an epic takes its tickets; the move is logged on the ticket
     const e = K.create({ title: "Epic", type: "epic" }); const s = K.create({ title: "Story", parent: e.key });
@@ -449,7 +449,7 @@ test("kanban links: typed, across boards, with inverse view; blocking links sche
     // removing a ticket cleans dependencies and links that pointed at it
     K.removeCard(a.id);
     assert.deepEqual(K.get(b.key).depends_on, []); assert.equal((K.get(b.key).refs ?? []).length, 0);
-    assert.equal(B.unlink(future.key, "PT-3"), 0);
+    assert.equal(B.unlink(future.key, "US0022"), 0);
   } finally { await t.close(); }
 });
 
@@ -567,7 +567,7 @@ test("tests ticket: lists every story's cases, and its check fails until each st
     mkdirSync(join(proj, "tests"), { recursive: true });
     const mk = (perKey) => keys.map((k) => Array.from({ length: perKey }, (_, i) => `test("${k}: case ${i}", () => {});`).join("\n")).join("\n");
     writeFileSync(join(proj, "tests/phase-05.test.js"), mk(3));                           // 3 each: not enough
-    assert.match(run(), /write at least 4 tests for PT-\d+/);
+    assert.match(run(), /write at least 4 tests for US\d+/);
     writeFileSync(join(proj, "tests/phase-05.test.js"), mk(4));
     assert.equal(run(), "pass");
   } finally { await t.close(); }
@@ -578,10 +578,10 @@ test("enrich: reference notes from official docs only; only the TERM is searched
   try {
     const { enrichBoard, firstParagraph, termsIn, TERMS } = await import(dist("kanban/enrich.js"));
     const K = t.rt.kanban;
-    const a = K.create({ title: "Announcements", body: "Add aria-live=\"polite\" so the cart count is announced. Secret project detail: ACME-4711." });
-    const b = K.create({ title: "Cart storage", body: "Keep the cart in localStorage and also announce with aria-live.", acceptance: ["uses localStorage"] });
-    const c = K.create({ title: "Nothing technical", body: "Write a friendly sentence." });
-    const d = K.create({ title: "Unknown", body: "Uses Intl.NumberFormat for money." });
+    const a = story(K, { title: "Announcements", body: "Add aria-live=\"polite\" so the cart count is announced. Secret project detail: ACME-4711." });
+    const b = story(K, { title: "Cart storage", body: "Keep the cart in localStorage and also announce with aria-live.", acceptance: ["uses localStorage"] });
+    const c = story(K, { title: "Nothing technical", body: "Write a friendly sentence." });
+    const d = story(K, { title: "Unknown", body: "Uses Intl.NumberFormat for money." });
     assert.deepEqual(termsIn(a).map((x) => x.id), ["aria-live"]);
     assert.ok(TERMS.length > 25 && TERMS.every((x) => x.query && x.label));
     const queries = [], pages = [];
@@ -606,7 +606,7 @@ test("enrich: reference notes from official docs only; only the TERM is searched
     assert.equal(again.notes, 0); assert.equal(queries.length, before + 1);            // only the one term that failed is retried
     assert.equal((K.get(a.key).body.match(/REFERENCE NOTES/g) ?? []).length, 1);
     // a search error leaves the ticket as it was
-    const e = K.create({ title: "Dialogs", body: "Use the <dialog> element." });
+    const e = story(K, { title: "Dialogs", body: "Use the <dialog> element." });
     const bad = await enrichBoard(t.rt, { fetcher: { search: async () => { throw new Error("offline"); }, extract: async () => "" } });
     assert.equal(bad.notes, 0); assert.match(bad.failed.join(), /offline/); assert.equal(K.get(e.key).body, "Use the <dialog> element.");
     // off switch
@@ -635,7 +635,7 @@ test("when a board exists the system prompt says the board is the plan; workers 
   try {
     const { buildSystemPrompt } = await import(dist("prompt/builder.js"));
     assert.doesNotMatch(buildSystemPrompt(t.rt, { cwd: t.work, source: "web" }), /kanban board is the plan/);
-    t.rt.kanban.create({ title: "Story one" });
+    story(t.rt.kanban, { title: "Story one" });
     assert.match(buildSystemPrompt(t.rt, { cwd: t.work, source: "web" }), /kanban board is the plan[\s\S]*Do NOT invent a new plan/);
     assert.doesNotMatch(buildSystemPrompt(t.rt, { cwd: t.work, source: "kanban" }), /kanban board is the plan/);
   } finally { await t.close(); }

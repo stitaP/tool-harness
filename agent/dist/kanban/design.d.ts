@@ -238,5 +238,9 @@ export interface DesignJob {
 }
 export declare function startDesignJob(rt: Runtime, o: Omit<DesignOptions, "signal" | "onProgress">, deps?: DesignDeps): DesignJob;
 export declare function designJob(rt: Runtime, id?: string): DesignJob | null;
+/** The design run that is going right now, if any. */
+export declare function runningDesignJob(): DesignJob | null;
+/** What a chat model is told while a design run is going: stop and let it finish. */
+export declare const DESIGN_WAIT = "Do NOT wait for it, poll it, sleep, make another board, create tickets, read the documents yourself or write any code: the run builds the whole board on its own and takes from several minutes to an hour. End your turn now: tell the user the run has started, that they can follow it in Kanban (board menu \u203A New board from a design document) or ask you for its status, and that the draft board will wait for their review.";
 export declare function stopDesignJob(id?: string): boolean;
 export declare function describeJob(j: DesignJob | null): string;

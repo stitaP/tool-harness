@@ -107,7 +107,6 @@ export type NewCard = {
     spec?: string;
     cwd?: string;
     functional?: Step[];
-    key_prefix?: string;
     board?: string;
     folder?: string;
     summary?: string;
@@ -119,9 +118,8 @@ export type NewCard = {
     order?: number;
     writes_tests?: boolean;
     review_flags?: string[];
-    /** an explicit key; or "feature": number it as the next main feature (MF010), its children follow (US0101) */
+    /** an explicit key; otherwise an epic is the next main feature (MF010) and a story is numbered after it (US0101) */
     key?: string;
-    numbering?: "feature";
 };
 export declare class KanbanBoard {
     private rt;
@@ -147,7 +145,6 @@ export declare class KanbanBoard {
         worktrees: boolean;
         enabled: boolean;
         guard_chat_writes: boolean;
-        project_key: string;
         cwd: string;
         max_attempts: number;
         test_timeout_s: number;
@@ -157,7 +154,6 @@ export declare class KanbanBoard {
         default_board: string;
         tier_by_kind: Record<string, "fast" | "strong">;
         numbering: {
-            style: "feature" | "prefix";
             feature_prefix: string;
             story_prefix: string;
             bug_prefix: string;
@@ -187,7 +183,8 @@ export declare class KanbanBoard {
     featureNumber(key?: string): string | null;
     /** The next child key under a main feature: MF010 → US0101, US0102 … (bugs: BG0101 …). */
     childKey(featureKey: string, type?: CardType): string;
-    private nextKey;
+    /** Why a story/bug cannot be created under `parent`: it needs a main feature (MF###) to belong to. */
+    private needFeature;
     create(p: NewCard): Card;
     update(ref: string, patch: Partial<Card>, meta?: {
         by?: string;

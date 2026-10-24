@@ -20,7 +20,7 @@ import { CC_COMMANDS, runInputPrefix } from "./cc-commands.js";
 export { runInputPrefix };
 
 export interface CommandContext { rt: Runtime; sid: string; source: string }
-export interface CommandResult { text?: string; switchTo?: string; exit?: boolean; send?: string; clear?: boolean }
+export interface CommandResult { text?: string; switchTo?: string; exit?: boolean; send?: string; clear?: boolean; open?: string }
 
 type Handler = (args: string, c: CommandContext) => Promise<CommandResult> | CommandResult;
 export interface Cmd { name: string; aliases?: string[]; usage: string; help: string; handler: Handler; group: string }
@@ -367,10 +367,14 @@ const COMMANDS: Cmd[] = [
         }
         return ok("Usage: /kanban board new|use|rename|archive|unarchive|clear|delete|save|restore <name>");
       }
-      if (sub === "move") { const i = rest.lastIndexOf("to"); if (i < 1) return ok("Usage: /kanban move PT-1 PT-2 to <board>"); return ok(`Moved ${K.boards.move(rest.slice(0, i), rest.slice(i + 1).join(" "))} ticket(s).`); }
+      if (sub === "move") { const i = rest.lastIndexOf("to"); if (i < 1) return ok("Usage: /kanban move US0011 US0012 to <board>"); return ok(`Moved ${K.boards.move(rest.slice(0, i), rest.slice(i + 1).join(" "))} ticket(s).`); }
       if (sub === "link") { const [a, ...m] = rest; const b = m.pop() ?? ""; const r = K.boards.link(a, m.join(" ") || "relates to", b); return ok(`${K.get(a)?.key} ${r.type} ${r.key}${r.pending ? " (pending: that ticket does not exist yet)" : ""}`); }
       if (sub === "unlink") return ok(`Removed ${K.boards.unlink(rest[0], rest[1])} link(s).`);
-      if (sub === "add") { const k = K.create({ title: rest.join(" ") }); return ok(`Added ${k.key} (${k.id})`); }
+      if (sub === "add") {   // /kanban add epic <title>  |  /kanban add MF001 <story title>
+        const epic = /^epic$/i.test(rest[0] ?? ""), parent = !epic && /^[A-Z]+\d+$/i.test(rest[0] ?? "") ? rest[0] : undefined;
+        if (!epic && !parent) return ok("Usage: /kanban add epic <main feature title>  ·  /kanban add <MF key> <story title>");
+        const k = K.create({ title: rest.slice(1).join(" "), ...(epic ? { type: "epic" as const } : { parent }) }); return ok(`Added ${k.key} (${k.id})`);
+      }
       if (sub === "run") return ok(`Dispatched ${await K.tick()} card(s).`);
       if (sub === "resume") { const r = K.recover(); return ok(`Re-queued ${r.length} interrupted card(s); dispatched ${await K.tick()}.`); }
       if (sub === "show") return ok(K.show(rest[0]));
