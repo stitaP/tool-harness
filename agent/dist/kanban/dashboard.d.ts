@@ -18,12 +18,23 @@ export declare function boardSummary(rt: Runtime, boardRef?: string): {
         draft: boolean;
         design: string;
         project: string;
+        project_id: string;
+        cwd: string;
     };
     boards: (import("./boards.js").BoardInfo & {
         cards: number;
         done: number;
         active: boolean;
     })[];
+    projects: {
+        id: string;
+        name: string;
+        archived: boolean;
+        active: boolean;
+        folders: import("./projects.js").ProjectFolder[];
+        boards: string[];
+        description: string;
+    }[];
     enabled: boolean;
     workers: number;
     counts: {
@@ -163,10 +174,18 @@ export declare function cardDetail(rt: Runtime, ref: string): {
     spec?: string;
     cwd?: string;
     functional?: import("../tools/webtest.js").Step[];
+    worktree?: {
+        path: string;
+        branch: string;
+        root: string;
+        base: string;
+        cwd: string;
+    };
     board?: string;
     refs?: import("./boards.js").CardRef[];
     summary?: string;
     test_cases?: string[];
+    folder?: string;
     kind?: "tests" | "story" | "gate";
     section?: string;
     files?: string[];

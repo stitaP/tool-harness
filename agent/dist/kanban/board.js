@@ -13,8 +13,10 @@ import { importPlan } from "./plan.js";
 import { expandHome } from "../safety/paths.js";
 import { verifyCard, writeVerifyTest, checkBuilt, stubFiles } from "./verify.js";
 import { Boards } from "./boards.js";
+import { Projects } from "./projects.js";
 import { enrichBoard, describeEnrich } from "./enrich.js";
 import { startDesignJob, designJob, stopDesignJob, describeJob } from "./design.js";
+import { createWorktree, mergeWorktree, removeWorktree, worktreeChanges } from "../runtime/worktree.js";
 const HOOK_MARK = "# stitap-kanban-hook";
 const HOOK = `#!/bin/sh
 ${HOOK_MARK}
@@ -37,9 +39,12 @@ export class KanbanBoard {
     active = new Set();
     /** named boards, the active board, saving/restoring, and links between tickets on any board */
     boards;
+    /** projects: named groups of boards with their working folders */
+    projects;
     constructor(rt) {
         this.rt = rt;
         this.boards = new Boards(rt, this);
+        this.projects = new Projects(rt, this);
     }
     isActive(id) { return this.active.has(id); }
     get cfg() { return this.rt.cfg.data.kanban; }
@@ -67,6 +72,8 @@ export class KanbanBoard {
     need(ref) { const c = this.get(ref); if (!c)
         throw new Error(`no card ${ref}`); return c; }
     save(c) { c.updated_at = Date.now(); this.rt.db.putRecord("kanban", c.id, c); this.rt.emitEvent("*", { type: "kanban", card: c }); }
+    /** the kanban section of the config (read-only use outside this class) */
+    get settings() { return this.cfg; }
     get numbering() { return this.cfg.numbering; } // defaults in config.ts: MF / US / BG, 3 feature digits, 1 story digit
     /** The next main-feature key: MF001, MF002 … numbered across every board. */
     featureKey() {
@@ -116,11 +123,13 @@ export class KanbanBoard {
         const parent = p.parent ? this.get(p.parent)?.key ?? p.parent : undefined;
         if (p.key && this.get(p.key))
             throw new Error(`ticket key ${p.key} is already used`);
-        const key = p.key?.toUpperCase() ?? (p.numbering === "feature" && p.type === "epic" ? this.featureKey() : parent && this.featureNumber(parent) && p.type !== "epic" ? this.childKey(parent, p.type) : this.nextKey(prefix));
+        const folder = p.folder ? this.projects.checkFolder(p.board ?? this.boards.activeId(), p.folder) : undefined;
+        const featureEpic = p.type === "epic" && (p.numbering === "feature" || (!p.key_prefix && this.numbering.style !== "prefix"));
+        const key = p.key?.toUpperCase() ?? (featureEpic ? this.featureKey() : parent && this.featureNumber(parent) && p.type !== "epic" ? this.childKey(parent, p.type) : this.nextKey(prefix));
         const c = { id: shortId("k_"), board: p.board ?? this.boards.activeId(), key, type: p.type ?? "task", title: p.title, body: p.body ?? "", status, priority: p.priority ?? 0,
             depends_on: (p.depends_on ?? []).map((d) => this.get(d)?.id ?? d), review: !!p.review, comments: [], created_at: now, updated_at: now, attempts: 0,
             ...(parent ? { parent } : {}), ...(p.links?.length ? { links: p.links } : {}), ...(p.acceptance?.length ? { acceptance: p.acceptance } : {}),
-            ...(p.test_cmd ? { test_cmd: p.test_cmd } : {}), ...(p.spec ? { spec: p.spec } : {}), ...(p.cwd ? { cwd: p.cwd } : {}), ...(p.functional?.length ? { functional: p.functional } : {}),
+            ...(p.test_cmd ? { test_cmd: p.test_cmd } : {}), ...(p.spec ? { spec: p.spec } : {}), ...(p.cwd ? { cwd: p.cwd } : {}), ...(folder ? { folder } : {}), ...(p.functional?.length ? { functional: p.functional } : {}),
             ...(p.kind ? { kind: p.kind } : {}), ...(p.writes_tests ? { writes_tests: true } : {}), ...(p.review_flags?.length ? { review_flags: p.review_flags } : {}), ...(p.section ? { section: p.section } : {}), ...(p.summary ? { summary: p.summary } : {}), ...(p.test_cases?.length ? { test_cases: p.test_cases } : {}), ...(p.files?.length ? { files: p.files } : {}), ...(p.exports && Object.keys(p.exports).length ? { exports: p.exports } : {}), ...(p.order !== undefined ? { order: p.order } : {}),
             history: [{ at: now, from: null, to: status, by: "user", reason: "created" }], commits: [] };
         this.save(c);
@@ -190,7 +199,9 @@ export class KanbanBoard {
     }
     // ── git ───────────────────────────────────────────────────────
     cwdOf(c) {
-        const base = expandHome(c.cwd || this.cfg.cwd || this.rt.defaultCwd());
+        if (c.worktree?.cwd && existsSync(c.worktree.cwd))
+            return c.worktree.cwd;
+        const base = expandHome(c.cwd || this.projects.folderFor(c.board, c.folder) || this.boards.projectOf(c.board) || this.projects.primary(this.projects.ofBoard(c.board))?.path || this.cfg.cwd || this.rt.defaultCwd());
         return isAbsolute(base) ? base : resolve(base);
     }
     async gitDir(cwd) {
@@ -241,10 +252,12 @@ export class KanbanBoard {
         this.update(c.id, { branch, checkpoint: { head, ...(stash ? { stash } : {}), at: Date.now() } });
         if (this.cfg.enforce_commit_keys && c.key) {
             try {
-                const hookPath = join(gd, "hooks", "commit-msg");
+                // --git-path: inside a worktree the hooks live in the main repository's hooks folder, not the worktree's git dir
+                const hooksDir = resolve(cwd, (await run("git", ["rev-parse", "--git-path", "hooks"], cwd)).out.split("\n")[0] || join(gd, "hooks"));
+                const hookPath = join(hooksDir, "commit-msg");
                 const existing = existsSync(hookPath) ? readFileSync(hookPath, "utf8") : "";
                 if (!existing || existing.includes(HOOK_MARK)) {
-                    mkdirSync(join(gd, "hooks"), { recursive: true });
+                    mkdirSync(hooksDir, { recursive: true });
                     writeFileSync(hookPath, HOOK);
                     chmodSync(hookPath, 0o755);
                     writeFileSync(join(gd, "stitap-card"), c.key);
@@ -429,6 +442,9 @@ export class KanbanBoard {
     async tick() {
         if (!this.cfg.enabled || this.paused)
             return 0;
+        // finished cards that ran in a worktree are merged first, so the next cards start from their work
+        for (const c of this.listAll("done").filter((x) => x.worktree))
+            await this.mergeCardWorktree(c.id).catch((e) => log.warn(`kanban worktree merge ${c.key}: ${errMsg(e)}`));
         const slots = Math.max(0, this.cfg.workers - this.active.size);
         const cards = this.ready().slice(0, slots);
         for (const c of cards)
@@ -493,6 +509,9 @@ export class KanbanBoard {
         c = this.update(c.id, { status: "running", attempts: c.attempts + 1 }, { by: "worker" });
         this.comment(c.id, `Attempt ${c.attempts} of ${this.cfg.max_attempts ?? 5} started. ${this.attemptPlan(c.attempts, this.cfg.max_attempts ?? 5).replace(/^ATTEMPT \d+ of \d+\. /, "")}`, "system");
         try {
+            if (this.cfg.worktrees && !c.worktree)
+                await this.openCardWorktree(c);
+            c = this.need(c.id);
             await this.beginGit(c);
             c = this.need(c.id);
             const r = await this.rt.runHeadless({ prompt: this.buildPrompt(c), source: "kanban", title: `kanban: ${c.key ?? ""} ${c.title}`.trim(), goal: `${c.title}\n${c.body}`, cwd: this.cwdOf(c), onSession: (sid) => { c = this.update(c.id, { session_id: sid }, { by: "worker" }); }, approvalMode: this.rt.cfg.data.cron.approval_mode, ...(this.cfg.worker_tier && this.cfg.worker_tier !== "auto" ? { tier: this.cfg.worker_tier } : {}), ...(c.kind && this.cfg.tier_by_kind?.[c.kind] ? { prefer: this.cfg.tier_by_kind[c.kind] } : {}) });
@@ -529,8 +548,60 @@ export class KanbanBoard {
         finally {
             this.active.delete(c.id);
         }
+        if (c.status === "done" && c.worktree) {
+            await this.mergeCardWorktree(c.id).catch((e) => log.warn(`kanban worktree merge: ${errMsg(e)}`));
+            c = this.need(c.id);
+        }
         await this.rt.deliver("log", `Kanban ${c.key ?? c.id} "${c.title}" → ${c.status}`).catch(() => undefined);
         return c;
+    }
+    /**
+     * kanban.worktrees: the card's worker gets its own git worktree on branch kanban/<KEY>, so several workers never edit
+     * the same checkout. Skipped (the card runs in the main checkout) when the checkout has uncommitted changes: the
+     * worktree would not contain them, e.g. reference tests copied in but not committed.
+     */
+    async openCardWorktree(c) {
+        const base = this.cwdOf({ ...c, worktree: undefined });
+        if (!(await this.gitDir(base)))
+            return;
+        const dirty = (await run("git", ["status", "--porcelain", "--untracked-files=normal"], base)).out.split("\n").filter((l) => l && !l.includes(".stitap-worktrees"));
+        if (dirty.length) {
+            this.comment(c.id, `Worktree skipped: the main checkout has ${dirty.length} uncommitted change(s) (${dirty.slice(0, 3).join(", ")}), which a worktree would not contain. Commit them to run cards in worktrees. This attempt runs in the main checkout.`, "system");
+            return;
+        }
+        try {
+            const w = await createWorktree(base, c.key ?? c.id, "kanban/");
+            this.update(c.id, { worktree: { path: w.path, branch: w.branch, root: w.root, base: w.base, cwd: w.cwd } }, { by: "system" });
+            this.comment(c.id, `Working in worktree ${w.path} on branch ${w.branch} (from ${w.base}); it is merged into ${w.base} when the card is done.`, "system");
+        }
+        catch (e) {
+            this.comment(c.id, `Worktree not created (${errMsg(e)}); running in the main checkout.`, "system");
+        }
+    }
+    /** Merge a done card's worktree branch into the branch it came from, then remove the worktree. Conflicts → review. */
+    async mergeCardWorktree(ref) {
+        const c = this.need(ref);
+        const w = c.worktree;
+        if (!w)
+            return;
+        const ch = await worktreeChanges(w);
+        try {
+            if (ch.dirty.length)
+                throw new Error(`the worktree has uncommitted changes: ${ch.dirty.slice(0, 5).join(", ")}`);
+            const cur = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], w.root)).out;
+            if (cur !== w.base)
+                throw new Error(`the main checkout is on ${cur}, not ${w.base}`);
+            if (ch.ahead)
+                await mergeWorktree(w, `${c.key ?? c.id}: merge ${w.branch}`);
+            await removeWorktree(w, { deleteBranch: true, force: !ch.ahead });
+            this.update(c.id, { worktree: undefined }, { by: "system" });
+            this.comment(c.id, ch.ahead ? `Merged ${ch.ahead} commit(s) from ${w.branch} into ${w.base}; worktree removed.` : "Worktree removed (no commits to merge).", "system");
+            await this.syncCommits(c.id).catch(() => 0);
+        }
+        catch (e) {
+            this.comment(c.id, `Could not merge ${w.branch} into ${w.base}: ${errMsg(e)}. The worktree stays at ${w.path}; resolve it, then run /kanban merge ${c.key ?? c.id}`, "system");
+            this.update(c.id, { status: "review" }, { by: "system", reason: "worktree merge failed" });
+        }
     }
     // ── views ─────────────────────────────────────────────────────
     fmt(c) {
@@ -554,14 +625,15 @@ export class KanbanBoard {
     /** One line per board: name, progress, active/archived. */
     describeBoards() {
         const l = this.boards.list({ archived: "all" });
-        return l.map((b) => `${b.active ? "▶" : " "} ${b.name}${b.archived ? " (archived)" : ""} — ${b.done}/${b.cards} tickets done${b.description ? ` — ${b.description}` : ""}`).join("\n") || "No boards.";
+        return l.map((b) => `${b.active ? "▶" : " "} ${b.name}${b.archived ? " (archived)" : ""}${b.draft ? " (draft)" : ""} — ${b.done}/${b.cards} tickets done${b.project ? ` — project ${b.project}` : ""}${b.description ? ` — ${b.description}` : ""}`).join("\n") || "No boards.";
     }
     board() {
         const order = ["running", "ready", "blocked", "review", "backlog", "done"];
         const all = this.list();
+        const act = this.boards.active(), proj = act.project ? ` (project ${act.project})` : "";
         if (!all.length)
-            return `Board "${this.boards.active().name}" is empty.`;
-        return `Board: ${this.boards.active().name}\n` + order.map((s) => { const l = all.filter((c) => c.status === s); return l.length ? `## ${s} (${l.length})\n${l.map((c) => `  ${this.fmt(c)}`).join("\n")}` : ""; }).filter(Boolean).join("\n");
+            return `Board "${act.name}"${proj} is empty.`;
+        return `Board: ${act.name}${proj}\n` + order.map((s) => { const l = all.filter((c) => c.status === s); return l.length ? `## ${s} (${l.length})\n${l.map((c) => `  ${this.fmt(c)}`).join("\n")}` : ""; }).filter(Boolean).join("\n");
     }
     report() {
         const all = this.list();
@@ -576,9 +648,9 @@ export class KanbanBoard {
 }
 export const kanbanTool = {
     name: "kanban", toolset: "kanban", tier: "standard",
-    description: "Project tracker (kanban tool call, not a shell command): plan, track and verify multi-task projects. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria, a test_cmd that must pass before done, threaded comments, status history and linked git commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, enrich (look up the technical words in the tickets on official sites and add short REFERENCE NOTES with links), import (turn a plan folder of phase-NN.md specs into epics and tasks: one story per spec section, written in plain steps with files, exact names and test cases). WRITING A TICKET BY HAND: one focus per ticket; plain short sentences; in the body list WHAT TO BUILD, FILES, NAMES, STEPS, what each part must do, and TEST CASES (a normal case and an edge case for every function); put the files in acceptance so they can be checked. DESIGN TO BOARD: design (path = a design document: file, folder or URL; project = folder the work happens in; optional board) reads the document, researches it on the web (pages, PDFs, follow-up searches), downloads and judges free GitHub repos that already do the same, and builds a DRAFT board (main features MF010, their stories US0101 …, each story checked and flagged when it needs a person) whose tickets wait in backlog; it runs in the background, follow it with design_status, stop it with design_stop. approve (board, optional keys) moves reviewed draft tickets to ready and makes the board active. Only approve when the user has asked you to run the stories.",
+    description: "Project tracker (kanban tool call, not a shell command): plan, track and verify multi-task projects. Cards have keys (PT-12), types (epic/task/bug), acceptance criteria, a test_cmd that must pass before done, threaded comments, status history and linked git commits. Actions: create, list, show, update (status done runs the tests first), comment (reply_to for threads), dispatch, resume (re-queue interrupted cards), link_commit, sync (find commits by key), test (run just the card's test_cmd), verify (full check: files+exports built, unit tests, pages load, screenshots saved, functional steps, earlier cards and pages not broken; evidence in .stitap/evidence/KEY), gentests (write tests/verify/<phase>.verify.test.mjs from the spec), regression (re-test done cards, reopen failures and file bugs), board, report, enrich (look up the technical words in the tickets on official sites and add short REFERENCE NOTES with links), import (ONLY when the user literally asks to import: turn a plan folder of phase-NN.md specs into epics and tasks without research; the tickets land in backlog as a draft for review). WRITING A TICKET BY HAND: one focus per ticket; plain short sentences; in the body list WHAT TO BUILD, FILES, NAMES, STEPS, what each part must do, and TEST CASES (a normal case and an edge case for every function); put the files in acceptance so they can be checked. DESIGN TO BOARD — the default whenever the user asks to plan, create, build or start a kanban/Jira board FROM design documents, a design folder, an idea or a spec (even a folder of phase-NN.md files): call design, not import, and do not read the documents yourself first. design (path = a design document: file, folder or URL; project = folder the work happens in: a NEW folder unless the user names one; board = a NEW board name unless the user names one) reads the document, researches it on the web (pages, PDFs, follow-up searches), downloads and judges free GitHub repos that already do the same, and builds a DRAFT board (main features MF010, their stories US0101 …, each story checked and flagged when it needs a person) whose tickets wait in backlog; it runs in the background, follow it with design_status, stop it with design_stop. approve (board, optional keys) moves reviewed draft tickets to ready and makes the board active. Only approve when the user has asked you to run the stories. PROJECTS, FOLDERS AND BOARDS (create, show, update, delete for each): a PROJECT groups boards and named working folders (one ★ primary). projects lists them; project_new (project_name, folder_path = main folder, folder = its short name, default code); project_show; project_update (new_name, description); project_use switches to a project (opens its board; the workers serve the active board); project_archive / project_unarchive (with its boards); project_delete (confirm=true; boards kept unless delete_boards=true). folder_add (folder = short name like docs or api, folder_path, primary); folder_update (new_name, folder_path, primary); folder_remove (files on disk stay). A ticket runs in: its cwd, else its project folder (create/update with folder=docs), else its board's folder, else the project's primary folder. Boards: boards; board_show; board_new (name, description, project = folder, project_name); board_update (new_name, description, project = folder, project_name = move it into a project, \"\" takes it out); board_project; board_use; board_archive / board_unarchive; board_save / board_restore; board_clear removes every ticket of ONE board, board_delete removes the board too (both need confirm=true and save a snapshot that board_restore brings back). Tickets: create, list, show, update (also folder, cwd, parent), delete (confirm=true; an epic takes its tickets), move between boards. You CAN do all of these: when the user asks to create, change, clear, reset, start fresh, archive or delete a project, folder, board or ticket, do not refuse and do not touch git or files instead; name what you will act on, call the action (for confirm=true actions call once without it, tell the user what will go, and call again with confirm=true once they agree or if they already said so plainly). Files on disk are never deleted by these actions.",
     parameters: obj({
-        action: enm(["create", "list", "show", "update", "comment", "dispatch", "resume", "link_commit", "sync", "test", "verify", "gentests", "regression", "board", "report", "import", "boards", "board_new", "board_use", "board_rename", "board_archive", "board_unarchive", "board_clear", "board_delete", "board_save", "board_restore", "move", "link", "unlink", "enrich", "design", "design_status", "design_stop", "approve"], "operation"),
+        action: enm(["create", "list", "show", "update", "comment", "dispatch", "resume", "link_commit", "sync", "test", "verify", "gentests", "regression", "board", "report", "import", "boards", "board_new", "board_project", "board_update", "board_show", "board_use", "board_rename", "board_archive", "board_unarchive", "board_clear", "board_delete", "board_save", "board_restore", "move", "link", "unlink", "enrich", "design", "design_status", "design_stop", "approve", "delete", "projects", "project_new", "project_show", "project_update", "project_use", "project_archive", "project_unarchive", "project_delete", "folder_add", "folder_update", "folder_remove"], "operation"),
         id: str("card id or key (PT-12)"),
         title: str("card title"),
         body: str("details / acceptance criteria"),
@@ -598,23 +670,31 @@ export const kanbanTool = {
         hash: str("git commit hash"),
         message: str("commit message"),
         path: str("import: folder holding phase-NN.md files"),
-        project: str("import: project folder the docs and tests are copied into and the cards run in"),
+        project: str("import/design: project folder the docs and tests are copied into and the cards run in; board_new/board_project: the board's project folder (\"\" in board_project removes it)"),
         tests: str("import: folder of reference tests to copy into <project>/tests"),
         key_prefix: str("import/create: key prefix, default from config"),
-        board: str("import: name of the board to fill (created if missing, then made active); board_*: the board concerned"),
+        board: str("import: name of the board to fill (created if missing, then made active); board_*: the board concerned (default: the active board)"),
         name: str("board_new / board_restore: the board's name"),
         new_name: str("board_rename: the new name"),
         to: str("move: destination board; link/unlink: the ticket to link to (any board, may not exist yet)"),
         link_type: str("link: relates to | blocks | is blocked by | duplicates | clones"),
         keys: arr(str("ticket key"), "move: tickets to move (an epic takes its tickets along)"),
         file: str("board_save / board_restore: a JSON file path (default: the harness home)"),
-        confirm: bool("board_clear / board_delete: must be true. A snapshot is saved first so it can be undone with board_restore"),
+        confirm: bool("board_clear / board_delete / project_delete / delete: must be true. Boards are snapshotted first so it can be undone with board_restore"),
+        project_name: str("project_*: the project (name or id; default: the active project); project_new: its name; board_new / board_update: the project the board belongs to (\"\" in board_update takes it out)"),
+        description: str("project_new / project_update / board_new / board_update: description"),
+        folder: str("folder_*: the working folder's short name (code, docs, api …); create/update: the project folder the ticket is worked in"),
+        folder_path: str("project_new: the main folder; folder_add / folder_update: the folder on disk"),
+        primary: bool("folder_add / folder_update: make it the project's main folder"),
+        delete_boards: bool("project_delete: also delete the project's boards (snapshots first); default keeps them, unassigned"),
     }, ["action"]),
     async handler(a, ctx) {
         const K = ctx.rt.kanban;
         const by = "agent";
+        const projRef = () => { const r = String(a.project_name ?? "").trim() || K.projects.active()?.id; if (!r)
+            throw new Error("name the project (project_name); the active board is not in a project"); return r; };
         switch (a.action) {
-            case "create": return `Created ${K.fmt(K.create({ title: String(a.title ?? "untitled"), body: a.body, priority: a.priority, depends_on: a.depends_on, status: a.status, review: a.review, type: a.type, parent: a.parent, acceptance: a.acceptance, test_cmd: a.test_cmd, spec: a.spec, cwd: a.cwd, functional: a.functional, key_prefix: a.key_prefix }))}`;
+            case "create": return `Created ${K.fmt(K.create({ title: String(a.title ?? "untitled"), body: a.body, priority: a.priority, depends_on: a.depends_on, status: a.status, review: a.review, type: a.type, parent: a.parent, acceptance: a.acceptance, test_cmd: a.test_cmd, spec: a.spec, cwd: a.cwd, functional: a.functional, key_prefix: a.key_prefix, folder: a.folder }))}`;
             case "list": {
                 const l = K.list(a.status);
                 return l.length ? l.map((c) => K.fmt(c)).join("\n") : "Board is empty.";
@@ -622,7 +702,8 @@ export const kanbanTool = {
             case "show": return K.show(a.id);
             case "update": {
                 const patch = { ...(a.title ? { title: a.title } : {}), ...(a.body ? { body: a.body } : {}), ...(a.priority !== undefined ? { priority: a.priority } : {}), ...(a.depends_on ? { depends_on: a.depends_on.map((d) => K.get(d)?.id ?? d) } : {}),
-                    ...(a.acceptance ? { acceptance: a.acceptance } : {}), ...(a.test_cmd ? { test_cmd: a.test_cmd } : {}), ...(a.spec ? { spec: a.spec } : {}), ...(a.type ? { type: a.type } : {}), ...(a.functional ? { functional: a.functional } : {}) };
+                    ...(a.acceptance ? { acceptance: a.acceptance } : {}), ...(a.test_cmd ? { test_cmd: a.test_cmd } : {}), ...(a.spec ? { spec: a.spec } : {}), ...(a.type ? { type: a.type } : {}), ...(a.functional ? { functional: a.functional } : {}),
+                    ...(a.folder !== undefined ? { folder: a.folder ? K.projects.checkFolder(K.get(a.id)?.board, a.folder) : undefined } : {}), ...(a.cwd !== undefined ? { cwd: a.cwd || undefined } : {}), ...(a.parent ? { parent: a.parent } : {}) };
                 if (a.status === "done") {
                     const v = await K.complete(a.id, by);
                     return `${K.fmt(v.card)} — ${v.detail}`;
@@ -674,14 +755,78 @@ export const kanbanTool = {
             }
             case "enrich": return describeEnrich(await enrichBoard(ctx.rt, { board: a.board, signal: ctx.signal, onProgress: ctx.progress }));
             case "boards": return K.describeBoards();
+            case "delete": {
+                const c = K.get(String(a.id ?? ""));
+                if (!c)
+                    return `no ticket ${a.id}`;
+                if (K.isActive(c.id))
+                    return `${c.key} is being worked on right now; stop the workers first`;
+                const kids = c.type === "epic" ? K.listAll().filter((x) => x.parent === c.key) : [];
+                if (a.confirm !== true)
+                    return `This deletes ${c.key} "${c.title}"${kids.length ? ` and its ${kids.length} ticket(s)` : ""} for good (links and dependencies on it are removed). Call again with confirm=true.`;
+                for (const k of kids)
+                    K.removeCard(k.id);
+                K.removeCard(c.id);
+                return `Deleted ${c.key}${kids.length ? ` and ${kids.length} ticket(s) under it` : ""}.`;
+            }
+            case "projects": return K.projects.describe();
+            case "project_new": {
+                const p = K.projects.create(String(a.project_name ?? a.name ?? ""), { description: a.description ?? a.body, folders: a.folder_path ? [{ name: a.folder || "code", path: a.folder_path }] : [], boards: a.board ? [a.board] : [] });
+                return `Created project "${p.name}"${p.folders.length ? ` (folder ${p.folders[0].name} = ${p.folders[0].path})` : ""}. project_use opens its board (one is made if it has none); folder_add adds more folders.`;
+            }
+            case "project_show": {
+                const p = a.project_name ? K.projects.need(String(a.project_name)) : K.projects.active();
+                return p ? K.projects.show(p.id) : "The active board is not in a project. projects lists them.";
+            }
+            case "project_update": {
+                const p = K.projects.update(projRef(), { name: a.new_name, description: a.description });
+                return `Updated project "${p.name}".`;
+            }
+            case "project_use": {
+                const r = K.projects.use(String(a.project_name ?? a.name ?? ""));
+                return `Active project: "${r.project.name}", board "${r.board.name}". Its tickets run in ${K.projects.primary(r.project)?.path ?? "the board's folder"}.`;
+            }
+            case "project_archive": return `Archived project "${K.projects.archive(projRef()).name}" and its boards (hidden; workers ignore them). Active board now: "${K.boards.active().name}".`;
+            case "project_unarchive": return `Unarchived project "${K.projects.unarchive(projRef()).name}" and the boards it had archived.`;
+            case "project_delete": {
+                const p = K.projects.need(projRef());
+                if (a.confirm !== true)
+                    return `This deletes project "${p.name}"${a.delete_boards ? " AND its boards (each snapshotted first)" : "; its boards stay, without a project"}. Files on disk are not touched. Call again with confirm=true.`;
+                const r = K.projects.delete(p.id, { deleteBoards: !!a.delete_boards });
+                return `Deleted project "${p.name}". ${a.delete_boards ? `Deleted boards: ${r.boards.join(", ") || "none"}. Snapshots: ${r.snapshots.join(", ") || "none"}` : `Its boards (${r.boards.join(", ") || "none"}) are kept without a project.`}`;
+            }
+            case "folder_add": {
+                const p = K.projects.addFolder(projRef(), { name: String(a.folder ?? ""), path: String(a.folder_path ?? a.path ?? ""), primary: !!a.primary, note: a.description });
+                return `"${p.name}" folders: ${p.folders.map((f) => `${f.primary ? "★" : ""}${f.name}=${f.path}`).join(", ")}`;
+            }
+            case "folder_update": {
+                const p = K.projects.updateFolder(projRef(), String(a.folder ?? ""), { path: a.folder_path, new_name: a.new_name, primary: a.primary, note: a.description });
+                return `"${p.name}" folders: ${p.folders.map((f) => `${f.primary ? "★" : ""}${f.name}=${f.path}`).join(", ")}`;
+            }
+            case "folder_remove": {
+                const p = K.projects.removeFolder(projRef(), String(a.folder ?? ""));
+                return `Removed folder ${a.folder} from "${p.name}" (nothing on disk was deleted).`;
+            }
+            case "board_update": {
+                const b = K.boards.update(String(a.board ?? K.boards.active().name), { name: a.new_name, description: a.description, project: a.project, project_id: a.project_name });
+                return K.boards.show(b.id);
+            }
+            case "board_show": return K.boards.show(String(a.board ?? K.boards.active().name));
             case "board_new": {
-                const b = K.boards.create(String(a.name ?? a.board ?? ""), a.body);
+                const b0 = K.boards.create(String(a.name ?? a.board ?? ""), a.description ?? a.body, a.project);
+                const b = a.project_name ? K.projects.attach(b0.id, String(a.project_name)) : b0;
                 K.boards.use(b.id);
-                return `Created board "${b.name}" and made it active. Import or create tickets now.`;
+                return `Created board "${b.name}"${b.project ? ` for project ${b.project}` : ""} and made it active. Import or create tickets now.`;
+            }
+            case "board_project": {
+                if (a.project === undefined)
+                    return "board_project needs project (a folder, or \"\" to remove it)";
+                const b = K.boards.setProject(String(a.board ?? K.boards.active().name), String(a.project));
+                return b.project ? `"${b.name}" now works in ${b.project}${existsSync(b.project) ? "" : " (the folder does not exist yet)"}` : `"${b.name}" has no project folder now`;
             }
             case "board_use": return `Active board: "${K.boards.use(String(a.board ?? a.name ?? "")).name}"`;
             case "board_rename": return `Renamed to "${K.boards.rename(String(a.board ?? ""), String(a.new_name ?? "")).name}"`;
-            case "board_archive": return `Archived "${K.boards.archive(String(a.board ?? "")).name}" (hidden, workers ignore it; its tickets stay linkable)`;
+            case "board_archive": return `Archived "${K.boards.archive(String(a.board ?? K.boards.active().name)).name}" (hidden, workers ignore it; its tickets stay linkable). Active board now: "${K.boards.active().name}"`;
             case "board_unarchive": return `Unarchived "${K.boards.unarchive(String(a.board ?? "")).name}"`;
             case "board_save": return `Saved to ${K.boards.save(String(a.board ?? K.boards.active().name), a.file)}`;
             case "board_restore": return `Restored as board "${K.boards.restore(String(a.file ?? ""), a.name).name}" (not active yet: board_use to open it)`;

@@ -69,6 +69,8 @@ export class AnthropicProvider {
             body.tools = req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }));
         if (req.stop?.length)
             body.stop_sequences = req.stop;
+        if (req.effort)
+            applyClaudeEffort(body, this.o.model, req.effort);
         const url = (this.o.baseUrl ?? "https://api.anthropic.com").replace(/\/+$/, "") + "/v1/messages";
         let res;
         try {
@@ -130,4 +132,26 @@ export class AnthropicProvider {
             .map((b) => ({ id: b.id ?? newId("toolu_"), name: b.name ?? "", arguments: b.json || "{}" }));
         return { content, toolCalls, usage, finishReason, model, reasoning: reasoning || undefined };
     }
+}
+/** Claude models before the 4.6 generation: thinking is set with a token budget instead of adaptive thinking + effort. */
+export const legacyThinking = (model) => /claude-(2|3|instant)|claude-(opus|sonnet|haiku)-4(-[0-5])?(-\d{8})?$/.test(model);
+/**
+ * /effort for Claude. Current models: adaptive thinking with `output_config.effort` ("off" = no thinking param and the
+ * lowest effort, since newer models cannot turn thinking off). Older models: `thinking.budget_tokens`, which must stay
+ * below max_tokens. Thinking does not allow a custom temperature, so it is dropped.
+ */
+export function applyClaudeEffort(body, model, effort) {
+    if (legacyThinking(model)) {
+        if (effort === "off")
+            return;
+        const budget = { low: 2048, medium: 8192, high: 16000, xhigh: 24000, max: 32000 }[effort] ?? 8192;
+        body.max_tokens = Math.max(body.max_tokens ?? 0, budget + 4096);
+        body.thinking = { type: "enabled", budget_tokens: budget };
+        delete body.temperature;
+        return;
+    }
+    body.output_config = { ...(body.output_config ?? {}), effort: effort === "off" ? "low" : effort };
+    if (effort !== "off")
+        body.thinking = { type: "adaptive" };
+    delete body.temperature;
 }

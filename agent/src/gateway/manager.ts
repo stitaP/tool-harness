@@ -5,7 +5,7 @@
  */
 import type { IncomingMessage } from "node:http";
 import type { Runtime, GatewayLike } from "../runtime/runtime.js";
-import { looksLikeCommand, runCommand } from "../runtime/commands.js";
+import { looksLikeCommand, runCommand, runInputPrefix } from "../runtime/commands.js";
 import { redactKnown } from "../util/redact.js";
 import { errMsg, newId } from "../util/misc.js";
 import { log } from "../util/log.js";
@@ -113,6 +113,9 @@ export class GatewayManager implements GatewayLike {
       this.rt.respondClarify(pend.id, pend.choices && n >= 1 && n <= pend.choices.length ? pend.choices[n - 1] : text);
       return;
     }
+    // "#note" saves to memory; "!cmd" shell runs are not offered over messaging apps
+    const pre = text.startsWith("#") ? await runInputPrefix(text, { rt: this.rt, sid, source: m.platform }) : null;
+    if (pre?.text) { await this.send(m.platform, m.chatId, pre.text); return; }
     if (looksLikeCommand(text, this.rt) || /^\/(start|whoami|sethome)\b/.test(text)) {
       if (/^\/(start|whoami)\b/.test(text)) { await this.send(m.platform, m.chatId, `You are ${m.userName} (${m.userId}) on ${m.platform}. Session ${sid}. Send any task, or /help.`); return; }
       if (/^\/sethome\b/.test(text)) { this.rt.db.setMeta(`gw_home:${m.platform}`, m.chatId); await this.send(m.platform, m.chatId, "This chat is now the home channel for cron/kanban deliveries."); return; }

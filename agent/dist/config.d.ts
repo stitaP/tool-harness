@@ -44,6 +44,8 @@ export declare const DEFAULT_CONFIG: {
         default_cwd: string;
         stream: boolean;
         retries: number;
+        effort: string;
+        output_style: string;
     };
     compression: {
         enabled: boolean;
@@ -171,9 +173,21 @@ export declare const DEFAULT_CONFIG: {
         enabled: boolean;
         path: string;
     };
-    hooks: Record<string, string[]>;
+    hooks: Record<string, (string | {
+        match?: string;
+        command: string;
+    })[]>;
+    ui: {
+        statusline: {
+            enabled: boolean;
+            command: string;
+        };
+        vim: boolean;
+        keybindings: Record<string, string>;
+    };
     kanban: {
         workers: number;
+        worktrees: boolean;
         enabled: boolean;
         guard_chat_writes: boolean;
         project_key: string;
@@ -186,12 +200,15 @@ export declare const DEFAULT_CONFIG: {
         default_board: string;
         tier_by_kind: Record<string, "fast" | "strong">;
         numbering: {
+            style: "feature" | "prefix";
             feature_prefix: string;
             story_prefix: string;
             bug_prefix: string;
             feature_digits: number;
             story_digits: number;
         };
+        /** kanban import makes a DRAFT: its tickets wait in backlog until the user approves them (kanban approve) */
+        import_draft: boolean;
         design: {
             max_searches: number;
             max_cited: number;

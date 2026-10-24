@@ -22,3 +22,11 @@ export declare class AnthropicProvider implements Provider {
     constructor(o: AnthropicOptions);
     chat(req: ChatRequest): Promise<ChatResponse>;
 }
+/** Claude models before the 4.6 generation: thinking is set with a token budget instead of adaptive thinking + effort. */
+export declare const legacyThinking: (model: string) => boolean;
+/**
+ * /effort for Claude. Current models: adaptive thinking with `output_config.effort` ("off" = no thinking param and the
+ * lowest effort, since newer models cannot turn thinking off). Older models: `thinking.budget_tokens`, which must stay
+ * below max_tokens. Thinking does not allow a custom temperature, so it is dropped.
+ */
+export declare function applyClaudeEffort(body: any, model: string, effort: string): void;

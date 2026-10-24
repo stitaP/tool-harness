@@ -7,22 +7,29 @@
  *     A link may name a ticket that does not exist yet (a future board): it is kept as pending and resolves when that key appears;
  *   • move tickets (an epic takes its tickets along) from one board to another, e.g. carry unfinished work to the next board.
  * Ticket keys are unique across all boards, so a link is just "PT-12".
+ *
+ * A board can belong to a PROJECT folder (`project`): its tickets are worked in that folder unless a ticket names its own cwd,
+ * so several projects live side by side, one board each, and switching the active board switches the project the workers serve.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
+import { expandHome } from "../safety/paths.js";
 import type { Runtime } from "../runtime/runtime.js";
 import { shortId } from "../util/misc.js";
 import type { Card, KanbanBoard } from "./board.js";
 
 export interface BoardInfo { id: string; name: string; description?: string; created_at: number; archived?: boolean; archived_at?: number;
   /** made from a design document and not approved yet: its tickets wait in backlog for review */
-  draft?: boolean; design?: string; project?: string; approved_at?: number }
+  draft?: boolean; design?: string; project?: string; approved_at?: number;
+  /** the project (projects.ts) this board belongs to; `project` above is the board's own folder */
+  project_id?: string; archived_by_project?: boolean }
 export type LinkType = "relates to" | "blocks" | "is blocked by" | "duplicates" | "clones";
 export const LINK_TYPES: LinkType[] = ["relates to", "blocks", "is blocked by", "duplicates", "clones"];
 export const LINK_INVERSE: Record<LinkType, string> = { "relates to": "relates to", blocks: "is blocked by", "is blocked by": "blocks", duplicates: "is duplicated by", clones: "is cloned by" };
 export interface CardRef { key: string; type: LinkType; at: number; pending?: boolean }
 export interface LinkView { type: string; direction: "out" | "in"; key: string; title: string; status: string; board: string | null; boardName: string | null; pending: boolean }
 
+const projectPath = (p: string) => { const x = expandHome(p.trim()); return isAbsolute(x) ? x : resolve(x); };
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "board";
 const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
 
@@ -73,21 +80,60 @@ export class Boards {
       .map((b) => { const mine = cards.filter((c) => c.board === b.id); return { ...b, cards: mine.length, done: mine.filter((c) => c.status === "done").length, active: b.id === act }; });
   }
 
-  create(name: string, description?: string): BoardInfo {
+  create(name: string, description?: string, project?: string): BoardInfo {
     this.ensure();
     const n = name.trim();
     if (!n) throw new Error("a board needs a name");
     if (this.get(n)) throw new Error(`a board named "${n}" already exists`);
-    const b: BoardInfo = { id: shortId("b_"), name: n, ...(description ? { description } : {}), created_at: Date.now() };
+    const b: BoardInfo = { id: shortId("b_"), name: n, ...(description ? { description } : {}), ...(project ? { project: projectPath(project) } : {}), created_at: Date.now() };
     this.rt.db.putRecord("kanban_board", b.id, b);
+    return this.autoAttach(b);
+  }
+  /** A board whose folder lies inside a project's folder joins that project (when it is in none yet). */
+  private autoAttach(b: BoardInfo): BoardInfo {
+    if (b.project_id || !b.project) return b;
+    try { const p = this.K.projects.forPath(b.project); if (p) { const n = { ...b, project_id: p.id }; this.rt.db.putRecord("kanban_board", n.id, n); return n; } } catch { /* no projects */ }
     return b;
+  }
+  /** Change a board: name, description, folder ("" removes it) and project (project name or id, "" takes it out). */
+  update(ref: string, patch: { name?: string; description?: string; project?: string; project_id?: string }): BoardInfo {
+    let b = this.need(ref);
+    if (patch.name !== undefined && patch.name.trim() !== b.name) b = this.rename(b.id, patch.name);
+    if (patch.description !== undefined) { b = this.need(b.id); if (patch.description.trim()) b.description = patch.description.trim(); else delete b.description; this.rt.db.putRecord("kanban_board", b.id, b); }
+    if (patch.project_id !== undefined) b = this.K.projects.attach(b.id, patch.project_id);
+    if (patch.project !== undefined) b = this.setProject(b.id, patch.project);
+    this.rt.emitEvent("*", { type: "kanban_board", board: this.need(b.id) });
+    return this.need(b.id);
+  }
+  /** One board in text: project, folder, description, tickets per status. */
+  show(ref: string): string {
+    const b = this.need(ref), cards = this.cards().filter((c) => c.board === b.id && c.type !== "epic"), p = this.K.projects.ofBoard(b.id);
+    const by = (["backlog", "ready", "running", "review", "blocked", "done"] as const).map((s) => `${s} ${cards.filter((c) => c.status === s).length}`).join(" · ");
+    return [`Board: ${b.name}${b.id === this.activeId() ? " ▶ active" : ""}${b.archived ? " (archived)" : ""}${b.draft ? " (draft)" : ""}`, b.description ?? "",
+      `Project: ${p ? p.name : "(none)"}`, `Folder: ${b.project ?? (this.K.projects.primary(p)?.path ? `${this.K.projects.primary(p)!.path} (project's primary folder)` : "(default)")}`,
+      `Tickets: ${cards.length} — ${by}`, `Epics: ${this.cards().filter((c) => c.board === b.id && c.type === "epic").length}`].filter(Boolean).join("\n");
+  }
+  /** Set (or with "" remove) the project folder a board's tickets are worked in. */
+  setProject(ref: string, project: string): BoardInfo {
+    const b = this.need(ref);
+    const n: BoardInfo = { ...b };
+    if (project.trim()) n.project = projectPath(project); else delete n.project;
+    this.rt.db.putRecord("kanban_board", n.id, n);
+    const m = this.autoAttach(n);
+    this.rt.emitEvent("*", { type: "kanban_board", board: m });
+    return m;
+  }
+  /** The project folder of the board a ticket is on, if that board has one. */
+  projectOf(boardId?: string): string | undefined {
+    const b = boardId ? this.all().find((x) => x.id === boardId) : undefined;
+    return b?.project || undefined;
   }
   /** Mark a board as a draft made from a design (or clear the mark). */
   setDraft(ref: string, d: { draft: boolean; design?: string; project?: string }): BoardInfo {
     const b = this.need(ref);
     const n: BoardInfo = { ...b, draft: d.draft, ...(d.design ? { design: d.design } : {}), ...(d.project ? { project: d.project } : {}) };
     this.rt.db.putRecord("kanban_board", n.id, n);
-    return n;
+    return this.autoAttach(n);
   }
   /**
    * The reviewer's go-ahead: backlog tickets of the board (all, or only `keys`) move to "ready", the board stops being a draft
@@ -136,7 +182,7 @@ export class Boards {
     }
     return b;
   }
-  unarchive(ref: string): BoardInfo { const b = this.need(ref); delete b.archived; delete b.archived_at; this.rt.db.putRecord("kanban_board", b.id, b); return b; }
+  unarchive(ref: string): BoardInfo { const b = this.need(ref); delete b.archived; delete b.archived_at; delete b.archived_by_project; this.rt.db.putRecord("kanban_board", b.id, b); return b; }
 
   // ── save / restore / clear ──────────────────────────────────
   private snapshot(b: BoardInfo): { board: BoardInfo; cards: Card[]; saved_at: number; version: 1 } {

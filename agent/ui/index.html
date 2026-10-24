@@ -314,6 +314,13 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
 #kbBanner .kbban { margin: 8px 16px 0; padding: 7px 12px; border-radius: var(--radius); background: var(--panel-2); border: 1px solid var(--border); font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 #kbBanner .kbban.arch { border-color: var(--warn); }
 #kbBanner .kbban.draft { border-color: oklch(0.6 0.12 250); }
+#kbPjBody label { display: block; font-size: 13px; margin: 10px 0 4px; }
+#kbPjBody input[type=text], #kbPjBody select, #kbPjBody textarea { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; font: inherit; }
+#kbPjBody .pj { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin: 8px 0; }
+#kbPjBody .pj.act { border-color: var(--accent); }
+#kbPjBody .pj .acts, #kbPjBody .fl .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+#kbPjBody .fl { font-size: 13px; padding: 3px 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } #kbPjBody .fl code { word-break: break-all; }
+#kbPjBody .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 #kbDsBody label { display: block; font-size: 13px; margin: 10px 0 4px; } #kbDsBody label small { color: var(--muted); font-weight: normal; }
 #kbDsBody input[type=text], #kbDsBody input[type=number], #kbDsBody select { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; font: inherit; }
 #kbDsBody .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
@@ -430,10 +437,13 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
 <div class="modal" id="modal"><div class="box"><div class="hd"><b id="modalTitle"></b><button class="btn primary" id="modalUse">Use in chat</button><button class="btn" id="modalClose">Close</button></div><div class="bd content" id="modalBody"></div></div></div>
 <div id="kb"><div class="kbhd"><b>Kanban</b><span id="kbAgent" class="kbagent" title="Whether an agent is working on a story right now">…</span>
   <div class="kbviews" id="kbViews" role="group" aria-label="View"><button data-v="phases" class="on">Phases</button><button data-v="board">Board</button><button data-v="list">List</button></div>
-  <select id="kbBoard" class="kbboard" title="Board" aria-label="Board"></select><button class="btn" id="kbBoardMenu" title="Board actions: new, rename, save, archive, clear">⋯</button>
+  <select id="kbProject" class="kbboard" title="Project" aria-label="Project"></select><select id="kbBoard" class="kbboard" title="Board" aria-label="Board"></select><button class="btn" id="kbBoardMenu" title="Board actions: new project, folder, rename, save, archive, clear, delete">Board ▾</button>
   <div id="kbMenu" class="kbmenu" hidden></div>
   <input id="kbSearch" class="kbsearch" placeholder="Search key or title…  ( / )" aria-label="Search tickets">
   <select id="kbEpic" title="Filter by phase" aria-label="Phase"><option value="">All phases</option></select><span class="sp"></span>
+  <button class="btn" id="kbProjBtn" title="Create, open, rename, archive or delete projects and their working folders">🗂 Projects</button>
+  <button class="btn" id="kbNewTicket" title="Add a ticket to this board">＋ Ticket</button>
+  <button class="btn danger" id="kbClearBtn" title="Remove every ticket of this board (a snapshot is saved first; files are not touched)">Clear board…</button>
   <button class="btn" id="kbDispatch" title="Start workers on ready cards">Run workers</button>
   <button class="btn" id="kbEnrich" title="Look up the technical words in the tickets on official sites (MDN, W3C, nodejs.org) and add short notes with links">Add web notes</button>
   <button class="btn" id="kbResume" title="Re-queue cards interrupted by a crash or restart, then dispatch">Resume interrupted</button>
@@ -442,6 +452,7 @@ body.ragmode .composer-wrap textarea { border-color: var(--accent); }
   <div class="kbfilters" id="kbFilters"></div>
   <div class="kbmain"><div class="kbbody" id="kbBody"></div><div class="kbside" id="kbSideDetail"></div></div></div>
 <div id="kbZoom"><img alt=""></div>
+<div class="modal" id="kbProj" style="z-index:40"><div class="box"><div class="hd"><b id="kbPjTitle">Projects</b><button class="btn" id="kbPjClose">Close</button></div><div class="bd" id="kbPjBody"></div></div></div>
 <div class="modal" id="kbDesign" style="z-index:40"><div class="box"><div class="hd"><b>New board from a design document</b><button class="btn" id="kbDsClose">Close</button></div><div class="bd" id="kbDsBody"></div></div></div>
 <script>
 "use strict";
@@ -640,6 +651,7 @@ function onEvent(ev) {
     case "curator": statusLine(`learned ${ev.memory} memory item(s)${ev.skill ? ", new skill: " + ev.skill : ""}`); break;
     case "skill_saved": statusLine(`skill saved: ${ev.name}`); break;
     case "model_call": refreshStats(); break;
+    case "statusline": $("foot").textContent = ev.text; $("foot").title = "Status line (/statusline to change it)"; break;
     case "notification": { const n = el("div", "notice"); n.textContent = "🔔 " + ev.text; msgs.appendChild(n); scroll(); break; }
   }
 }
@@ -778,6 +790,7 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
 });
 
 // ── Kanban: sidebar summary + full board (phases / board / list), deep links ?kb=PT-12 ──
+let kbProjView = null;   // null: follow the open board's project; "": every board
 let kbData = null, kbBoardId = "", kbShowArch = false, kbSel = null, kbEpic = "", kbQ = "", kbTimer = null, kbDetailData = null;
 let kbView = "phases"; try { kbView = localStorage.getItem("kbView") || "phases"; } catch (e) { /* no storage */ }
 const kbFilt = new Set(), kbOpenPh = new Set(), kbClosedPh = new Set(), kbMore = {};
@@ -848,7 +861,12 @@ function kbTags(c) {
 function kbRender() {
   const d = kbData; if (!d) return;
   document.querySelectorAll("#kbViews button").forEach((b) => b.classList.toggle("on", b.dataset.v === kbView));
-  const bs = $("kbBoard"), live = d.boards.filter((b) => !b.archived), arch = d.boards.filter((b) => b.archived);
+  const projs = d.projects || [], pv = kbProjView === null ? (d.board.project_id || "") : kbProjView, pj = projs.find((x) => x.id === pv);
+  const ps = $("kbProject");
+  ps.innerHTML = `<option value="">${projs.length ? "All boards" : "No projects yet"}</option>` + projs.filter((x) => !x.archived || kbShowArch || x.id === pv).map((x) => `<option value="${esc(x.id)}">${x.active ? "▶ " : ""}${esc(x.name)}${x.archived ? " (archived)" : ""}</option>`).join("") + `<option value="__manage">Manage projects…</option>`;
+  ps.value = pv;
+  const inView = (b) => !pj || pj.boards.includes(b.id) || b.id === d.board.id;
+  const bs = $("kbBoard"), live = d.boards.filter((b) => !b.archived && inView(b)), arch = d.boards.filter((b) => b.archived && inView(b));
   bs.innerHTML = live.map((b) => `<option value="${esc(b.id)}">${b.active ? "▶ " : ""}${esc(b.name)} (${b.done}/${b.cards})</option>`).join("") + (kbShowArch && arch.length ? `<optgroup label="Archived">${arch.map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${b.done}/${b.cards})</option>`).join("")}</optgroup>` : "");
   bs.value = d.board.id;
   $("kbBanner").innerHTML = d.board.archived ? `<div class="kbban arch">📦 <b>${esc(d.board.name)}</b> is archived: hidden, and the workers ignore it. Its tickets can still be linked. <button class="btn" id="kbUnarch">Unarchive</button></div>`
@@ -981,7 +999,7 @@ function kbReviewBlock(c) {
   const lines = (a) => esc((a || []).join("\n"));
   return `<div class="kbedit" style="margin:8px 0">
     ${c.status === "backlog" ? `<div class="hint2" style="margin-bottom:6px">Draft ticket: workers will not start it until it is approved.</div><button class="btn primary" id="kbRvApprove">Approve this ticket</button>` : `<button class="btn" id="kbRvBack" title="Move it back to backlog so no worker starts it">Back to draft</button>`}
-    <button class="btn" id="kbRvEdit">Edit ticket</button><span class="err" id="kbRvErr"></span>
+    <button class="btn" id="kbRvEdit">Edit ticket</button><button class="btn danger" id="kbRvDel">Delete ticket</button><span class="err" id="kbRvErr"></span>
     ${c.review_flags && c.review_flags.length ? `<div class="kbban" style="margin:8px 0;border-color:var(--err);display:block">⚑ <b>Needs review</b>: the automatic check could not fix these.<ul style="margin:4px 0;padding-left:18px">${c.review_flags.map((f) => `<li>${esc(f)}</li>`).join("")}</ul><button class="btn" id="kbRvResolve">Mark resolved</button></div>` : ""}
     <div id="kbRvForm" hidden>
       <label>Title</label><input id="kbRvTitle" value="${esc(c.title)}">
@@ -989,6 +1007,7 @@ function kbReviewBlock(c) {
       <label>Acceptance criteria (one per line)</label><textarea id="kbRvAcc" rows="4">${lines(c.acceptance)}</textarea>
       <label>Test cases (one per line)</label><textarea id="kbRvCases" rows="4">${lines(c.test_cases)}</textarea>
       <label>Check command (must exit 0 when done; empty = none)</label><input id="kbRvCmd" value="${esc(c.test_cmd || "")}">
+      ${kbFolders().length ? `<label>Working folder</label><select id="kbRvFolder"><option value="">(board default)</option>${kbFolders().map((f) => `<option value="${esc(f.name)}" ${c.folder === f.name ? "selected" : ""}>${esc(f.name)} — ${esc(f.path)}</option>`).join("")}</select>` : ""}
       <label>Files it delivers (one per line)</label><textarea id="kbRvFiles" rows="2">${lines(c.files)}</textarea>
       <label>Depends on (ticket keys, one per line)</label><textarea id="kbRvDeps" rows="2">${lines(c.depends_on_keys)}</textarea>
       <div style="margin-top:8px"><button class="btn primary" id="kbRvSave">Save</button> <button class="btn" id="kbRvCancel">Cancel</button></div>
@@ -1006,7 +1025,8 @@ function kbReviewWire(c) {
   if ($("kbRvResolve")) $("kbRvResolve").onclick = () => kbCardPatch(c, { review_flags: [] });
   $("kbRvCancel").onclick = () => { $("kbRvForm").hidden = true; };
   $("kbRvSave").onclick = () => kbCardPatch(c, { title: $("kbRvTitle").value, body: $("kbRvBody").value, acceptance: $("kbRvAcc").value, test_cases: $("kbRvCases").value,
-    test_cmd: $("kbRvCmd").value, files: $("kbRvFiles").value, depends_on: $("kbRvDeps").value });
+    test_cmd: $("kbRvCmd").value, files: $("kbRvFiles").value, depends_on: $("kbRvDeps").value, ...($("kbRvFolder") ? { folder: $("kbRvFolder").value } : {}) });
+  $("kbRvDel").onclick = () => kbDeleteTicket(c);
 }
 async function kbApproveBoard(b, run) {
   if (!confirm(`Approve every draft ticket on “${b.name}”${run ? " and start the workers" : ""}?\nIt becomes the active board, so workers stop taking tickets from the current one.`)) return;
@@ -1055,6 +1075,96 @@ async function kbDesignPoll(first) {
   if ($("kbDsOpen")) $("kbDsOpen").onclick = async () => { $("kbDesign").classList.remove("on"); kbBoardId = j.result.board.id; kbEpic = ""; kbSel = null; kbOpenOverlay(); await kbLoad(); };
   if (j.status === "running") kbDsTimer = setTimeout(() => kbDesignPoll(), 2000);
 }
+// ── projects, folders, board details, new / delete ticket ──
+const kbFolders = () => { const d = kbData; if (!d || !d.board.project_id) return []; const p = (d.projects || []).find((x) => x.id === d.board.project_id); return p ? p.folders : []; };
+async function kbProjAct(action, project, extra) {
+  try { const r = await api("/api/kanban/projects", { method: "POST", body: JSON.stringify({ action, project, ...(extra || {}) }) }); await kbLoad(); if ($("kbProj").classList.contains("on") && $("kbPjTitle").textContent === "Projects") kbProjRender(); return r; }
+  catch (e) { alert(e.message); }
+}
+function kbProjOpen() { $("kbPjTitle").textContent = "Projects"; $("kbProj").classList.add("on"); kbProjRender(); }
+$("kbPjClose").onclick = () => $("kbProj").classList.remove("on");
+async function kbProjRender() {
+  let pr = null; try { pr = await api("/api/kanban/projects"); } catch (e) { $("kbPjBody").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  const boards = (kbData && kbData.boards) || [], loose = boards.filter((b) => !b.project_id || !pr.projects.some((p) => p.id === b.project_id));
+  const card = (p) => `<div class="pj ${p.active ? "act" : ""}" data-p="${esc(p.id)}"><b>${p.active ? "▶ " : ""}${esc(p.name)}</b>${p.archived ? ' <span class="hint2">(archived)</span>' : ""} <span class="hint2">${p.boards.length} board(s) · ${p.done}/${p.cards} tickets done</span>
+      ${p.description ? `<div class="hint2">${esc(p.description)}</div>` : ""}
+      <div style="margin-top:6px"><b style="font-size:12px">Working folders</b>${p.folders.map((f) => `<div class="fl" data-f="${esc(f.name)}">${f.primary ? "★" : "·"} <b>${esc(f.name)}</b> <code>${esc(f.path)}</code>${f.note ? ` <span class="hint2">${esc(f.note)}</span>` : ""}
+        <span class="acts">${f.primary ? "" : '<button class="btn" data-a="fprim">Make main</button>'}<button class="btn" data-a="fedit">Change…</button><button class="btn danger" data-a="frm">Remove</button></span></div>`).join("") || '<div class="hint2">none yet</div>'}</div>
+      <div style="margin-top:6px"><b style="font-size:12px">Boards</b> ${p.boards.map((b) => `${b.active ? "▶ " : ""}${esc(b.name)}${b.archived ? " (archived)" : ""} (${b.done}/${b.cards})`).join(" · ") || '<span class="hint2">none yet: Open makes one</span>'}</div>
+      <div class="acts">${p.archived ? '<button class="btn" data-a="unarchive">Unarchive</button>' : '<button class="btn primary" data-a="use">Open</button><button class="btn" data-a="fadd">＋ Folder…</button><button class="btn" data-a="board">＋ Board…</button><button class="btn" data-a="edit">Rename / describe…</button><button class="btn" data-a="archive">Archive</button>'}<button class="btn danger" data-a="delete">Delete…</button></div></div>`;
+  $("kbPjBody").innerHTML = `<div class="hint2">A project groups boards and the folders its work happens in. A ticket runs in its own folder if it names one, else in its board's folder, else in the project's main (★) folder. Removing or deleting never deletes files on disk.</div>
+    <details ${pr.projects.length ? "" : "open"} style="margin:10px 0"><summary><b>＋ New project</b></summary>
+      <div class="row"><div><label>Name</label><input type="text" id="kbPjName" placeholder="PrakritTattva"></div><div><label>Main folder</label><input type="text" id="kbPjPath" placeholder="~/Documents/AgenticAI/PrakritTattva-v3"></div><div><label>Folder short name</label><input type="text" id="kbPjFolder" value="code"></div></div>
+      <label>Description</label><input type="text" id="kbPjDesc">
+      ${loose.length ? `<label>Put these boards in it</label><select id="kbPjBoards" multiple size="${Math.min(5, loose.length)}">${loose.map((b) => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join("")}</select>` : ""}
+      <div style="margin-top:8px"><button class="btn primary" id="kbPjCreate">Create and open</button> <span class="err" id="kbPjErr"></span></div></details>
+    ${pr.projects.filter((p) => !p.archived).map(card).join("")}
+    ${pr.projects.some((p) => p.archived) ? `<details><summary>Archived projects (${pr.projects.filter((p) => p.archived).length})</summary>${pr.projects.filter((p) => p.archived).map(card).join("")}</details>` : ""}
+    ${loose.length && pr.projects.length ? `<div class="pj"><b>Boards without a project</b>${loose.map((b) => `<div class="fl">${esc(b.name)}${b.archived ? " (archived)" : ""} <select data-b="${esc(b.id)}" class="kbPjAttach" style="width:auto"><option value="">add to project…</option>${pr.projects.filter((p) => !p.archived).map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></div>`).join("")}</div>` : ""}`;
+  $("kbPjCreate").onclick = async () => {
+    const name = $("kbPjName").value.trim(); if (!name) { $("kbPjErr").textContent = "a project needs a name"; return; }
+    const bsel = $("kbPjBoards") ? [...$("kbPjBoards").selectedOptions].map((o) => o.value) : [];
+    try { const r = await api("/api/kanban/projects", { method: "POST", body: JSON.stringify({ action: "new", name, path: $("kbPjPath").value.trim(), folder: $("kbPjFolder").value.trim() || "code", description: $("kbPjDesc").value.trim(), boards: bsel }) }); kbProjView = null; kbBoardId = r.board ? r.board.id : ""; await kbLoad(); kbProjRender(); }
+    catch (e) { $("kbPjErr").textContent = e.message; }
+  };
+  $("kbPjBody").querySelectorAll(".kbPjAttach").forEach((sel) => sel.onchange = () => sel.value && kbProjAct("attach", sel.value, { board: sel.dataset.b }));
+  $("kbPjBody").querySelectorAll(".pj[data-p]").forEach((el) => {
+    const p = pr.projects.find((x) => x.id === el.dataset.p);
+    el.querySelectorAll(".fl[data-f] button").forEach((btn) => btn.onclick = async () => {
+      const fname = btn.closest(".fl").dataset.f, f = p.folders.find((x) => x.name === fname), a = btn.dataset.a;
+      if (a === "fprim") await kbProjAct("folder_update", p.id, { folder: fname, primary: true });
+      else if (a === "frm") { if (confirm(`Remove folder “${fname}” from “${p.name}”? The folder on disk is not touched.`)) await kbProjAct("folder_remove", p.id, { folder: fname }); }
+      else if (a === "fedit") { const path = prompt(`Path of “${fname}”:`, f.path); if (path === null) return; const nn = prompt("Short name:", fname); if (nn === null) return; await kbProjAct("folder_update", p.id, { folder: fname, path: path.trim(), new_name: nn.trim() }); }
+    });
+    el.querySelectorAll(".pj > .acts button").forEach((btn) => btn.onclick = async () => {
+      const a = btn.dataset.a;
+      if (a === "use") { const r = await kbProjAct("use", p.id); if (r) { kbProjView = null; kbBoardId = r.board.id; kbEpic = ""; kbSel = null; $("kbProj").classList.remove("on"); await kbLoad(); } }
+      else if (a === "fadd") { const nm = prompt("Short name of the folder (code, docs, api …):"); if (!nm) return; const path = prompt(`Path of “${nm}”:`); if (!path) return; await kbProjAct("folder_add", p.id, { folder: nm.trim(), path: path.trim(), primary: !p.folders.length || confirm("Make it the main folder?") }); }
+      else if (a === "board") { const nm = prompt(`Name of the new board in “${p.name}”:`); if (!nm) return; try { const r = await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "new", name: nm.trim() }) }); await kbProjAct("attach", p.id, { board: r.board.id }); } catch (e) { alert(e.message); } }
+      else if (a === "edit") { const nm = prompt("Project name:", p.name); if (nm === null) return; const ds = prompt("Description:", p.description || ""); if (ds === null) return; await kbProjAct("update", p.id, { name: nm.trim(), description: ds }); }
+      else if (a === "archive") { if (confirm(`Archive “${p.name}” and its boards? Workers ignore archived boards; unarchive brings them back.`)) await kbProjAct("archive", p.id); }
+      else if (a === "unarchive") await kbProjAct("unarchive", p.id);
+      else if (a === "delete") {
+        const withB = p.boards.length && confirm(`Also delete its ${p.boards.length} board(s) and their tickets?\nOK = delete them too (snapshots are saved first)\nCancel = keep them, without a project`);
+        const n = prompt(`This deletes the project “${p.name}”${withB ? " and its boards" : ""}. Files on disk are not touched.\nType the project name to confirm:`);
+        if (n === null) return; const r = await kbProjAct("delete", p.id, { confirm: n, delete_boards: !!withB }); if (r && r.snapshots && r.snapshots.length) alert("Snapshots:\n" + r.snapshots.join("\n"));
+      }
+    });
+  });
+}
+function kbBoardForm(b) {
+  const d = kbData, projs = (d.projects || []).filter((p) => !p.archived);
+  $("kbPjTitle").textContent = `Board: ${b.name}`; $("kbProj").classList.add("on");
+  $("kbPjBody").innerHTML = `<label>Name</label><input type="text" id="kbBfName" value="${esc(b.name)}"><label>Description</label><textarea id="kbBfDesc" rows="3">${esc(b.description || "")}</textarea>
+    <label>Project</label><select id="kbBfProj"><option value="">(none)</option>${projs.map((p) => `<option value="${esc(p.id)}" ${p.id === b.project_id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
+    <label>Board folder <small>(empty = the project's main folder${b.cwd ? `; now ${esc(b.cwd)}` : ""})</small></label><input type="text" id="kbBfFolder" value="${esc(b.project || "")}">
+    <div style="margin-top:10px"><button class="btn primary" id="kbBfSave">Save</button> <span class="err" id="kbBfErr"></span></div>`;
+  $("kbBfSave").onclick = async () => {
+    try { await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: "update", board: b.id, name: $("kbBfName").value.trim(), description: $("kbBfDesc").value, project_id: $("kbBfProj").value, project: $("kbBfFolder").value.trim() }) }); $("kbProj").classList.remove("on"); await kbLoad(); }
+    catch (e) { $("kbBfErr").textContent = e.message; }
+  };
+}
+function kbTicketForm() {
+  const d = kbData, epics = (d.epics || []).filter((e) => e.key);
+  $("kbPjTitle").textContent = `New ticket on ${d.board.name}`; $("kbProj").classList.add("on");
+  $("kbPjBody").innerHTML = `<label>Title</label><input type="text" id="kbNtTitle"><div class="row"><div><label>Type</label><select id="kbNtType"><option value="task">story / task</option><option value="bug">bug</option><option value="epic">main feature (epic)</option></select></div>
+    <div><label>Under main feature</label><select id="kbNtParent"><option value="">(none)</option>${epics.map((e) => `<option value="${esc(e.key)}">${esc(e.key)} ${esc(e.title || "")}</option>`).join("")}</select></div>
+    ${kbFolders().length ? `<div><label>Working folder</label><select id="kbNtFolder"><option value="">(board default)</option>${kbFolders().map((f) => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join("")}</select></div>` : ""}</div>
+    <label>Description (the worker reads this)</label><textarea id="kbNtBody" rows="8"></textarea><label>Acceptance criteria (one per line)</label><textarea id="kbNtAcc" rows="3"></textarea>
+    <label>Check command (must exit 0 when done)</label><input type="text" id="kbNtCmd">
+    <label><input type="checkbox" id="kbNtReady"> Ready to run now (otherwise it waits in backlog for review)</label>
+    <div style="margin-top:10px"><button class="btn primary" id="kbNtSave">Create</button> <span class="err" id="kbNtErr"></span></div>`;
+  $("kbNtSave").onclick = async () => {
+    const type = $("kbNtType").value;
+    try { const r = await api("/api/kanban/cards", { method: "POST", body: JSON.stringify({ board: d.board.id, title: $("kbNtTitle").value, type, parent: $("kbNtParent").value, body: $("kbNtBody").value, acceptance: $("kbNtAcc").value, test_cmd: $("kbNtCmd").value, folder: $("kbNtFolder") ? $("kbNtFolder").value : "", status: $("kbNtReady").checked ? "ready" : "backlog", ...(type === "epic" ? { numbering: "feature" } : {}) }) });
+      $("kbProj").classList.remove("on"); await kbLoad(); kbDetail(r.card.key); }
+    catch (e) { $("kbNtErr").textContent = e.message; }
+  };
+}
+async function kbDeleteTicket(c) {
+  if (!confirm(`Delete ${c.key} “${c.title}” for good? Links and dependencies on it are removed.`)) return;
+  try { await api(`/api/kanban/card/${encodeURIComponent(c.key)}`, { method: "DELETE" }); kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); } catch (e) { if ($("kbRvErr")) $("kbRvErr").textContent = e.message; }
+}
 async function kbBoardAct(action, board, extra) {
   try { const r = await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action, board, ...(extra || {}) }) }); if (action === "use" || action === "new" || action === "archive" || action === "delete") kbBoardId = ""; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); return r; }
   catch (e) { alert(e.message); }
@@ -1062,28 +1172,54 @@ async function kbBoardAct(action, board, extra) {
 function kbMenu() {
   const m = $("kbMenu"); if (!m.hidden) { m.hidden = true; return; }
   const b = kbData.board;
-  m.innerHTML = `<button data-a="design">📐 New board from a design document…</button><button data-a="new">＋ New board…</button><button data-a="rename">Rename “${esc(b.name)}”…</button><button data-a="save">Save snapshot to a file</button><hr>
+  m.innerHTML = `<button data-a="projects">🗂 Projects and folders…</button><button data-a="ticket">＋ New ticket…</button><hr><button data-a="design">📐 New board from a design document…</button><button data-a="new">＋ New board…</button><button data-a="details">Board details…</button><button data-a="rename">Rename “${esc(b.name)}”…</button><button data-a="project">Project folder${b.project ? `: ${esc(b.project)}` : " (not set)"}…</button><button data-a="save">Save snapshot to a file</button><hr>
     ${b.archived ? '<button data-a="unarchive">Unarchive</button>' : '<button data-a="archive">Archive board</button>'}<button data-a="arch">${kbShowArch ? "Hide" : "Show"} archived boards</button><hr>
     <button data-a="clear" class="danger">Clear all tickets…</button><button data-a="delete" class="danger">Delete board…</button>`;
   m.hidden = false;
+  const br = $("kbBoardMenu").getBoundingClientRect(), pr = m.offsetParent ? m.offsetParent.getBoundingClientRect() : { left: 0, top: 0 };
+  m.style.top = `${br.bottom - pr.top + 4}px`; m.style.left = `${Math.max(8, Math.min(br.left - pr.left, window.innerWidth - pr.left - m.offsetWidth - 8))}px`;
   m.querySelectorAll("button").forEach((x) => x.onclick = async () => {
     m.hidden = true; const a = x.dataset.a;
     if (a === "design") kbDesignOpen();
-    else if (a === "new") { const n = prompt("Name of the new board (it becomes the active board):"); if (n) await kbBoardAct("new", "", { name: n }); }
+    else if (a === "projects") kbProjOpen();
+    else if (a === "ticket") kbTicketForm();
+    else if (a === "details") kbBoardForm(b);
+    else if (a === "new") { const n = prompt("Name of the new project board (it becomes the active board):"); if (!n) return; const d = prompt("Project folder its tickets are worked in (leave empty to use the default folder):", ""); if (d === null) return; await kbBoardAct("new", "", { name: n, project: d.trim() }); }
+    else if (a === "project") { const d = prompt(`Project folder for “${b.name}” (its tickets are worked there; empty = default folder):`, b.project || ""); if (d !== null && d.trim() !== (b.project || "")) await kbBoardAct("project", b.id, { project: d.trim() }); }
     else if (a === "rename") { const n = prompt("New name:", b.name); if (n && n !== b.name) await kbBoardAct("rename", b.id, { name: n }); }
     else if (a === "save") { const r = await kbBoardAct("save", b.id); if (r && r.file) alert("Saved to " + r.file); }
     else if (a === "archive") await kbBoardAct("archive", b.id);
     else if (a === "unarchive") await kbBoardAct("unarchive", b.id);
     else if (a === "arch") { kbShowArch = !kbShowArch; kbRender(); }
-    else if (a === "clear" || a === "delete") {
-      const n = prompt(`${a === "clear" ? `This removes ALL tickets from “${b.name}”` : `This deletes the board “${b.name}” and its tickets`}.\nA snapshot is saved first, so it can be restored.\nType the board name to confirm:`);
-      if (n === null) return; const r = await kbBoardAct(a, b.id, { confirm: n }); if (r && r.snapshot) alert(`Done. ${r.removed} ticket(s) removed.\nSnapshot (restore it with: kanban board restore <file>):\n${r.snapshot}`);
-    }
+    else if (a === "clear" || a === "delete") await kbClearOrDelete(a, b);
   });
+}
+async function kbClearOrDelete(a, b) {
+  const cnt = ((kbData && kbData.boards) || []).find((x) => x.id === b.id);
+  const what = a === "clear" ? `This removes ALL ${cnt ? cnt.cards + " " : ""}tickets from “${b.name}”` : `This deletes the board “${b.name}” and its tickets`;
+  for (let hint = ""; ;) {
+    const n = prompt(`${hint}${what}.\nA snapshot is saved first, so it can be restored. Files are not touched.\nType the board name (${b.name}) to confirm:`);
+    if (n === null) return;
+    try {
+      const r = await api("/api/kanban/boards", { method: "POST", body: JSON.stringify({ action: a, board: b.id, confirm: n }) });
+      if (a === "delete") kbBoardId = ""; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); await kbLoad();
+      alert(`Done. ${r.removed} ticket(s) removed.\nSnapshot (restore it with: kanban board restore <file>):\n${r.snapshot}`);
+      return;
+    } catch (e) {
+      if (/type the board name/.test(e.message)) { hint = `“${n}” is not the board name. `; continue; }
+      alert(`Could not ${a} “${b.name}”: ${e.message}`); return;
+    }
+  }
 }
 $("kbBoardMenu").onclick = (e) => { e.stopPropagation(); kbMenu(); };
 document.addEventListener("click", (e) => { if (!e.target.closest("#kbMenu")) $("kbMenu").hidden = true; });
 $("kb").addEventListener("click", (e) => { const t = e.target.closest && e.target.closest(".tagf[data-t]"); if (!t) return; e.stopPropagation(); e.preventDefault(); const k = t.dataset.t; kbTagF.has(k) ? kbTagF.delete(k) : kbTagF.add(k); kbRender(); }, true);
+$("kbProject").onchange = async () => {
+  const v = $("kbProject").value;
+  if (v === "__manage") { $("kbProject").value = kbProjView === null ? (kbData.board.project_id || "") : kbProjView; kbProjOpen(); return; }
+  if (!v) { kbProjView = ""; kbRender(); return; }
+  try { const r = await api("/api/kanban/projects", { method: "POST", body: JSON.stringify({ action: "use", project: v }) }); kbProjView = null; kbBoardId = r.board.id; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); await kbLoad(); } catch (e) { alert(e.message); }
+};
 $("kbBoard").onchange = () => { kbBoardId = $("kbBoard").value; kbEpic = ""; kbSel = null; $("kb").classList.remove("detail"); kbPush("board"); kbLoad(); };
 function kbCloseDetail() { kbSel = null; kbDetailData = null; $("kb").classList.remove("detail"); kbPush("board"); kbRender(); }
 $("kbOpen").onclick = () => { kbOpenOverlay(); kbLoad(); };
@@ -1092,6 +1228,9 @@ $("kbZoom").onclick = () => $("kbZoom").classList.remove("on");
 $("kbEpic").onchange = () => { kbEpic = $("kbEpic").value; kbRender(); };
 $("kbSearch").oninput = () => { kbQ = $("kbSearch").value.trim().toLowerCase(); kbRender(); };
 document.querySelectorAll("#kbViews button").forEach((b) => b.onclick = () => { kbView = b.dataset.v; try { localStorage.setItem("kbView", kbView); } catch (e) { /* ignore */ } kbRender(); });
+$("kbProjBtn").onclick = () => kbProjOpen();
+$("kbNewTicket").onclick = () => kbData && kbTicketForm();
+$("kbClearBtn").onclick = () => kbData && kbClearOrDelete("clear", kbData.board);
 $("kbDispatch").onclick = async () => { try { const r = await api("/api/kanban/dispatch", { method: "POST", body: "{}" }); $("kbDispatch").textContent = `Started ${r.dispatched}`; setTimeout(() => $("kbDispatch").textContent = "Run workers", 2500); kbLoad(); } catch (e) { alert(e.message); } };
 $("kbEnrich").onclick = async () => { const b = $("kbEnrich"); b.disabled = true; b.textContent = "Looking up…"; try { const r = await api("/api/kanban/enrich", { method: "POST", body: JSON.stringify({ board: kbData && kbData.board.id }) }); b.textContent = r.skipped ? "Lookups are off" : `Added ${r.notes} notes`; if (r.failed && r.failed.length) alert(r.text); } catch (e) { b.textContent = "Add web notes"; alert(e.message); } b.disabled = false; setTimeout(() => b.textContent = "Add web notes", 4000); kbLoad(); };
 $("kbResume").onclick = async () => { try { const r = await api("/api/kanban/resume", { method: "POST", body: "{}" }); $("kbResume").textContent = `Re-queued ${r.requeued}`; setTimeout(() => $("kbResume").textContent = "Resume interrupted", 2500); kbLoad(); } catch (e) { alert(e.message); } };

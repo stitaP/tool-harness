@@ -116,6 +116,10 @@ export declare class Runtime extends EventEmitter {
     sessionCwd(sid: string): string;
     /** agent.default_cwd when it is an existing folder, else the folder the harness started in. */
     defaultCwd(): string;
+    /** Folders added to a chat with /add-dir (existing ones only). */
+    extraDirs(sid: string): string[];
+    /** The folder whose checkpoints cover `abs`: an /add-dir folder that contains it, else the chat's folder. */
+    checkpointRoot(sid: string, abs: string, cwd: string): string;
     /** Recently used working folders, most recent first (for the folder picker). */
     recentCwds(): string[];
     private rememberCwd;

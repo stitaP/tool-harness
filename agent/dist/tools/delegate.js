@@ -1,7 +1,8 @@
 import { runTurn } from "../loop/agent.js";
 import { repairJson } from "../util/jsonrepair.js";
 import { errMsg } from "../util/misc.js";
-import { obj, str, arr, int } from "./types.js";
+import { obj, str, arr, int, enm } from "./types.js";
+import { commitAll, createWorktree, removeWorktree, worktreeChanges } from "../runtime/worktree.js";
 /** Simple async semaphore shared by all delegations in the process. */
 class Semaphore {
     max;
@@ -31,6 +32,7 @@ export const delegateTool = {
         output_schema: { type: "object", description: "JSON Schema the result must follow" },
         max_iterations: int("per-subagent iteration cap"),
         agent: str("optional: run the subagents as this configured agent (its instructions, tools and model)"),
+        isolation: enm(["none", "worktree"], "worktree: each subagent works in its own git worktree branch, so parallel subagents cannot overwrite each other or your files; you get the branch to merge (default none)"),
     }),
     async handler(a, ctx) {
         const rt = ctx.rt;
@@ -52,7 +54,16 @@ export const delegateTool = {
             try {
                 if (ctx.signal.aborted)
                     return { i, goal: t.goal, ok: false, out: "[interrupted]" };
-                const child = rt.createSession({ source: "subagent", parent_id: ctx.session.id, title: `sub${a.agent ? `(${a.agent})` : ""}: ${t.goal.slice(0, 50)}`, cwd: ctx.cwd });
+                let wt = null;
+                if (a.isolation === "worktree") {
+                    try {
+                        wt = await createWorktree(ctx.cwd, `sub-${Date.now().toString(36)}-${i}`);
+                    }
+                    catch (e) {
+                        return { i, goal: t.goal, ok: false, out: `error: isolation=worktree needs a git repository with at least one commit (${errMsg(e)})` };
+                    }
+                }
+                const child = rt.createSession({ source: "subagent", parent_id: ctx.session.id, title: `sub${a.agent ? `(${a.agent})` : ""}: ${t.goal.slice(0, 50)}`, cwd: wt?.cwd ?? ctx.cwd });
                 if (a.agent)
                     rt.applyAgent(child.id, a.agent);
                 rt.emitEvent(ctx.session.id, { type: "subagent", id: child.id, goal: t.goal, state: "started" });
@@ -80,6 +91,8 @@ export const delegateTool = {
                     }
                     catch { /* leave as text */ }
                 }
+                if (wt)
+                    out += await settleWorktree(wt, t.goal);
                 rt.emitEvent(ctx.session.id, { type: "subagent", id: child.id, state: r.error ? "failed" : "done" });
                 return { i, goal: t.goal, ok: !r.error && !r.interrupted, out, iterations: r.iterations, sid: child.id };
             }
@@ -96,3 +109,18 @@ export const delegateTool = {
         return results.map((r) => `## Task ${r.i + 1}: ${r.goal}\n${r.ok ? "" : "(not fully completed)\n"}${r.out}`).join("\n\n");
     },
 };
+/** After an isolated subagent: commit what it left, drop the worktree when nothing changed, else hand over the branch. */
+async function settleWorktree(wt, goal) {
+    try {
+        await commitAll(wt.path, `subagent: ${goal.replace(/\s+/g, " ").slice(0, 60)}`);
+        const ch = await worktreeChanges(wt);
+        if (!ch.ahead) {
+            await removeWorktree(wt, { deleteBranch: true, force: true });
+            return "\n\n[worktree: no file changes; removed]";
+        }
+        return `\n\n[worktree: ${ch.ahead} commit(s) on branch ${wt.branch} in ${wt.path}. Review with git diff ${wt.base}...${wt.branch}; merge with: git merge --no-ff ${wt.branch} (then: git worktree remove ${wt.path} && git branch -d ${wt.branch})]`;
+    }
+    catch (e) {
+        return `\n\n[worktree ${wt.path}: ${errMsg(e)}]`;
+    }
+}

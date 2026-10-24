@@ -11,4 +11,6 @@ export declare function buildSystemPrompt(rt: Runtime, opts: {
     personality?: string;
     profile?: string;
     extra?: string;
+    outputStyle?: string;
+    extraDirs?: string[];
 }): string;

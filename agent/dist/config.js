@@ -32,6 +32,8 @@ export const DEFAULT_CONFIG = {
         default_cwd: "", // folder new chats start in (like opening Claude Code in a project); "" = where the harness started
         stream: true,
         retries: 3,
+        effort: "", // reasoning effort for new chats: off | low | medium | high | xhigh | max ("" = the model default); /effort per chat
+        output_style: "", // concise | explanatory | learning | report | a file in <home>/output-styles; /output-style per chat
     },
     compression: { enabled: true, threshold: 0.6, keep_last: 8 },
     goals: { max_turns: 20, max_idle_turns: 4 }, // pause a goal after this many consecutive turns that called no tool (0 = never)
@@ -64,9 +66,14 @@ export const DEFAULT_CONFIG = {
     security: { redact_tool_output: true, blocked_paths: ["~/.ssh", "~/.aws", "~/.gnupg"], protected_paths: [] }, // protected: file tools never write there (also .stitap-protected files)
     plugins: { enabled: true },
     store_bridge: { enabled: true, path: "" },
-    hooks: {},
-    kanban: { workers: 1, enabled: true, guard_chat_writes: true, project_key: "PT", cwd: "", max_attempts: 5, test_timeout_s: 600, enforce_commit_keys: true, verify: true, worker_tier: "auto", default_board: "Main", tier_by_kind: { tests: "fast", gate: "fast" },
-        numbering: { feature_prefix: "MF", story_prefix: "US", bug_prefix: "BG", feature_digits: 3, story_digits: 1 }, // design boards: MF010 = 10th main feature, US0101 = its first story
+    hooks: {}, // shell hooks per event; pre_tool_call exit code 2 blocks the call
+    ui: { statusline: { enabled: true, command: "" }, vim: false, keybindings: {} }, // CLI: status line above the prompt (command = your own script), vi keys, key → slash command
+    kanban: { workers: 1, worktrees: false, enabled: true, guard_chat_writes: true, project_key: "PT", cwd: "", max_attempts: 5, test_timeout_s: 600, enforce_commit_keys: true, verify: true, worker_tier: "auto", default_board: "Main", tier_by_kind: { tests: "fast", gate: "fast" },
+        // MF010 = 10th main feature, US0101 = its first story, BG0101 its first bug. style "feature": every epic is numbered so
+        // (import, design, the tool, the UI); "prefix": the old PT-12 keys unless a ticket asks for feature numbering
+        numbering: { style: "feature", feature_prefix: "MF", story_prefix: "US", bug_prefix: "BG", feature_digits: 3, story_digits: 1 },
+        /** kanban import makes a DRAFT: its tickets wait in backlog until the user approves them (kanban approve) */
+        import_draft: true,
         design: { max_searches: 12, max_cited: 6, pages_per_question: 2, pdfs_per_question: 1, research_rounds: 2, max_pdf_mb: 40, prior_art: true, max_repos: 3, max_repo_mb: 200, check_references: true, stories_per_epic: 8, search_delay_ms: 2500 } }, // tier_by_kind: which router tier a kind of ticket prefers (the small model for testing work); design: design document → draft board (kanban design)
     lsp: { enabled: true, servers: {} }, // lsp tool: extra/override language servers
     router: ROUTER_DEFAULTS, // starts/stops llama-server and picks a fast or strong model per request

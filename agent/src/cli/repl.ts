@@ -1,7 +1,9 @@
 /** Interactive terminal chat (zero-dependency readline REPL). */
 import { createInterface, type Interface } from "node:readline";
 import type { Runtime } from "../runtime/runtime.js";
-import { commandNames, looksLikeCommand, runCommand } from "../runtime/commands.js";
+import { commandNames, looksLikeCommand, runCommand, runInputPrefix } from "../runtime/commands.js";
+import { statusLine } from "../runtime/modes.js";
+import { newVimState, vimKey } from "./vim.js";
 import { barePathHint, expandReferences } from "../prompt/references.js";
 import { BANNER, bold, cyan, dim, gray, green, indent, magenta, red, toolLine, yellow } from "./ui.js";
 
@@ -17,6 +19,7 @@ export async function repl(rt: Runtime, opts: { sessionId?: string; yolo?: boole
   let pending: Pending | null = null;
   let toolOutLines = 0;
 
+  let buffer: string[] = [];
   const completer = (line: string): [string[], string] => {
     if (!line.startsWith("/")) return [[], line];
     const all = [...commandNames(), ...rt.skills.list().map((s) => s.name)].map((n) => `/${n}`);
@@ -24,7 +27,10 @@ export async function repl(rt: Runtime, opts: { sessionId?: string; yolo?: boole
     return [hits.length ? hits : all, line];
   };
   const rl: Interface = createInterface({ input: process.stdin, output: out, completer, historySize: 500, terminal: process.stdin.isTTY });
-  const prompt = () => { rl.setPrompt(rt.isBusy(sid) ? dim("… ") : green("› ")); rl.prompt(true); };
+  const vim = newVimState();
+  const promptText = () => (rt.isBusy(sid) ? dim("… ") : buffer.length ? dim("… ") : (rt.cfg.data as any).ui?.vim && vim.mode === "normal" ? yellow("❮ ") : green("› "));
+  const prompt = () => { rl.setPrompt(promptText()); rl.prompt(true); };
+  const showStatus = async () => { try { const t = await statusLine(rt, sid); if (t) println(gray(`  ${t}`)); } catch { /* status line is best effort */ } };
   const println = (s: string) => {
     if (streaming) { out.write("\n"); streaming = false; }
     out.write(s + "\n");
@@ -33,6 +39,7 @@ export async function repl(rt: Runtime, opts: { sessionId?: string; yolo?: boole
   console.log(BANNER);
   const s0 = rt.db.getSession(sid)!;
   console.log(gray(`session ${sid} · model ${rt.providerFor(sid).model} · cwd ${rt.sessionCwd(sid)}${s0.title ? ` · "${s0.title}"` : ""}`));
+  console.log(gray("  !cmd runs a shell command · #note saves to memory · /plan plans before changing anything · /help"));
 
   const onEvent = (ev: any) => {
     if (ev.sessionId !== sid && ev.sessionId !== "*") return;
@@ -68,6 +75,7 @@ export async function repl(rt: Runtime, opts: { sessionId?: string; yolo?: boole
       case "subagent": if (ev.state !== "tool") println(gray(`  ↳ subagent ${ev.id.slice(-6)} ${ev.state}${ev.goal ? `: ${ev.goal.slice(0, 80)}` : ""}`)); break;
       case "curator": println(gray(`  · learned: ${ev.memory} memory item(s)${ev.skill ? `, skill ${ev.skill}` : ""}`)); break;
       case "notification": println(cyan(`🔔 ${String(ev.text).slice(0, 500)}`)); break;
+      case "statusline": if (!rt.isBusy(sid)) { println(gray(`  ${ev.text}`)); prompt(); } break;
       case "user_message": if (ev.internal) println(gray(`  ↻ ${String(ev.text).split("\n")[0].slice(0, 120)}`)); break;
       case "turn_end":
         if (streaming) { out.write("\n"); streaming = false; }
@@ -87,7 +95,6 @@ export async function repl(rt: Runtime, opts: { sessionId?: string; yolo?: boole
     out.write("\n"); prompt();
   });
 
-  let buffer: string[] = [];
   let inBlock = false;
   const handle = async (raw: string) => {
     ctrlC = 0;
@@ -110,6 +117,8 @@ export async function repl(rt: Runtime, opts: { sessionId?: string; yolo?: boole
     if (!t) { prompt(); return; }
     if (t === "/quit" || t === "/exit" || t === "/q") { rl.close(); return; }
     if (t === "/clear") { console.clear(); prompt(); return; }
+    const pre = await runInputPrefix(t, { rt, sid, source: "cli" });
+    if (pre) { if (pre.text) println(pre.text); prompt(); return; }
     if (looksLikeCommand(t, rt)) {
       const r = await runCommand(t, { rt, sid, source: "cli" });
       if (r?.text) println(r.text);
@@ -134,7 +143,33 @@ export async function repl(rt: Runtime, opts: { sessionId?: string; yolo?: boole
     void rt.send(sid, expanded, { source: "cli", images });
   };
 
-  rl.on("line", (l) => { void handle(l); });
+  // key handling on top of readline: your key bindings, Option/Alt+Enter for a new line, and vim keys (/vim)
+  const anyRl = rl as any;
+  const ttyWrite = typeof anyRl._ttyWrite === "function" ? anyRl._ttyWrite.bind(rl) : null;
+  if (ttyWrite) anyRl._ttyWrite = (str: string, key: any) => {
+    const ui = (rt.cfg.data as any).ui ?? {};
+    if (!pending && key && (key.ctrl || key.meta) && key.name && !key.shift) {
+      const cmd = ui.keybindings?.[`${key.ctrl ? "ctrl" : "alt"}+${key.name}`];
+      if (cmd) { out.write("\n"); anyRl.line = ""; anyRl.cursor = 0; void submit(cmd); return; }
+    }
+    if (!pending && key?.name === "return" && key.meta) {
+      buffer.push(anyRl.line); anyRl.line = ""; anyRl.cursor = 0; out.write("\n"); prompt(); return;
+    }
+    if (!ui.vim || pending || (key?.ctrl && ["c", "d"].includes(key.name)) || key?.name === "return" || key?.name === "enter") {
+      if (key?.name === "return" && vim.mode === "normal") vim.mode = "insert";
+      return ttyWrite(str, key);
+    }
+    const r = vimKey(vim, anyRl.line, anyRl.cursor, str ?? "", key?.name);
+    if (r.action === "passthrough") return ttyWrite(str, key);
+    if (r.action === "history_prev") return ttyWrite("", { name: "up" });
+    if (r.action === "history_next") return ttyWrite("", { name: "down" });
+    anyRl.line = r.line; anyRl.cursor = Math.max(0, Math.min(r.cursor, r.line.length));
+    rl.setPrompt(promptText());
+    anyRl._refreshLine?.();
+  };
+
+  rl.on("line", (l) => { if (vim.mode === "normal") vim.mode = "insert"; void handle(l); });
+  await showStatus();
   prompt();
   await new Promise<void>((r) => rl.on("close", () => r()));
   rt.off("event", onEvent);

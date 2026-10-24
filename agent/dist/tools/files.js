@@ -180,7 +180,7 @@ export const writeFileTool = {
             if (!ok)
                 return "BLOCKED: not approved.";
         }
-        ctx.rt.checkpoints.take(ctx.cwd, `before write_file ${relative(ctx.cwd, abs)}`, abs);
+        ctx.rt.checkpoints.take(ctx.rt.checkpointRoot(ctx.session.id, abs, ctx.cwd), `before write_file ${relative(ctx.cwd, abs)}`, abs);
         mkdirSync(dirname(abs), { recursive: true });
         const content = String(a.content ?? "");
         const existed = existsSync(abs);
@@ -295,7 +295,7 @@ export const patchTool = {
         const vac = vacuousTestError(relative(ctx.cwd, abs), text);
         if (vac)
             return `error: ${vac} No changes were written.`;
-        ctx.rt.checkpoints.take(ctx.cwd, `before patch ${relative(ctx.cwd, abs)}`, abs);
+        ctx.rt.checkpoints.take(ctx.rt.checkpointRoot(ctx.session.id, abs, ctx.cwd), `before patch ${relative(ctx.cwd, abs)}`, abs);
         writeFileSync(abs, text);
         return `Patched ${relative(ctx.cwd, abs) || abs}: ${notes.join("; ")}`;
     },

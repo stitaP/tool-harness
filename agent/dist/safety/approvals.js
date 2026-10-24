@@ -10,15 +10,19 @@ export class ApprovalManager {
     persistAllow;
     onRequest;
     timeoutMs;
+    onDecision;
     pending = new Map();
     sessionAllow = new Map(); // sessionId → approved commands / tools
     yoloSessions = new Set();
-    constructor(getMode, getAllowPatterns, persistAllow, onRequest, timeoutMs) {
+    constructor(getMode, getAllowPatterns, persistAllow, onRequest, timeoutMs, 
+    /** every decision a person made (for /fewer-permission-prompts) */
+    onDecision) {
         this.getMode = getMode;
         this.getAllowPatterns = getAllowPatterns;
         this.persistAllow = persistAllow;
         this.onRequest = onRequest;
         this.timeoutMs = timeoutMs;
+        this.onDecision = onDecision;
     }
     /** Returns true when the action may proceed. */
     async check(req, opts = {}) {
@@ -41,6 +45,7 @@ export class ApprovalManager {
             setTimeout(() => { if (this.pending.has(id))
                 this.respond(id, "deny"); }, this.timeoutMs()).unref?.();
         });
+        this.onDecision?.(req, d);
         if (d === "session") {
             if (!this.sessionAllow.has(req.sessionId))
                 this.sessionAllow.set(req.sessionId, new Set());
@@ -68,6 +73,8 @@ export class ApprovalManager {
             if (p.sessionId === sessionId)
                 this.respond(p.id, "deny");
     }
+    /** Commands and tools approved for the rest of this session ("session" answers). */
+    sessionAllowed(sessionId) { return [...(this.sessionAllow.get(sessionId) ?? [])]; }
     list(sessionId) {
         return [...this.pending.values()].filter((p) => !sessionId || p.sessionId === sessionId).map(({ resolve: _r, ...p }) => p);
     }

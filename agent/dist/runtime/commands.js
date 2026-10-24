@@ -14,6 +14,8 @@ import { fmtDuration, parseDuration, splitArgs } from "../util/misc.js";
 import { exportSession } from "./export.js";
 import { benchText } from "./bench.js";
 import { RouterProvider } from "../providers/router.js";
+import { CC_COMMANDS, runInputPrefix } from "./cc-commands.js";
+export { runInputPrefix };
 const ok = (text) => ({ text });
 function lastUserIndex(rt, sid) {
     const msgs = rt.db.getMessages(sid);
@@ -25,6 +27,16 @@ function lastUserIndex(rt, sid) {
 function sessionLine(rt, s, i) {
     const n = rt.db.getMessages(s.id).filter((m) => m.role === "user").length;
     return `${i !== undefined ? `${i + 1}. ` : ""}${s.id}  ${new Date(s.updated_at).toLocaleString()}  [${s.source}] ${s.title || "(untitled)"} — ${n} msg`;
+}
+/** `--dir <folder>` picks an /add-dir folder (by path or folder name) instead of the chat's own; null = no match. */
+function dirArg(c, a) {
+    const m = /\s*--dir\s+(\S+)/.exec(a);
+    const cwd = c.rt.sessionCwd(c.sid);
+    if (!m)
+        return { dir: cwd, rest: a.trim() };
+    const want = m[1];
+    const dir = [cwd, ...c.rt.extraDirs(c.sid)].find((d) => d === want || d.endsWith(`/${want}`)) ?? null;
+    return { dir, rest: a.replace(m[0], "").trim() };
 }
 const COMMANDS = [
     { name: "help", group: "general", usage: "/help", help: "List commands", handler: () => ok(helpText()) },
@@ -317,16 +329,30 @@ const COMMANDS = [
                 c.rt.approvals.yoloSessions.delete(c.sid);
             return ok(on ? "YOLO on for this session — dangerous commands run without asking." : "YOLO off.");
         } },
-    { name: "rollback", group: "files", usage: "/rollback [checkpoint]", help: "Restore files to a checkpoint", handler: (a, c) => {
-            if (!a.trim()) {
-                const l = c.rt.checkpoints.list(c.rt.sessionCwd(c.sid), 15);
-                if (!l.length)
+    { name: "rollback", group: "files", usage: "/rollback [checkpoint] [--dir <added folder>]", help: "Restore files to a checkpoint", handler: (a, c) => {
+            const { dir, rest } = dirArg(c, a);
+            if (dir === null)
+                return ok(`No added folder matches. Folders: ${[c.rt.sessionCwd(c.sid), ...c.rt.extraDirs(c.sid)].join(", ")}`);
+            if (!rest) {
+                const dirs = a.includes("--dir") ? [dir] : [dir, ...c.rt.extraDirs(c.sid)];
+                const found = dirs.map((d) => ({ d, l: c.rt.checkpoints.list(d, 15) })).filter((x) => x.l.length);
+                if (!found.length)
                     return ok("No checkpoints for this directory.");
-                return ok(`Checkpoints (newest first) — /rollback <id>:\n${l.map((x) => `${x.id}  ${new Date(x.time).toLocaleString()}  ${x.message}`).join("\n")}`);
+                const fmt = (l) => l.map((x) => `${x.id}  ${new Date(x.time).toLocaleString()}  ${x.message}`).join("\n");
+                if (found.length === 1 && found[0].d === dir)
+                    return ok(`Checkpoints (newest first) — /rollback <id>:\n${fmt(found[0].l)}`);
+                return ok(`Checkpoints (newest first) — /rollback <id> [--dir <folder>]:\n${found.map((x) => `${x.d}:\n${fmt(x.l)}`).join("\n\n")}`);
             }
-            return ok(c.rt.checkpoints.rollback(c.rt.sessionCwd(c.sid), a.trim()));
+            return ok(c.rt.checkpoints.rollback(dir, rest));
         } },
-    { name: "diff", group: "files", usage: "/diff [checkpoint]", help: "Show changes since the last (or given) checkpoint", handler: (a, c) => ok(c.rt.checkpoints.diff(c.rt.sessionCwd(c.sid), a.trim() || undefined).slice(0, 20000)) },
+    { name: "diff", group: "files", usage: "/diff [checkpoint] [--dir <added folder>]", help: "Show changes since the last (or given) checkpoint", handler: (a, c) => {
+            const { dir, rest } = dirArg(c, a);
+            if (dir === null)
+                return ok("No added folder matches.");
+            const main = c.rt.checkpoints.diff(dir, rest || undefined);
+            const extra = a.includes("--dir") || rest ? [] : c.rt.extraDirs(c.sid).filter((d) => c.rt.checkpoints.list(d, 1).length).map((d) => `── ${d} ──\n${c.rt.checkpoints.diff(d)}`);
+            return ok([main, ...extra].join("\n\n").slice(0, 20000));
+        } },
     { name: "cwd", aliases: ["cd"], group: "files", usage: "/cwd [path]", help: "Show or change the working directory", handler: async (a, c) => {
             if (!a.trim())
                 return ok(c.rt.sessionCwd(c.sid));
@@ -454,7 +480,7 @@ const COMMANDS = [
                 return ok(C.remove(id) ? "Removed." : "Not found.");
             return ok('Usage: /cron [list | add "<schedule>" <task> | run <id> | pause <id> | resume <id> | remove <id>]');
         } },
-    { name: "kanban", group: "automation", usage: "/kanban [enrich | boards | board new|use|rename|archive|unarchive|clear|delete|save <name> | restore <file> | move <keys> to <board> | link <key> <type> <key> | unlink <key> <key> | list | board | report | show <key> | add <title> | comment <key> <text> | reply <key> <comment-id> <text> | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> [projectDir] [testsDir]]", help: "Jira-style kanban board", handler: async (a, c) => {
+    { name: "kanban", group: "automation", usage: "/kanban [enrich | boards | board new|use|rename|archive|unarchive|clear|delete|save <name> | restore <file> | move <keys> to <board> | link <key> <type> <key> | unlink <key> <key> | list | board | report | show <key> | add <title> | comment <key> <text> | reply <key> <comment-id> <text> | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | merge <key> | import <planDir> [projectDir] [testsDir]]", help: "Jira-style kanban board", handler: async (a, c) => {
             const [sub = "list", ...rest] = splitArgs(a);
             const K = c.rt.kanban;
             try {
@@ -544,6 +570,14 @@ const COMMANDS = [
                     return ok(await K.regression(rest[0]));
                 if (sub === "sync")
                     return ok(`Linked ${await K.syncCommits(rest[0])} new commit(s).`);
+                if (sub === "merge") {
+                    const c0 = K.get(rest[0]);
+                    if (!c0?.worktree)
+                        return ok(`${rest[0] ?? "?"} has no worktree to merge.`);
+                    await K.mergeCardWorktree(c0.id);
+                    const c1 = K.get(c0.id);
+                    return ok(c1.worktree ? `Not merged; see the comments: /kanban show ${c1.key ?? c1.id}` : `Merged and removed the worktree of ${c1.key ?? c1.id}.`);
+                }
                 if (sub === "import")
                     return ok(importPlan(K, { planDir: rest[0], projectDir: rest[1], testsDir: rest[2] }));
             }
@@ -560,8 +594,9 @@ const COMMANDS = [
             const s = c.rt.db.getSession(c.sid);
             const g = c.rt.db.getMeta(goalKey(c.sid));
             const procs = c.rt.processes.list(c.sid).filter((p) => p.status === "running");
-            return ok([`Session ${s.id} "${s.title}" [${s.source}]`, `Model: ${c.rt.providerFor(c.sid).model}`, `cwd: ${c.rt.sessionCwd(c.sid)}`, `Busy: ${c.rt.isBusy(c.sid)}`, `Approvals: ${c.rt.approvals.yoloSessions.has(c.sid) ? "yolo" : c.rt.cfg.data.approvals.mode}`, g ? `Goal: [${g.status}] ${g.text.slice(0, 80)}` : "Goal: none", `Background processes: ${procs.length}`].join("\n"));
+            return ok([`Session ${s.id} "${s.title}" [${s.source}]`, `Model: ${c.rt.providerFor(c.sid).model}${s.meta.effort ? ` · effort ${s.meta.effort}` : ""}${s.meta.output_style ? ` · style ${s.meta.output_style}` : ""}`, ...(s.meta.plan_mode ? ["Plan mode: ON (read-only)"] : []), ...(s.meta.worktree ? [`Worktree: ${s.meta.worktree.branch} (${s.meta.worktree.path})`] : []), ...(s.meta.extra_dirs?.length ? [`Added folders: ${s.meta.extra_dirs.join(", ")}`] : []), `cwd: ${c.rt.sessionCwd(c.sid)}`, `Busy: ${c.rt.isBusy(c.sid)}`, `Approvals: ${c.rt.approvals.yoloSessions.has(c.sid) ? "yolo" : c.rt.cfg.data.approvals.mode}`, g ? `Goal: [${g.status}] ${g.text.slice(0, 80)}` : "Goal: none", `Background processes: ${procs.length}`].join("\n"));
         } },
+    ...CC_COMMANDS,
 ];
 export function insights(rt, days) {
     const since = Date.now() - days * 86400_000;
@@ -592,7 +627,8 @@ function helpText() {
         groups.get(c.group).push(c);
     }
     return [...groups].map(([g, cs]) => `${g.toUpperCase()}\n${cs.map((c) => `  ${c.usage.padEnd(44)} ${c.help}`).join("\n")}`).join("\n\n") +
-        "\n\nSKILLS\n  /<skill-name> [request]                      Run a task with a skill loaded";
+        "\n\nSKILLS\n  /<skill-name> [request]                      Run a task with a skill loaded" +
+        "\n\nINPUT PREFIXES\n  !<command>                                   Run a shell command yourself; the agent sees the output with your next message\n  #<note>  ·  #user <fact>                     Save a note to memory / your user profile";
 }
 export function commandNames() {
     return COMMANDS.flatMap((c) => [c.name, ...(c.aliases ?? [])]);

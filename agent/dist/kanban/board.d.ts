@@ -1,6 +1,7 @@
 import type { Runtime } from "../runtime/runtime.js";
 import { type Tool } from "../tools/types.js";
 import { Boards, type CardRef } from "./boards.js";
+import { Projects } from "./projects.js";
 import type { Step } from "../tools/webtest.js";
 export type CardStatus = "backlog" | "ready" | "running" | "review" | "blocked" | "done";
 export type CardType = "epic" | "task" | "bug";
@@ -53,10 +54,20 @@ export interface Card {
     spec?: string;
     cwd?: string;
     functional?: Step[];
+    /** kanban.worktrees: the git worktree this card's worker uses until the card is merged */
+    worktree?: {
+        path: string;
+        branch: string;
+        root: string;
+        base: string;
+        cwd: string;
+    };
     board?: string;
     refs?: CardRef[];
     summary?: string;
     test_cases?: string[];
+    /** name of a working folder of the board's project (projects.ts) the ticket is worked in */
+    folder?: string;
     kind?: "tests" | "story" | "gate";
     section?: string;
     files?: string[];
@@ -98,6 +109,7 @@ export type NewCard = {
     functional?: Step[];
     key_prefix?: string;
     board?: string;
+    folder?: string;
     summary?: string;
     test_cases?: string[];
     kind?: Card["kind"];
@@ -116,6 +128,8 @@ export declare class KanbanBoard {
     private active;
     /** named boards, the active board, saving/restoring, and links between tickets on any board */
     readonly boards: Boards;
+    /** projects: named groups of boards with their working folders */
+    readonly projects: Projects;
     constructor(rt: Runtime);
     isActive(id: string): boolean;
     private get cfg();
@@ -127,6 +141,45 @@ export declare class KanbanBoard {
     get(ref: string): Card | null;
     private need;
     private save;
+    /** the kanban section of the config (read-only use outside this class) */
+    get settings(): {
+        workers: number;
+        worktrees: boolean;
+        enabled: boolean;
+        guard_chat_writes: boolean;
+        project_key: string;
+        cwd: string;
+        max_attempts: number;
+        test_timeout_s: number;
+        enforce_commit_keys: boolean;
+        verify: boolean;
+        worker_tier: "auto" | "fast" | "strong";
+        default_board: string;
+        tier_by_kind: Record<string, "fast" | "strong">;
+        numbering: {
+            style: "feature" | "prefix";
+            feature_prefix: string;
+            story_prefix: string;
+            bug_prefix: string;
+            feature_digits: number;
+            story_digits: number;
+        };
+        import_draft: boolean;
+        design: {
+            max_searches: number;
+            max_cited: number;
+            pages_per_question: number;
+            pdfs_per_question: number;
+            research_rounds: number;
+            max_pdf_mb: number;
+            prior_art: boolean;
+            max_repos: number;
+            max_repo_mb: number;
+            check_references: boolean;
+            stories_per_epic: number;
+            search_delay_ms: number;
+        };
+    };
     private get numbering();
     /** The next main-feature key: MF001, MF002 … numbered across every board. */
     featureKey(): string;
@@ -193,6 +246,14 @@ export declare class KanbanBoard {
     private specIsLarge;
     private buildPrompt;
     work(ref: string): Promise<Card>;
+    /**
+     * kanban.worktrees: the card's worker gets its own git worktree on branch kanban/<KEY>, so several workers never edit
+     * the same checkout. Skipped (the card runs in the main checkout) when the checkout has uncommitted changes: the
+     * worktree would not contain them, e.g. reference tests copied in but not committed.
+     */
+    private openCardWorktree;
+    /** Merge a done card's worktree branch into the branch it came from, then remove the worktree. Conflicts → review. */
+    mergeCardWorktree(ref: string): Promise<void>;
     fmt(c: Card): string;
     show(ref: string): string;
     /** One line per board: name, progress, active/archived. */

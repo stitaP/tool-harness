@@ -53,6 +53,7 @@ import { RouterProvider, type DuoServer } from "../providers/router.js";
 import { RagStore, ragSearchTool, RAG_SYSTEM_PROMPT } from "../rag/index.js";
 import { McpManager } from "../mcp/client.js";
 import { HookBus } from "./hooks.js";
+import { outputStylePrompt, statusLine } from "./modes.js";
 import { StoreBridge } from "./store-bridge.js";
 import { log } from "../util/log.js";
 import { errMsg, newId } from "../util/misc.js";
@@ -142,6 +143,9 @@ class SessionRunner {
     const plan = todos.length ? { done: todos.filter((t) => t.status === "completed" || t.status === "cancelled").length, total: todos.length } : undefined;
     rt.emitEvent(sid, { type: "turn_end", final: result.final, interrupted: result.interrupted, error: result.error, usage: result.usage, iterations: result.iterations, toolCalls: result.toolCalls, source, silent, plan });
     this.ctrl = null;
+    // a /review turn is read-only for that one turn
+    const after = rt.db.getSession(sid);
+    if (after?.meta?.read_only_turn) rt.db.updateSession(sid, { meta: { ...after.meta, read_only_turn: undefined } });
     void rt.hooks.emit("on_turn_end", { sessionId: sid, source, final: result.final, toolCalls: result.toolCalls });
     // leftover steer text becomes the next user message
     if (this.steers.length) this.queue.unshift({ text: this.steers.splice(0).join("\n"), source: "user", resolve: () => undefined, reject: () => undefined });
@@ -157,6 +161,7 @@ class SessionRunner {
     } catch (e) { log.warn(`post-turn processing failed: ${errMsg(e)}`); }
     this.busy = false;
     rt.emitEvent(sid, { type: "busy", busy: false });
+    if (!this.queue.length && (rt.attached.get(sid) ?? 0) > 0) void statusLine(rt, sid).then((t) => { if (t) rt.emitEvent(sid, { type: "statusline", text: t }); }).catch(() => undefined);
     item.resolve(result);
     void this.pump();
   }
@@ -208,6 +213,7 @@ export class Runtime extends EventEmitter {
       (p) => { try { this.cfg.set("approvals.allow_patterns", [...(this.cfg.data.approvals.allow_patterns ?? []), p]); } catch (e) { log.warn(errMsg(e)); } },
       (p) => this.emitEvent(p.sessionId, { type: "approval_request", ...p }),
       () => this.cfg.data.approvals.timeout * 1000,
+      (r, d) => { try { this.db.putRecord("approval_log", newId("al_"), { tool: r.tool, command: r.command, reason: r.reason, sessionId: r.sessionId, decision: d, at: Date.now() }); } catch (e) { log.warn(`approval log: ${errMsg(e)}`); } },
     );
     this.checkpoints = new Checkpoints(this.home, () => this.cfg.data.checkpoints.enabled, this.cfg.data.checkpoints.max_files);
     this.processes = new ProcessRegistry(join(this.home, "logs"));
@@ -277,7 +283,8 @@ export class Runtime extends EventEmitter {
     if (s.meta.mode === "rag") { this.db.updateSession(sid, { system_prompt: RAG_SYSTEM_PROMPT }); return { ...s, system_prompt: RAG_SYSTEM_PROMPT }; }
     const agent = s.meta.agent ? this.cfg.data.agents?.[s.meta.agent] : undefined;
     const extra = agent?.instructions ? `## Agent: ${s.meta.agent}\n${agent.instructions.trim()}` : undefined;
-    const prompt = buildSystemPrompt(this, { cwd: s.cwd || this.defaultCwd(), source: s.source, personality: s.meta.personality, profile: s.meta.tool_profile, extra });
+    const outputStyle = outputStylePrompt(this, s.meta.output_style ?? (this.cfg.data.agent.output_style || undefined));
+    const prompt = buildSystemPrompt(this, { cwd: s.cwd || this.defaultCwd(), source: s.source, personality: s.meta.personality, profile: s.meta.tool_profile, extra, outputStyle, extraDirs: (s.meta.extra_dirs ?? []).filter((d: string) => existsSync(d)) });
     this.db.updateSession(sid, { system_prompt: prompt });
     return { ...s, system_prompt: prompt };
   }
@@ -328,6 +335,16 @@ export class Runtime extends EventEmitter {
     const d = String(this.cfg.data.agent.default_cwd ?? "").trim().replace(/^~(?=\/|$)/, homedir());
     try { if (d && statSync(d).isDirectory()) return resolve(d); } catch { /* missing */ }
     return this.startCwd;
+  }
+
+  /** Folders added to a chat with /add-dir (existing ones only). */
+  extraDirs(sid: string): string[] { return ((this.db.getSession(sid)?.meta?.extra_dirs ?? []) as string[]).filter((d) => existsSync(d)); }
+
+  /** The folder whose checkpoints cover `abs`: an /add-dir folder that contains it, else the chat's folder. */
+  checkpointRoot(sid: string, abs: string, cwd: string): string {
+    const inside = (dir: string) => abs === dir || abs.startsWith(dir.endsWith("/") ? dir : dir + "/");
+    if (inside(resolve(cwd))) return cwd;
+    return this.extraDirs(sid).find((d) => inside(resolve(d))) ?? cwd;
   }
 
   /** Recently used working folders, most recent first (for the folder picker). */

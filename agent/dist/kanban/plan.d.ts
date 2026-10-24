@@ -20,4 +20,5 @@ export declare function importPlan(board: KanbanBoard, o: {
     keyPrefix?: string;
     split?: boolean;
     board?: string;
+    draft?: boolean;
 }): string;

@@ -9,12 +9,25 @@
  *     ctx.on("on_turn_end" | "on_session_start" | "on_session_end" | "pre_llm_call", (payload) => {})
  *   }
  * Shell hooks (config.yaml):  hooks: { post_tool_call: ["notify-send done"] } — payload JSON on stdin.
+ *   An entry can also be { match: "<tool name regex>", command: "…" } to run only for some tools.
+ *   pre_tool_call shell hooks are awaited (10s): exit code 2 blocks the call, stderr is the reason the model sees.
  */
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { log } from "../util/log.js";
+const hookCommand = (h) => (typeof h === "string" ? h : h.command);
+function hookMatches(h, payload) {
+    if (typeof h === "string" || !h.match)
+        return true;
+    try {
+        return new RegExp(h.match).test(String(payload?.tool ?? ""));
+    }
+    catch {
+        return false;
+    }
+}
 export const HOOK_EVENTS = ["pre_tool_call", "post_tool_call", "pre_llm_call", "on_turn_end", "on_session_start", "on_session_end", "on_message"];
 export class HookBus {
     rt;
@@ -38,9 +51,43 @@ export class HookBus {
                 log.warn(`hook ${event} failed: ${e.message}`);
             }
         }
-        for (const cmd of this.rt.cfg.data.hooks?.[event] ?? [])
-            this.runShell(cmd, { event, ...payload });
+        if (event !== "pre_tool_call")
+            for (const h of this.shellHooks(event))
+                if (hookMatches(h, payload))
+                    this.runShell(hookCommand(h), { event, ...payload });
         return out;
+    }
+    shellHooks(event) { return (this.rt.cfg.data.hooks?.[event] ?? []).filter((h) => typeof h === "string" ? h.trim() : h?.command); }
+    /** Plugin handlers registered per event (for /hooks). */
+    handlerCount(event) { return this.handlers.get(event)?.length ?? 0; }
+    /** Run a shell hook and wait for it: exit code, stdout and stderr. */
+    runShellWait(cmd, payload, timeoutMs = 10_000) {
+        const started = Date.now();
+        return new Promise((res) => {
+            let stdout = "", stderr = "", done = false;
+            const finish = (code) => { if (done)
+                return; done = true; clearTimeout(t); res({ command: cmd, code, stdout: stdout.slice(0, 4000), stderr: stderr.slice(0, 4000), ms: Date.now() - started }); };
+            let child;
+            try {
+                const shell = this.rt.terminal.shell;
+                child = spawn(shell.exe, shell.args(cmd), { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, cwd: payload?.cwd });
+            }
+            catch (e) {
+                stderr = e.message;
+                finish(127);
+                return;
+            }
+            const t = setTimeout(() => { stderr += `\n[hook timed out after ${timeoutMs / 1000}s]`; try {
+                child.kill("SIGKILL");
+            }
+            catch { /* gone */ } finish(null); }, timeoutMs);
+            child.stdout?.on("data", (b) => { stdout += b; });
+            child.stderr?.on("data", (b) => { stderr += b; });
+            child.on("error", (e) => { stderr += e.message; finish(127); });
+            child.on("close", (code) => finish(code));
+            child.stdin?.on("error", () => { });
+            child.stdin?.end(JSON.stringify(payload));
+        });
     }
     runShell(cmd, payload) {
         try {
@@ -57,7 +104,19 @@ export class HookBus {
     async preTool(sessionId, tool, args) {
         const res = await this.emit("pre_tool_call", { sessionId, tool, args });
         const veto = res.find((r) => typeof r === "string" && r.length);
-        return veto ? `BLOCKED by plugin hook: ${veto}` : null;
+        if (veto)
+            return `BLOCKED by plugin hook: ${veto}`;
+        const payload = { event: "pre_tool_call", sessionId, tool, args, cwd: this.rt.db.getSession(sessionId) ? this.rt.sessionCwd(sessionId) : undefined };
+        for (const h of this.shellHooks("pre_tool_call")) {
+            if (!hookMatches(h, payload))
+                continue;
+            const r = await this.runShellWait(hookCommand(h), payload);
+            if (r.code === 2)
+                return `BLOCKED by hook (${hookCommand(h).slice(0, 80)}): ${(r.stderr || r.stdout).trim() || "no reason given"}`;
+            if (r.code !== 0)
+                log.warn(`pre_tool_call hook "${hookCommand(h)}" exited ${r.code}: ${r.stderr.slice(0, 200)}`);
+        }
+        return null;
     }
     async postTool(sessionId, tool, args, result) {
         await this.emit("post_tool_call", { sessionId, tool, args, result });

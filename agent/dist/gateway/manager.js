@@ -1,4 +1,4 @@
-import { looksLikeCommand, runCommand } from "../runtime/commands.js";
+import { looksLikeCommand, runCommand, runInputPrefix } from "../runtime/commands.js";
 import { redactKnown } from "../util/redact.js";
 import { errMsg, newId } from "../util/misc.js";
 import { log } from "../util/log.js";
@@ -121,6 +121,12 @@ export class GatewayManager {
         if (pend && !looksLikeCommand(text, this.rt)) {
             const n = Number(text);
             this.rt.respondClarify(pend.id, pend.choices && n >= 1 && n <= pend.choices.length ? pend.choices[n - 1] : text);
+            return;
+        }
+        // "#note" saves to memory; "!cmd" shell runs are not offered over messaging apps
+        const pre = text.startsWith("#") ? await runInputPrefix(text, { rt: this.rt, sid, source: m.platform }) : null;
+        if (pre?.text) {
+            await this.send(m.platform, m.chatId, pre.text);
             return;
         }
         if (looksLikeCommand(text, this.rt) || /^\/(start|whoami|sethome)\b/.test(text)) {

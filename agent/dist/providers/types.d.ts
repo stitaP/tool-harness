@@ -20,6 +20,8 @@ export interface ChatRequest {
     tier?: "fast" | "strong";
     /** model router: use this tier unless the turn is going badly (then it escalates) */
     prefer?: "fast" | "strong";
+    /** reasoning effort chosen with /effort; unset = the model's default */
+    effort?: "off" | "low" | "medium" | "high" | "xhigh" | "max";
 }
 export interface ChatResponse {
     content: string;

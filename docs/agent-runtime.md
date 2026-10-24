@@ -87,6 +87,27 @@ and autocompaction uses them) and GPU memory. Figures survive restarts. The Reac
 (aliases: `/reset` = `/new`, `/fork` = `/branch`, `/cd` = `/cwd`, `/compact` = `/compress`). A message that only
 *starts* with `/` because it is a path (`/Users/me/plan.md do this`) goes to the agent, not the command parser.
 
+**Claude Code-style commands.**
+
+| | |
+|---|---|
+| `/plan <task>` | plan mode: the agent may only read (file reads, search, `git status/diff/log`, read-only shell commands such as `ls`, `cat`, `grep`); any write is refused with a note. It answers with a `## Plan`. `/plan approve [changes]` turns plan mode off and carries the plan out; `/plan on\|off\|show`. |
+| `/review [PR# \| ref \| --staged] [paths] [focus]` | read-only code review of the uncommitted changes and new files (or the last commit when the tree is clean, a branch since `ref`, or a GitHub PR through `gh`): verified findings, most severe first. `/security-review` does the same for exploitable vulnerabilities; `/simplify` cleans the changed code (reuse, dead code, efficiency) without changing behaviour and re-runs the tests. |
+| `/init [notes]` | explore the project and write `AGENTS.md` (or improve an existing `AGENTS.md` / `CLAUDE.md`): commands, architecture, conventions. |
+| `/context` | where the context window goes: system prompt sections, tool schemas (largest first), your messages, replies, tool calls and results, free space, and when compaction starts. |
+| `/hooks` | list, `add <event> [--match <tool regex>] <command>`, `remove <event> <n>`, `test <event> [tool]`. Shell hooks get the event as JSON on stdin; a `pre_tool_call` hook that exits **2** blocks the call and its stderr is what the model sees. |
+| `/permissions` | approval mode, allow rules, per-chat approvals, denied tools, blocked and protected paths; `allow <pattern>`, `remove <n>`, `deny <tool>`, `undeny <tool>`, `mode ask\|deny\|yolo`, `block <path>`, `protect <glob>`. `/fewer-permission-prompts [apply [n,…]]` suggests allow rules from the commands you keep approving (never a prefix rule for `rm`, `sudo`, `curl`, `--force`, …). |
+| `/add-dir <path>` | add another folder to the chat: it is named in the instructions (with its `AGENTS.md`/`CLAUDE.md`) and edits there are checkpointed in that folder (`/diff`, `/rollback <id> --dir <folder>`). `list`, `remove <path>`. |
+| `/worktree new [name]` | move the chat into a git worktree on branch `stitap/<name>` (in `<repo>/.stitap-worktrees/`, git-excluded); `status`, `list`, `merge [message]` (commit, merge into the original branch, remove), `exit [--remove [--force]]`, `remove <name>`. `delegate_task isolation=worktree` gives each subagent its own worktree and returns the branch to merge; `kanban.worktrees: true` runs each card's worker in a worktree on `kanban/<KEY>` and merges it when the card is done (a merge conflict sends the card to review; `/kanban merge <KEY>` retries). Cards run in the main checkout when it has uncommitted changes. |
+| `/effort off\|low\|medium\|high\|xhigh\|max\|default` | reasoning effort for this chat (`agent.effort` for new chats). Claude: `output_config.effort` with adaptive thinking (a thinking budget on pre-4.6 models); local servers: `enable_thinking` + `reasoning_effort`; other OpenAI-compatible servers: `reasoning_effort`. |
+| `/output-style [name]` | `concise`, `explanatory`, `learning` (leaves small `TODO(human)` parts for you), `report`, any `.md` file in `<home>/output-styles/` (optional first line `description: …`), or free text. `agent.output_style` sets the default. |
+| `/statusline` | the line shown above the terminal prompt and in the web chat footer: model and router tier, context use, git branch (`*` = uncommitted), folder, worktree, plan mode, effort, style, YOLO. `on\|off`, `command <cmd>` (your script gets the fields as JSON on stdin, its first output line is shown; `/statusline json` shows them), `reset`. |
+| `/todos [clear]` · `/tasks` (`/bashes`) | the chat's todo list · background processes: `/tasks all`, `log <id>`, `kill <id>`. |
+| `/vim [on\|off]` · `/keybindings` · `/terminal-setup` | vim keys in the terminal chat (Esc = normal mode; motions, `x d c r ~ p u`, `dd cc dw cw`, `j/k` history) · list keys and bind `ctrl+<key>` / `alt+<key>` to a slash command (`/keybindings set ctrl+g /status`) · how to make Option/Alt+Enter insert a new line in your terminal. |
+| `/release-notes` · `/bug <what happened>` | recent harness changes · write a bug report (session, model, recent log, secrets redacted) to `<home>/bugs/`. |
+| `!<command>` | run a shell command yourself in the chat's folder (terminal and web chat); the output is shown and goes to the agent with your next message. |
+| `#<note>` · `#user <fact>` | save a note to memory, or a fact about you to the user profile (also from messaging apps). New chats see it. |
+
 **Working folder.** Every chat has one; the agent reads, writes and runs commands there. Pick it with **📁** in the web
 chat's top bar (browse, create, recent folders) or `/cwd <path>`; set the folder new chats start in with
 `agent.default_cwd` (⚙ Settings ▸ General, or "make this the default" in the picker). Scheduled tasks inherit the
@@ -199,7 +220,55 @@ or phrases: `every 30m`, `hourly`, `daily at 7:00`, `weekdays at 8:30`, `every m
 `harness serve` runs the scheduler; without a daemon, call `harness cron tick` from Task
 Scheduler / launchd / cron.
 
+### Projects, working folders and boards
+
+A **project** groups boards and named **working folders**; one folder is the main one (★). For example "PrakritTattva"
+has folders `code` and `docs` and boards "v2" (archived) and "v3". The active project is the project of the active
+board, and the workers serve the active board. A ticket runs in its own `cwd`, else in the project folder it names
+(`folder: docs`), else in its board's folder, else in the project's main folder. A board created, imported or designed
+into a folder that belongs to a project joins that project by itself.
+
+```bash
+# projects
+harness kanban projects                                              # every project: boards, progress, folders
+harness kanban project new PrakritTattva --path ~/x/PT-v3 [--folder code] [--desc ".."] [--board "PT v2"]
+harness kanban project show|use|archive|unarchive PrakritTattva     # use opens its board (makes one if none)
+harness kanban project update PrakritTattva [--to "New name"] [--desc ".."]
+harness kanban project delete PrakritTattva [--with-boards] --yes    # boards are kept, unassigned, unless --with-boards
+# working folders
+harness kanban project folder add PrakritTattva docs ~/x/Idea_plan [--primary]
+harness kanban project folder set PrakritTattva docs [--path <dir>] [--to <new name>] [--primary]
+harness kanban project folder rm  PrakritTattva docs                 # refused while tickets still use it
+harness kanban project attach "PT v2" PrakritTattva                  # put a board in a project ("" takes it out)
+# boards
+harness kanban boards | board show [name]
+harness kanban board new "PT v3" [--in PrakritTattva] [--project <dir>] [--desc ".."]
+harness kanban board update "PT v3" [--to <new name>] [--desc ..] [--project <dir>] [--in <project>]
+harness kanban board use|archive|unarchive|save "PT v3"
+harness kanban board clear|delete "PT v3" --yes                      # snapshot first; board restore <file> undoes it
+# tickets
+harness kanban add "Write the README" [--folder docs] [--type task|bug|epic] [--parent MF001]
+harness kanban show US0011 | update US0011 [--title ..] [--goal ..] [--status ready] [--folder code] | rm US0011 --yes
+```
+
+Archiving a project archives its boards; unarchiving brings back only the boards it archived. Deleting a project,
+removing a folder, or clearing or deleting a board never deletes files on disk. Board clears and deletes write a
+snapshot to `<home>/kanban/snapshots/` first.
+
+The same operations are kanban tool actions in chat (`projects`, `project_new|show|update|use|archive|unarchive|delete`,
+`folder_add|update|remove`, `board_new|show|update|use|archive|clear|delete|restore`, `create|update|delete` for tickets).
+The system prompt names the active project and its folders and tells the agent to use these actions instead of refusing.
+HTTP: `GET/POST /api/kanban/projects`, `POST /api/kanban/boards` (`update` and the other actions), `POST /api/kanban/cards`,
+and `PATCH/DELETE /api/kanban/card/:key`. Dashboard: the project picker beside the board picker, and in the board menu (⋯)
+"Projects and folders…", "New ticket…" and "Board details…". "Delete ticket" is in the ticket's review block.
+
 ### Design document → kanban board
+
+Numbering and review apply to every board, not only design boards. By default (`kanban.numbering.style: feature`) every
+main feature (epic) is MF001, MF002 … and its stories US0011, US0012 … (bugs BG0011 …), also for `kanban import`, the chat
+tool and the dashboard; `style: prefix` or an explicit key prefix brings back PT-12 keys. `kanban import` makes a draft
+too (`kanban.import_draft: true`): its tickets wait in backlog until `kanban approve`. In chat, "plan / create a board
+from these design documents" goes to `design` (research, checked stories, new board, new project folder), not `import`.
 
 Give the agent any design (Markdown, text, HTML, PDF, Word/RTF/ODT, a web page, or a folder of them) and it plans the
 build for you to review:

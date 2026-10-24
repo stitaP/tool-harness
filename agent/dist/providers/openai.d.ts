@@ -37,3 +37,9 @@ export declare class OpenAIProvider implements Provider {
     private readStream;
     private finish;
 }
+/**
+ * /effort for OpenAI-compatible servers. Local servers (llama.cpp, Ollama, LM Studio, vLLM) switch a reasoning model's
+ * thinking with the chat template (`enable_thinking`, Qwen3 and similar); `reasoning_effort` is the OpenAI field
+ * (o-series, gpt-oss) and is only sent to remote servers, which reject unknown values less often than they ignore them.
+ */
+export declare function applyEffort(body: any, effort: NonNullable<ChatRequest["effort"]>, baseUrl: string): void;

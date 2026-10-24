@@ -23,8 +23,8 @@ import { bold, cyan, gray, green, magenta, red, toolLine } from "./ui.js";
 export function parseArgs(argv) {
     const flags = {};
     const cmd = [];
-    const valueFlags = { "--searches": "searches", "--stories": "stories", "-p": "profile", "--profile": "profile", "--cwd": "cwd", "-m": "model", "--model": "model", "--resume": "resume", "-r": "resume", "--port": "port", "--host": "host", "-q": "query", "--query": "query", "--format": "format", "--deliver": "deliver", "--out": "out", "--concurrency": "concurrency", "--days": "days", "--name": "name", "--skills": "skills", "--goal": "goal", "--base-url": "base-url", "--provider": "provider", "--context-window": "context-window", "--project": "project", "--tests": "tests", "--key": "key", "--test": "test", "--type": "type", "--parent": "parent", "--reply": "reply", "--to": "to", "--board": "board", "--file": "file" };
-    const BOOL = new Set(["--no-prior-art", "--no-research", "--enrich", "--yes", "--yolo", "--json", "-v", "--verbose", "-f", "--follow", "--errors", "--now", "--gateway", "--no-open", "-h", "--help", "--version"]);
+    const valueFlags = { "--searches": "searches", "--stories": "stories", "-p": "profile", "--profile": "profile", "--cwd": "cwd", "-m": "model", "--model": "model", "--resume": "resume", "-r": "resume", "--port": "port", "--host": "host", "-q": "query", "--query": "query", "--format": "format", "--deliver": "deliver", "--out": "out", "--concurrency": "concurrency", "--days": "days", "--name": "name", "--skills": "skills", "--goal": "goal", "--base-url": "base-url", "--provider": "provider", "--context-window": "context-window", "--project": "project", "--tests": "tests", "--key": "key", "--test": "test", "--type": "type", "--parent": "parent", "--reply": "reply", "--to": "to", "--board": "board", "--file": "file", "--path": "path", "--desc": "desc", "--folder": "folder", "--in": "in", "--title": "title", "--status": "status" };
+    const BOOL = new Set(["--primary", "--with-boards", "--no-prior-art", "--no-research", "--enrich", "--yes", "--yolo", "--json", "-v", "--verbose", "-f", "--follow", "--errors", "--now", "--gateway", "--no-open", "-h", "--help", "--version"]);
     let queryFromRest = false;
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
@@ -68,6 +68,10 @@ export function parseArgs(argv) {
             flags.noResearch = true;
         else if (a === "--no-prior-art")
             flags.noPriorArt = true;
+        else if (a === "--primary")
+            flags.primary = true;
+        else if (a === "--with-boards")
+            flags.withBoards = true;
         else if (a === "-h" || a === "--help")
             flags.help = true;
         else if (a === "--version")
@@ -108,7 +112,7 @@ ${bold("Automation")}
   harness cron list | add "<schedule>" "<prompt>" [--deliver telegram:<id>] | run <id> | pause <id> | resume <id> | rm <id> | tick
   harness kanban design <doc|folder|url> --project <dir> [--board n] [--searches 12] [--no-research] [--no-prior-art]   researched draft board (MF010 features, US0101 stories)
   harness kanban approve <board> [keys…]   reviewed draft tickets → ready
-  harness kanban done <key> | enrich [board] | import … [--enrich] | boards | board new|use|rename|archive|unarchive|clear|delete|save|restore <name> [--yes] | move <keys> --to <board> | link <key> <type> <key> | list | board | report | show <key> | add "<title>" [--goal ..] [--test "<cmd>"] [--type epic|task|bug] | comment <key> "<text>" [--reply <id>] | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> --project <dir> [--tests <dir>] [--key PT]
+  harness kanban done <key> | enrich [board] | import … [--enrich] | projects | project new|show|update|use|archive|unarchive|delete|folder add/set/rm|attach … | boards | board new <name> [--project <dir>] [--in <project>] [--desc ..] | board show|update <name> [--to ..] [--desc ..] [--project <dir>] [--in <project>] | board project <name> --project <dir> | update <key> [--title ..] [--status ..] [--folder ..] | rm <key> --yes | board use|rename|archive|unarchive|clear|delete|save|restore <name> [--yes] | move <keys> --to <board> | link <key> <type> <key> | list | board | report | show <key> | add "<title>" [--goal ..] [--test "<cmd>"] [--type epic|task|bug] | comment <key> "<text>" [--reply <id>] | run | resume | test <key> | verify <key> | gentests <key> | regression [key] | sync <key> | import <planDir> --project <dir> [--tests <dir>] [--key PT]
   harness batch <prompts.jsonl> --out traj.jsonl [--concurrency 4]
 
 ${bold("Data")}
@@ -353,7 +357,7 @@ export async function main(argv) {
                     console.log(`${K.fmt(v.card)} — ${v.detail}`);
                 }
                 else if (sub === "add")
-                    console.log(K.create({ title: a1, body: f.goal ?? "", test_cmd: f.test, type: f.type, parent: f.parent, cwd: f.cwd }).key);
+                    console.log(K.create({ title: a1, body: f.goal ?? "", test_cmd: f.test, type: f.type, parent: f.parent, cwd: f.cwd, folder: f.folder }).key);
                 else if (sub === "run") {
                     K.recover();
                     const ready = K.ready();
@@ -414,12 +418,95 @@ export async function main(argv) {
                     console.log(describeEnrich(await enrichBoard(rt, { board: a1 ?? f.board, onProgress: (m) => console.log(gray("  " + m)) })));
                 else if (sub === "boards")
                     console.log(K.describeBoards());
+                else if (sub === "projects")
+                    console.log(K.projects.describe());
+                else if (sub === "project") {
+                    const P = K.projects, act = a1, nm = a2 ?? "";
+                    const pr = () => nm || P.active()?.id || (() => { throw new Error("name the project"); })();
+                    if (act === "new") {
+                        const p = P.create(nm, { description: f.desc, folders: f.path ? [{ name: f.folder ?? "code", path: f.path }] : [], boards: f.board ? [f.board] : [] });
+                        console.log(`project "${p.name}" created${p.folders.length ? ` (${p.folders[0].name} = ${p.folders[0].path})` : ""}; kanban project use "${p.name}" to open it`);
+                    }
+                    else if (act === "show" || !act)
+                        console.log(nm ? P.show(nm) : P.active() ? P.show(P.active().id) : P.describe());
+                    else if (act === "update" || act === "rename") {
+                        const p = P.update(pr(), { name: f.to ?? (act === "rename" ? rest.slice(3).join(" ") || undefined : undefined), description: f.desc });
+                        console.log(`project "${p.name}" updated`);
+                    }
+                    else if (act === "use") {
+                        const r = P.use(nm);
+                        console.log(`active project "${r.project.name}", board "${r.board.name}"`);
+                    }
+                    else if (act === "archive")
+                        console.log(`archived project "${P.archive(pr()).name}" and its boards`);
+                    else if (act === "unarchive")
+                        console.log(`unarchived project "${P.unarchive(pr()).name}"`);
+                    else if (act === "delete") {
+                        if (!f.yes)
+                            console.log(`this deletes project "${nm}"${f.withBoards ? " and its boards (snapshots first)" : " (its boards are kept, without a project)"}; files are not touched. Add --yes to proceed.`);
+                        else {
+                            const r = P.delete(pr(), { deleteBoards: !!f.withBoards });
+                            console.log(`deleted project; boards ${f.withBoards ? "deleted" : "kept"}: ${r.boards.join(", ") || "none"}${r.snapshots.length ? `\nsnapshots: ${r.snapshots.join(", ")}` : ""}`);
+                        }
+                    }
+                    else if (act === "folder") {
+                        const [, , op, proj, fname, fpath] = rest;
+                        const show = (p) => console.log(`"${p.name}" folders: ${p.folders.map((x) => `${x.primary ? "★" : ""}${x.name}=${x.path}`).join(", ") || "none"}`);
+                        if (op === "add")
+                            show(P.addFolder(proj, { name: fname, path: fpath ?? f.path, primary: !!f.primary, note: f.desc }));
+                        else if (op === "set" || op === "update")
+                            show(P.updateFolder(proj, fname, { path: fpath ?? f.path, new_name: f.to, primary: f.primary, note: f.desc }));
+                        else if (op === "rm" || op === "remove")
+                            show(P.removeFolder(proj, fname));
+                        else
+                            console.log("usage: kanban project folder add|set|rm <project> <name> [<path>] [--path <dir>] [--to <new name>] [--primary]");
+                    }
+                    else if (act === "attach")
+                        console.log(`board "${P.attach(nm, rest.slice(3).join(" ") || f.in || "").name}" ${rest[3] || f.in ? "is in the project now" : "is out of its project"}`);
+                    else
+                        console.log("usage: kanban project new <name> [--path <dir>] [--folder code] [--desc ..] | show|use|archive|unarchive <name> | update <name> [--to <new>] [--desc ..] | delete <name> [--with-boards] --yes | folder add|set|rm … | attach <board> <project>");
+                }
+                else if (sub === "update") {
+                    const c = K.get(a1);
+                    if (!c)
+                        throw new Error(`no card ${a1}`);
+                    if (f.status === "done") {
+                        const v = await K.complete(c.id, "user");
+                        console.log(`${K.fmt(v.card)} — ${v.detail}`);
+                    }
+                    else
+                        console.log(K.fmt(K.update(c.id, { ...(f.title ? { title: f.title } : {}), ...(f.goal !== undefined ? { body: f.goal } : {}), ...(f.test !== undefined ? { test_cmd: f.test || undefined } : {}), ...(f.status ? { status: f.status } : {}),
+                            ...(f.folder !== undefined ? { folder: f.folder ? K.projects.checkFolder(c.board, f.folder) : undefined } : {}), ...(f.cwd !== undefined ? { cwd: f.cwd || undefined } : {}), ...(f.parent ? { parent: f.parent } : {}) }, { by: "user" })));
+                }
+                else if (sub === "rm" || sub === "delete") {
+                    const c = K.get(a1);
+                    if (!c)
+                        throw new Error(`no card ${a1}`);
+                    const kids = c.type === "epic" ? K.listAll().filter((x) => x.parent === c.key) : [];
+                    if (!f.yes)
+                        console.log(`this deletes ${c.key} "${c.title}"${kids.length ? ` and its ${kids.length} ticket(s)` : ""}. Add --yes to proceed.`);
+                    else {
+                        for (const k of kids)
+                            K.removeCard(k.id);
+                        K.removeCard(c.id);
+                        console.log(`deleted ${c.key}${kids.length ? ` and ${kids.length} ticket(s)` : ""}`);
+                    }
+                }
                 else if (sub === "board") {
                     const act = a1, nm = rest.slice(2).join(" ") || a2 || "";
-                    if (act === "new") {
-                        const b = K.boards.create(nm);
+                    if (act === "show")
+                        console.log(K.boards.show(nm || K.boards.active().name));
+                    else if (act === "update")
+                        console.log(K.boards.show(K.boards.update(a2 || K.boards.active().name, { name: f.to, description: f.desc, project: f.project, project_id: f.in }).id));
+                    else if (act === "new") {
+                        const b0 = K.boards.create(nm, f.desc, f.project);
+                        const b = f.in ? K.projects.attach(b0.id, f.in) : b0;
                         K.boards.use(b.id);
-                        console.log(`board "${b.name}" created and active`);
+                        console.log(`board "${b.name}" created and active${b.project ? ` (project ${b.project})` : ""}`);
+                    }
+                    else if (act === "project") {
+                        const b = K.boards.setProject(a2 || K.boards.active().name, f.project ?? rest.slice(3).join(" "));
+                        console.log(b.project ? `"${b.name}" works in ${b.project}` : `"${b.name}" has no project folder`);
                     }
                     else if (act === "use")
                         console.log(`active board: "${K.boards.use(nm).name}"`);
@@ -443,7 +530,7 @@ export async function main(argv) {
                         }
                     }
                     else
-                        console.log("usage: kanban board new|use|rename|archive|unarchive|clear|delete|save|restore <name>");
+                        console.log("usage: kanban board new <name> [--project <dir>] | project <name> --project <dir> | use|rename|archive|unarchive|clear|delete|save|restore <name>");
                 }
                 else if (sub === "move")
                     console.log(`moved ${K.boards.move(rest.slice(1), f.to)} ticket(s)`);

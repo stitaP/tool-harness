@@ -122,10 +122,13 @@ export function importPlan(board, o) {
     const project = o.projectDir ? resolve(expandHome(o.projectDir)) : undefined;
     const notes = [];
     if (o.board) {
-        const b = board.boards.get(o.board) ?? board.boards.create(o.board);
+        const b = board.boards.get(o.board) ?? board.boards.create(o.board, undefined, project);
         board.boards.use(b.id);
         notes.push(`board: "${b.name}" (now active)`);
     }
+    const draft = o.draft ?? board.settings.import_draft !== false;
+    if (project && !board.boards.active().project)
+        board.boards.setProject(board.boards.activeId(), project);
     let testsProvided = false;
     if (project) {
         mkdirSync(project, { recursive: true });
@@ -182,7 +185,7 @@ export function importPlan(board, o) {
         }
         const base = 1000 - Number(num) * 40;
         let order = 0;
-        const mk = (p) => board.create({ ...p, parent: epic.key, spec, cwd: project, key_prefix: o.keyPrefix, priority: base - order++ });
+        const mk = (p) => board.create({ ...p, parent: epic.key, spec, cwd: project, key_prefix: o.keyPrefix, priority: base - order++, ...(draft ? { status: "backlog" } : {}) });
         let prev = prevTail;
         // 2. one story per numbered section, written in plain words with everything a small model needs
         const storyIds = [], storyInfo = [];
@@ -257,5 +260,10 @@ export function importPlan(board, o) {
         void storyIds;
     }
     // epics were rolled up as cards were added
+    if (draft && stories) {
+        const b = board.boards.active();
+        board.boards.setDraft(b.id, { draft: true, ...(project ? { project } : {}) });
+        notes.push(`DRAFT: the new tickets wait in backlog. Nothing runs until the user reviews them and approves (kanban action=approve board="${b.name}", or the board's Approve button).`);
+    }
     return [`Imported ${epics} new phase(s), ${stories} stories/tasks created (${kept} phases already groomed, ${replaced} old one-ticket cards replaced).`, ...notes].join("\n");
 }

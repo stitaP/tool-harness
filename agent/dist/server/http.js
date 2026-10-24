@@ -15,7 +15,7 @@ import { currentBrowserId, detectBrowsers, resetBrowsers, testBrowser } from "..
 import { resourcePath } from "../util/resources.js";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { VERSION } from "../runtime/runtime.js";
-import { listCommands, looksLikeCommand, runCommand, insights } from "../runtime/commands.js";
+import { listCommands, looksLikeCommand, runCommand, runInputPrefix, insights } from "../runtime/commands.js";
 import { barePathHint, expandReferences } from "../prompt/references.js";
 import { goalKey, loopKey, heartbeatKey } from "../loop/autonomy.js";
 import { handleChatCompletions, handleModels } from "./openai-api.js";
@@ -601,6 +601,9 @@ export async function startServer(rt, opts = {}) {
                     const text = String(b.text ?? "").trim();
                     if (!text)
                         return json(res, 400, { error: "empty message" });
+                    const pre = await runInputPrefix(text, { rt, sid, source: "web" });
+                    if (pre)
+                        return json(res, 200, { command: true, ...pre });
                     if (looksLikeCommand(text, rt)) {
                         const r = await runCommand(text, { rt, sid, source: "web" });
                         if (r?.send)
@@ -734,6 +737,42 @@ export async function startServer(rt, opts = {}) {
                 const j = designJob(rt, kdj[1] ? decodeURIComponent(kdj[1]) : undefined);
                 return json(res, 200, { job: j });
             }
+            /** typed confirmations: capitals, extra spaces and curly quotes from phone keyboards do not matter */
+            const sameName = (typed, name) => { const norm = (v) => v.normalize("NFKC").replace(/[“”‘’"']/g, "").replace(/\s+/g, " ").trim().toLowerCase(); return typeof typed === "string" && norm(typed) === norm(name); };
+            if (p === "/api/kanban/projects" && req.method === "GET")
+                return json(res, 200, { active: rt.kanban.projects.active()?.id ?? null, projects: rt.kanban.projects.list({ archived: "all" }) });
+            if (p === "/api/kanban/projects" && req.method === "POST") {
+                const b = await body(req);
+                const P = rt.kanban.projects;
+                try {
+                    const ref = String(b.project ?? "");
+                    switch (b.action) {
+                        case "new": {
+                            const x = P.create(String(b.name ?? ""), { description: b.description, folders: Array.isArray(b.folders) ? b.folders : b.path ? [{ name: b.folder || "code", path: b.path }] : [], boards: Array.isArray(b.boards) ? b.boards : [] });
+                            const u = b.use !== false ? P.use(x.id) : null;
+                            return json(res, 200, { ok: true, project: x, board: u?.board ?? null });
+                        }
+                        case "update": return json(res, 200, { ok: true, project: P.update(ref, { name: b.name, description: b.description }) });
+                        case "use": return json(res, 200, { ok: true, ...P.use(ref) });
+                        case "archive": return json(res, 200, { ok: true, project: P.archive(ref) });
+                        case "unarchive": return json(res, 200, { ok: true, project: P.unarchive(ref) });
+                        case "delete": {
+                            const x = P.get(ref);
+                            if (!x || !sameName(b.confirm, x.name))
+                                return json(res, 400, { error: "type the project name to confirm" });
+                            return json(res, 200, { ok: true, ...P.delete(x.id, { deleteBoards: !!b.delete_boards }) });
+                        }
+                        case "folder_add": return json(res, 200, { ok: true, project: P.addFolder(ref, { name: String(b.folder ?? ""), path: String(b.path ?? ""), primary: !!b.primary, note: b.note }) });
+                        case "folder_update": return json(res, 200, { ok: true, project: P.updateFolder(ref, String(b.folder ?? ""), { path: b.path, new_name: b.new_name, primary: b.primary, note: b.note }) });
+                        case "folder_remove": return json(res, 200, { ok: true, project: P.removeFolder(ref, String(b.folder ?? "")) });
+                        case "attach": return json(res, 200, { ok: true, board: P.attach(String(b.board ?? ""), ref) });
+                        default: return json(res, 400, { error: "unknown action" });
+                    }
+                }
+                catch (e) {
+                    return json(res, 400, { error: errMsg(e) });
+                }
+            }
             if (p === "/api/kanban/boards" && req.method === "GET")
                 return json(res, 200, { active: rt.kanban.boards.activeId(), boards: rt.kanban.boards.list({ archived: "all" }) });
             if (p === "/api/kanban/boards" && req.method === "POST") {
@@ -742,11 +781,13 @@ export async function startServer(rt, opts = {}) {
                 try {
                     switch (b.action) {
                         case "new": {
-                            const x = B.create(String(b.name ?? ""), b.description);
+                            const x = B.create(String(b.name ?? ""), b.description, b.project || undefined);
                             if (b.use !== false)
                                 B.use(x.id);
                             return json(res, 200, { ok: true, board: x });
                         }
+                        case "project": return json(res, 200, { ok: true, board: B.setProject(String(b.board ?? ""), String(b.project ?? "")) });
+                        case "update": return json(res, 200, { ok: true, board: B.update(String(b.board ?? ""), { name: b.name, description: b.description, project: b.project, project_id: b.project_id }) });
                         case "use": return json(res, 200, { ok: true, board: B.use(String(b.board ?? "")) });
                         case "rename": return json(res, 200, { ok: true, board: B.rename(String(b.board ?? ""), String(b.name ?? "")) });
                         case "archive": return json(res, 200, { ok: true, board: B.archive(String(b.board ?? "")) });
@@ -754,13 +795,13 @@ export async function startServer(rt, opts = {}) {
                         case "save": return json(res, 200, { ok: true, file: B.save(String(b.board ?? "")) });
                         case "clear": {
                             const x = B.get(String(b.board ?? ""));
-                            if (!x || b.confirm !== x.name)
+                            if (!x || !sameName(b.confirm, x.name))
                                 return json(res, 400, { error: "type the board name to confirm" });
                             return json(res, 200, { ok: true, ...B.clear(x.id) });
                         }
                         case "delete": {
                             const x = B.get(String(b.board ?? ""));
-                            if (!x || b.confirm !== x.name)
+                            if (!x || !sameName(b.confirm, x.name))
                                 return json(res, 400, { error: "type the board name to confirm" });
                             return json(res, 200, { ok: true, ...B.delete(x.id) });
                         }
@@ -812,6 +853,35 @@ export async function startServer(rt, opts = {}) {
                 }
             }
             const kc = /^\/api\/kanban\/card\/([^/]+)$/.exec(p);
+            if (p === "/api/kanban/cards" && req.method === "POST") {
+                const b = await body(req);
+                const K = rt.kanban;
+                try {
+                    const board = b.board ? K.boards.get(String(b.board)) : null;
+                    if (b.board && !board)
+                        return json(res, 404, { error: `no board "${b.board}"` });
+                    const lines = (v) => (Array.isArray(v) ? v : String(v ?? "").split("\n")).map((x) => String(x).trim()).filter(Boolean);
+                    const c = K.create({ title: String(b.title ?? "").trim().slice(0, 200) || "untitled", body: typeof b.body === "string" ? b.body.slice(0, 20000) : "", type: ["epic", "task", "bug"].includes(b.type) ? b.type : "task",
+                        parent: b.parent || undefined, test_cmd: typeof b.test_cmd === "string" && b.test_cmd.trim() ? b.test_cmd.trim() : undefined, acceptance: lines(b.acceptance), folder: b.folder || undefined,
+                        status: b.status === "ready" ? "ready" : "backlog", ...(board ? { board: board.id } : {}), ...(b.numbering === "feature" ? { numbering: "feature" } : {}) });
+                    return json(res, 200, { ok: true, card: c });
+                }
+                catch (e) {
+                    return json(res, 400, { error: errMsg(e) });
+                }
+            }
+            if (kc && req.method === "DELETE") {
+                const K = rt.kanban, c = K.get(decodeURIComponent(kc[1]));
+                if (!c)
+                    return json(res, 404, { error: "no such card" });
+                if (K.isActive(c.id))
+                    return json(res, 409, { error: "a worker is on this ticket; stop it first" });
+                const kids = c.type === "epic" ? K.listAll().filter((x) => x.parent === c.key) : [];
+                for (const k of kids)
+                    K.removeCard(k.id);
+                K.removeCard(c.id);
+                return json(res, 200, { ok: true, removed: 1 + kids.length });
+            }
             if (kc && (req.method === "PATCH" || req.method === "POST")) {
                 // review edits from the board: text fields and lists only; status moves go through approve / the workers
                 const b = await body(req);
@@ -838,6 +908,8 @@ export async function startServer(rt, opts = {}) {
                         patch.review_flags = list(b.review_flags);
                     if (typeof b.test_cmd === "string")
                         patch.test_cmd = b.test_cmd.trim() || undefined;
+                    if (typeof b.folder === "string")
+                        patch.folder = b.folder.trim() ? K.projects.checkFolder(c.board, b.folder.trim()) : undefined;
                     if (b.depends_on !== undefined)
                         patch.depends_on = list(b.depends_on).map((k) => { const d = K.get(k); if (!d)
                             throw new Error(`no ticket ${k}`); if (d.id === c.id)

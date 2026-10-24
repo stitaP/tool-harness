@@ -14,6 +14,7 @@ import { log } from "../util/log.js";
 import { compressSession, estimateMessages } from "./compression.js";
 import { compactSchemas, planTools, selectionActive } from "./toolselect.js";
 import { collapseRepeats, sameReply } from "./repeats.js";
+import { effortOf, PLAN_NOTE, readOnlyBlock, takeShellContext } from "../runtime/modes.js";
 function callKey(c) { return `${c.name}:${c.arguments}`; }
 const LOOP_WINDOW = 12;
 /**
@@ -51,7 +52,10 @@ export async function runTurn(rt, o) {
     const alreadyShown = (t) => shownTexts.some((x) => sameReply(x, t));
     // ── user message ────────────────────────────────────────────────
     if (o.userText !== null) {
-        let text = o.userText;
+        // output of `!cmd` the user ran since the last message goes in front of it
+        let text = (o.depth ? "" : takeShellContext(rt, sid)) + o.userText;
+        if (!o.depth && rt.db.getSession(sid)?.meta?.plan_mode)
+            text += `\n\n${PLAN_NOTE}`;
         const userTurns = rt.db.getMessages(sid).filter((m) => m.role === "user").length;
         const every = rt.cfg.data.agent.memory_nudge_every;
         if (every > 0 && userTurns > 0 && userTurns % every === 0 && !o.depth) {
@@ -129,7 +133,7 @@ export async function runTurn(rt, o) {
             return msg;
         }
         emit({ type: "tool_start", id: call.id, name: tool.name, args });
-        const hookBlock = await rt.hooks.preTool(sid, tool.name, args);
+        const hookBlock = readOnlyBlock(rt, sid, tool.name, args) ?? await rt.hooks.preTool(sid, tool.name, args);
         if (hookBlock) {
             emit({ type: "tool_end", id: call.id, name: tool.name, ok: false, result: hookBlock, ms: 0 });
             return hookBlock;
@@ -211,7 +215,7 @@ export async function runTurn(rt, o) {
             let resp;
             try {
                 resp = await provider.chat({
-                    messages, tools: schemas.length ? schemas : undefined, signal: o.signal, maxTokens, tier: rt.db.getSession(sid)?.meta?.router_tier, prefer: rt.db.getSession(sid)?.meta?.router_prefer,
+                    messages, tools: schemas.length ? schemas : undefined, signal: o.signal, maxTokens, effort: effortOf(rt, sid), tier: rt.db.getSession(sid)?.meta?.router_tier, prefer: rt.db.getSession(sid)?.meta?.router_prefer,
                     onToken: (t) => emit({ type: "token", text: t }),
                     onReasoning: (t) => emit({ type: "reasoning", text: t }),
                     stream: rt.cfg.data.agent.stream,
@@ -414,7 +418,7 @@ export async function runTurn(rt, o) {
                 msgs[msgs.length - 1] = { ...last, content: `${last.content}\n\n${note}` };
             else
                 msgs.push({ role: "user", content: note });
-            const r = await provider.chat({ messages: msgs, signal: o.signal, onToken: (t) => emit({ type: "token", text: t }), stream: rt.cfg.data.agent.stream });
+            const r = await provider.chat({ messages: msgs, signal: o.signal, effort: effortOf(rt, sid), onToken: (t) => emit({ type: "token", text: t }), stream: rt.cfg.data.agent.stream });
             result.final = r.content.trim() || "(stopped: iteration budget reached)";
             rt.db.addMessage(sid, { role: "assistant", content: result.final, meta: { budget_summary: true } });
         }

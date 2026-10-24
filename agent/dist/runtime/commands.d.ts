@@ -1,4 +1,6 @@
 import type { Runtime } from "./runtime.js";
+import { runInputPrefix } from "./cc-commands.js";
+export { runInputPrefix };
 export interface CommandContext {
     rt: Runtime;
     sid: string;
@@ -10,6 +12,15 @@ export interface CommandResult {
     exit?: boolean;
     send?: string;
     clear?: boolean;
+}
+type Handler = (args: string, c: CommandContext) => Promise<CommandResult> | CommandResult;
+export interface Cmd {
+    name: string;
+    aliases?: string[];
+    usage: string;
+    help: string;
+    handler: Handler;
+    group: string;
 }
 export declare function insights(rt: Runtime, days: number): string;
 export declare function commandNames(): string[];

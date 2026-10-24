@@ -79,7 +79,7 @@ export function findContextFiles(cwd: string, maxEach = 12000, maxTotal = 24000)
   return out;
 }
 
-export function buildSystemPrompt(rt: Runtime, opts: { cwd: string; source: string; personality?: string; profile?: string; extra?: string }): string {
+export function buildSystemPrompt(rt: Runtime, opts: { cwd: string; source: string; personality?: string; profile?: string; extra?: string; outputStyle?: string; extraDirs?: string[] }): string {
   const profile = opts.profile ?? rt.cfg.data.agent.tool_profile;
   const parts: string[] = [];
   const soulPath = join(rt.home, "SOUL.md");
@@ -87,6 +87,7 @@ export function buildSystemPrompt(rt: Runtime, opts: { cwd: string; source: stri
   const pers = opts.personality ?? rt.cfg.data.agent.personality;
   if (pers) parts.push(`## Personality\n${PERSONALITIES[pers] ?? pers}`);
   parts.push(profile === "slm" ? PRINCIPLES_SLM : PRINCIPLES_FULL);
+  if (opts.outputStyle) parts.push(`## Output style\n${opts.outputStyle}`);
 
   const caps = rt.capabilities();
   const env = [
@@ -110,9 +111,20 @@ export function buildSystemPrompt(rt: Runtime, opts: { cwd: string; source: stri
 
   const ctxFiles = findContextFiles(opts.cwd);
   for (const f of ctxFiles) parts.push(`## Project context: ${f.path}\n${f.content.trim()}`);
+  if (opts.extraDirs?.length) {
+    parts.push(`## Additional working directories\nBesides ${opts.cwd}, the user added these folders to this chat. Read and change files in them with absolute paths:\n${opts.extraDirs.map((d) => `- ${d}`).join("\n")}`);
+    const seen = new Set(ctxFiles.map((f) => f.path));
+    for (const d of opts.extraDirs) for (const f of findContextFiles(d, 6000, 8000)) if (!seen.has(f.path)) { seen.add(f.path); parts.push(`## Project context: ${f.path}\n${f.content.trim()}`); }
+  }
   if (opts.source !== "kanban") {
     try {
       const open = rt.kanban.list().filter((c) => c.type !== "epic");
+      const boards = rt.kanban.boards.list(), projects = rt.kanban.projects.list();
+      if (rt.cfg.data.kanban.enabled && (open.length || boards.length > 1 || projects.length)) {
+        const act = rt.kanban.boards.active(), proj = rt.kanban.projects.active();
+        const folders = proj?.folders.length ? `\nFolders of "${proj.name}": ${proj.folders.map((f) => `${f.primary ? "★ " : ""}${f.name} = ${f.path}`).join("; ")}.` : "";
+        parts.push(`## Projects and boards\nActive project: ${proj ? `"${proj.name}"` : "(none)"}; active board: "${act.name}"${act.project ? ` (folder ${act.project})` : ""}.${folders}\nOther projects: ${projects.filter((p) => !p.active).map((p) => `"${p.name}"`).join(", ") || "none"}. Other boards: ${boards.filter((b) => !b.active).map((b) => `"${b.name}"`).join(", ") || "none"}.\nWhen the user asks to plan or create a board from design documents (or "start the kanban board from <folder>"), call kanban action=design with that path, a new board name and a new project folder (unless the user names them), then tell the user it runs in the background and makes a DRAFT board (main features MF001…, stories US0011…) for them to review and approve; do not use import for this and do not dispatch. When the user asks to create, switch, change, clear, reset, start fresh, archive or delete a project, working folder, board or ticket, use the kanban tool (projects, project_new, project_use, project_update, project_archive, project_delete, folder_add, folder_update, folder_remove, board_new, board_update, board_clear, board_archive, board_delete, delete); never answer that it cannot be done, and never use git or file tools for it. Clearing and deleting boards save a snapshot that board_restore brings back; files on disk are not touched.`);
+      }
       if (rt.cfg.data.kanban.enabled && open.length) {
         const done = open.filter((c) => c.status === "done").length;
         parts.push(`## The kanban board is the plan\nThis project has a kanban board: ${open.length} stories, ${done} done. When the user asks you to implement, build, continue or run the plan or phases:\n- Do NOT invent a new plan and do NOT write your own todo list. The plan is the stories on the board.\n- Do NOT implement stories by hand in this chat. Workers do that: each story gets its own session, tests, screenshots and git commits that start with the story key.\n- Do this: call the kanban tool with action=list, show the next stories (key and title) as the plan, then call kanban action=dispatch (or resume) so the workers start. Then say which stories started.\n- Afterwards use this chat only to report progress, answer questions, or add/update stories with kanban action=create/update/comment.`);

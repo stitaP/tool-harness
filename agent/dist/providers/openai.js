@@ -134,6 +134,8 @@ export class OpenAIProvider {
         }
         if (req.stop?.length)
             body.stop = req.stop;
+        if (req.effort)
+            applyEffort(body, req.effort, this.o.baseUrl);
         if (req.json)
             body.response_format = { type: "json_object" };
         if (stream && !this.noStreamOptions)
@@ -272,4 +274,20 @@ export class OpenAIProvider {
         }
         return { content: text, toolCalls, usage: o.usage, finishReason: o.finishReason, model: o.model, reasoning: [o.reasoning, reasoning].filter(Boolean).join("\n") || undefined, timings: o.timings };
     }
+}
+/**
+ * /effort for OpenAI-compatible servers. Local servers (llama.cpp, Ollama, LM Studio, vLLM) switch a reasoning model's
+ * thinking with the chat template (`enable_thinking`, Qwen3 and similar); `reasoning_effort` is the OpenAI field
+ * (o-series, gpt-oss) and is only sent to remote servers, which reject unknown values less often than they ignore them.
+ */
+export function applyEffort(body, effort, baseUrl) {
+    const local = isLocalHttp(baseUrl);
+    const thinking = effort !== "off";
+    if (local) {
+        body.chat_template_kwargs = { ...(body.chat_template_kwargs ?? {}), enable_thinking: thinking };
+        if (thinking)
+            body.reasoning_effort = effort === "xhigh" || effort === "max" ? "high" : effort;
+        return;
+    }
+    body.reasoning_effort = effort === "off" ? "minimal" : effort === "xhigh" || effort === "max" ? "high" : effort;
 }

@@ -12,6 +12,9 @@ export interface BoardInfo {
     design?: string;
     project?: string;
     approved_at?: number;
+    /** the project (projects.ts) this board belongs to; `project` above is the board's own folder */
+    project_id?: string;
+    archived_by_project?: boolean;
 }
 export type LinkType = "relates to" | "blocks" | "is blocked by" | "duplicates" | "clones";
 export declare const LINK_TYPES: LinkType[];
@@ -55,7 +58,22 @@ export declare class Boards {
         done: number;
         active: boolean;
     })[];
-    create(name: string, description?: string): BoardInfo;
+    create(name: string, description?: string, project?: string): BoardInfo;
+    /** A board whose folder lies inside a project's folder joins that project (when it is in none yet). */
+    private autoAttach;
+    /** Change a board: name, description, folder ("" removes it) and project (project name or id, "" takes it out). */
+    update(ref: string, patch: {
+        name?: string;
+        description?: string;
+        project?: string;
+        project_id?: string;
+    }): BoardInfo;
+    /** One board in text: project, folder, description, tickets per status. */
+    show(ref: string): string;
+    /** Set (or with "" remove) the project folder a board's tickets are worked in. */
+    setProject(ref: string, project: string): BoardInfo;
+    /** The project folder of the board a ticket is on, if that board has one. */
+    projectOf(boardId?: string): string | undefined;
     /** Mark a board as a draft made from a design (or clear the mark). */
     setDraft(ref: string, d: {
         draft: boolean;

@@ -11,10 +11,14 @@ export declare class ApprovalManager {
     private persistAllow;
     private onRequest;
     private timeoutMs;
+    /** every decision a person made (for /fewer-permission-prompts) */
+    private onDecision?;
     pending: Map<string, Pending>;
     private sessionAllow;
     yoloSessions: Set<string>;
-    constructor(getMode: () => string, getAllowPatterns: () => string[], persistAllow: (pattern: string) => void, onRequest: (p: Omit<Pending, "resolve">) => void, timeoutMs: () => number);
+    constructor(getMode: () => string, getAllowPatterns: () => string[], persistAllow: (pattern: string) => void, onRequest: (p: Omit<Pending, "resolve">) => void, timeoutMs: () => number, 
+    /** every decision a person made (for /fewer-permission-prompts) */
+    onDecision?: ((req: ApprovalRequest, d: Decision) => void) | undefined);
     /** Returns true when the action may proceed. */
     check(req: ApprovalRequest, opts?: {
         headlessMode?: string;
@@ -23,6 +27,8 @@ export declare class ApprovalManager {
     /** Answer the oldest pending request for a session (used by /approve, /deny). */
     respondLatest(sessionId: string, d: Decision): boolean;
     cancelSession(sessionId: string): void;
+    /** Commands and tools approved for the rest of this session ("session" answers). */
+    sessionAllowed(sessionId: string): string[];
     list(sessionId?: string): {
         id: string;
         createdAt: number;

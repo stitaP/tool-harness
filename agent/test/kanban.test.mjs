@@ -9,8 +9,12 @@ import { setup, dist } from "./helpers.mjs";
 const git = (cwd, ...a) => execFileSync("git", a, { cwd, encoding: "utf8" }).trim();
 const repo = (cwd) => { git(cwd, "init", "-q", "-b", "main"); git(cwd, "config", "user.email", "t@example.com"); git(cwd, "config", "user.name", "T"); writeFileSync(join(cwd, "a.txt"), "1"); git(cwd, "add", "."); git(cwd, "commit", "-qm", "init"); };
 
+
+/** these tests check the plan import and key mechanics with the old defaults: PT-12 keys, imported tickets ready at once */
+const LEGACY = "kanban:\n  import_draft: false\n  numbering:\n    style: prefix\n";
+
 test("kanban: keys, types, history, threaded comments, lookup by key", async () => {
-  const t = await setup();
+  const t = await setup(LEGACY);
   try {
     const K = t.rt.kanban;
     const epic = K.create({ title: "Phase 1", type: "epic" });
@@ -157,7 +161,7 @@ test("kanban: regression reopens a failing done card and files one linked bug", 
 });
 
 test("kanban: import turns phase specs into chained epics and tasks and copies docs and tests", async () => {
-  const t = await setup();
+  const t = await setup(LEGACY);
   try {
     const plan = mkdtempSync(join(tmpdir(), "plan-")); const tests = mkdtempSync(join(tmpdir(), "tests-"));
     writeFileSync(join(plan, "00-context.md"), "ctx");
@@ -303,7 +307,7 @@ Open shop.html and add a product.
 `;
 
 test("kanban import: a phase becomes stories per spec section, then tests AFTER the stories, then a gate", async () => {
-  const t = await setup();
+  const t = await setup(LEGACY);
   try {
     const plan = mkdtempSync(join(tmpdir(), "plan-")); const proj = mkdtempSync(join(tmpdir(), "proj-"));
     writeFileSync(join(plan, "phase-03.md"), PHASE3);
@@ -450,7 +454,7 @@ test("kanban links: typed, across boards, with inverse view; blocking links sche
 });
 
 test("kanban tool + import: board_new / import --board / board_clear needs confirm / link and move through the tool", async () => {
-  const t = await setup("approvals:\n  mode: yolo\n");
+  const t = await setup("approvals:\n  mode: yolo\n" + LEGACY);
   try {
     const plan = mkdtempSync(join(tmpdir(), "plan-")); const proj = mkdtempSync(join(tmpdir(), "proj-"));
     writeFileSync(join(plan, "phase-00.md"), "# Phase 00: T\n\n**Goal:** g.\n\n## 1. `a.js`\nx\n");
@@ -458,7 +462,8 @@ test("kanban tool + import: board_new / import --board / board_clear needs confi
     assert.match(await run({ action: "board_new", name: "Fresh start" }), /Created board "Fresh start" and made it active/);
     assert.match(await run({ action: "import", path: plan, project: proj }), /Imported 1 new phase/);
     assert.equal(t.rt.kanban.list().length > 0, true);
-    assert.match(await run({ action: "boards" }), /▶ Fresh start — 0\/\d+ tickets done[\s\S]*Main/);
+    const bl = await run({ action: "boards" });   // both boards are listed (made in the same millisecond, so in either order)
+    assert.match(bl, /▶ Fresh start — 0\/\d+ tickets done — project /); assert.match(bl, /^  Main — /m);
     assert.match(await run({ action: "board_clear", board: "Fresh start" }), /Call again with confirm=true/);
     assert.equal(t.rt.kanban.list().length > 0, true);                             // nothing happened without confirm
     assert.match(await run({ action: "board_clear", board: "Fresh start", confirm: true }), /Removed \d+ ticket\(s\)\. Snapshot: .*fresh-start-/);
@@ -546,7 +551,7 @@ test("story writing: plain fixed layout, resources, exact names, rule lines, man
 });
 
 test("tests ticket: lists every story's cases, and its check fails until each story key has at least 4 tests", async () => {
-  const t = await setup();
+  const t = await setup(LEGACY);
   try {
     const { execFileSync } = await import("node:child_process");
     const plan = mkdtempSync(join(tmpdir(), "plan-")); const proj = mkdtempSync(join(tmpdir(), "proj-"));

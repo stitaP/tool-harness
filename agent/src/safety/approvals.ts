@@ -21,6 +21,8 @@ export class ApprovalManager {
     private persistAllow: (pattern: string) => void,
     private onRequest: (p: Omit<Pending, "resolve">) => void,
     private timeoutMs: () => number,
+    /** every decision a person made (for /fewer-permission-prompts) */
+    private onDecision?: (req: ApprovalRequest, d: Decision) => void,
   ) {}
 
   /** Returns true when the action may proceed. */
@@ -39,6 +41,7 @@ export class ApprovalManager {
       this.onRequest(pub);
       setTimeout(() => { if (this.pending.has(id)) this.respond(id, "deny"); }, this.timeoutMs()).unref?.();
     });
+    this.onDecision?.(req, d);
     if (d === "session") { if (!this.sessionAllow.has(req.sessionId)) this.sessionAllow.set(req.sessionId, new Set()); this.sessionAllow.get(req.sessionId)!.add(req.command); }
     if (d === "always") this.persistAllow(req.command);
     return d !== "deny";
@@ -61,6 +64,9 @@ export class ApprovalManager {
   cancelSession(sessionId: string): void {
     for (const p of [...this.pending.values()]) if (p.sessionId === sessionId) this.respond(p.id, "deny");
   }
+
+  /** Commands and tools approved for the rest of this session ("session" answers). */
+  sessionAllowed(sessionId: string): string[] { return [...(this.sessionAllow.get(sessionId) ?? [])]; }
 
   list(sessionId?: string) {
     return [...this.pending.values()].filter((p) => !sessionId || p.sessionId === sessionId).map(({ resolve: _r, ...p }) => p);
